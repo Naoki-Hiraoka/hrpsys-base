@@ -1709,9 +1709,9 @@ bool AutoBalancer::setAutoBalancerParam(const OpenHRP::AutoBalancerService::Auto
               leg_names_interpolator->setGoal(&tmp_ratio, 5.0, true);
               control_mode = MODE_SYNC_TO_ABC;
           }
-      }
-  } else {
+      }else {
       std::cerr << "[" << m_profile.instance_name << "]   leg_names cannot be set because interpolating." << std::endl;
+      } 
   }
   if (!gg_is_walking) {
       is_hand_fix_mode = i_param.is_hand_fix_mode;
