@@ -587,7 +587,65 @@ int number_of_thermometers()
 {
     return 0;
 }
+#endif
 
+#if defined(ROBOT_IOB_VERSION) && ROBOT_IOB_VERSION >= 3
+int write_command_acceleration(int id, double acc)
+{
+    return FALSE;
+}
+
+int write_command_accelerations(const double *accs)
+{
+    return FALSE;
+}
+
+int write_joint_inertia(int id, double mn)
+{
+    return FALSE;
+}
+
+int write_joint_inertias(const double *mns)
+{
+    return FALSE;
+}
+
+int read_pd_controller_torques(double *torques)
+{
+    return FALSE;
+}
+
+int write_disturbance_observer(int com)
+{
+    return FALSE;
+}
+
+int write_disturbance_observer_gain(double gain)
+{
+    return FALSE;
+}
+#endif
+
+#if defined(ROBOT_IOB_VERSION) && ROBOT_IOB_VERSION >= 4
+int read_torque_pgain(int id, double *gain)
+{
+    return FALSE;
+}
+
+int write_torque_pgain(int id, double gain)
+{
+    return FALSE;
+}
+
+int read_torque_dgain(int id, double *gain)
+{
+    return FALSE;
+}
+
+int write_torque_dgain(int id, double gain)
+{
+    return FALSE;
+}
 #endif
 
 int read_driver_temperature(int id, unsigned char *v)

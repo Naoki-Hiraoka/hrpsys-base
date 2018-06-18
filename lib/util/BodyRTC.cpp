@@ -662,8 +662,12 @@ CORBA::Boolean RobotHardwareServicePort::servo(const char* jname, OpenHRP::Robot
 }
 void RobotHardwareServicePort::setServoGainPercentage(const char *jname, double limit) {
 }
+void RobotHardwareServicePort::setServoTorqueGainPercentage(const char *jname, double limit) {
+}
 void RobotHardwareServicePort::setServoErrorLimit(const char *jname, double limit) {
     m_robot->setServoErrorLimit(jname, limit);
+}
+void RobotHardwareServicePort::setJointControlMode(const char *jname, OpenHRP::RobotHardwareService::JointControlMode jcm){
 }
 void RobotHardwareServicePort::calibrateInertiaSensor() {
 }
@@ -702,6 +706,18 @@ CORBA::Long RobotHardwareServicePort::lengthDigitalOutput() {
 CORBA::Boolean RobotHardwareServicePort::readDigitalOutput(::OpenHRP::RobotHardwareService::OctSequence_out dout) {
     return false;
 }
+
+CORBA::Boolean RobotHardwareServicePort::setJointInertia(const char* name, ::CORBA::Double mn)
+{
+    return true;
+}
+
+void RobotHardwareServicePort::setJointInertias(const ::OpenHRP::RobotHardwareService::DblSequence& mns)
+{
+}
+void RobotHardwareServicePort::enableDisturbanceObserver(){}
+void RobotHardwareServicePort::disableDisturbanceObserver(){}
+void RobotHardwareServicePort::setDisturbanceObserverGain(::CORBA::Double gain){}
 //
 void RobotHardwareServicePort::setRobot(BodyRTC *i_robot) { m_robot = i_robot; }
 
