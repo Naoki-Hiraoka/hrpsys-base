@@ -136,6 +136,7 @@ bool robot::loadGain()
                 }
             } else {
                 std::cerr << "[RobotHardware] error: exist empty line in gain file" << std::endl;
+                i--;
             }
         } else {
             std::cerr << "[RobotHardware] error: size of gains does not match size of joints" << std::endl;
