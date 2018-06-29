@@ -246,10 +246,12 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
         prev_angle[i] = m_qCurrent.data[i];
       }
     }
+    bool has_servoOn = false;
     std::vector<int> servo_state;
     servo_state.resize(m_qRef.data.length(), 0);
     for ( unsigned int i = 0; i < m_qRef.data.length(); i++ ){
         servo_state[i] = (m_servoState.data[i][0] & OpenHRP::RobotHardwareService::SERVO_STATE_MASK) >> OpenHRP::RobotHardwareService::SERVO_STATE_SHIFT; // enum SwitchStatus {SWITCH_ON, SWITCH_OFF};
+        has_servoOn = has_servoOn || (servo_state[i] ==1);
     }
 
       /*
@@ -319,13 +321,20 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
       if (!totalrange_isempty){
           double llimit = m_qCurrent.data[i] - m_robot->m_servoErrorLimit[i];
           double ulimit = m_qCurrent.data[i] + m_robot->m_servoErrorLimit[i];
-          if (!(llimit < ulimit) || (total_lower_limit > ulimit) || (total_upper_limit > llimit)){//range is empty
+          if (!(llimit < ulimit) || (total_lower_limit > ulimit) || (total_upper_limit < llimit)){//range is empty
               if (!(llimit < ulimit)){
                   limited = limited;
-              }else if (total_lower_limit > ulimit){
-                  limited = total_lower_limit;
-              }else if (total_upper_limit > llimit){
-                  limited = total_upper_limit;
+              }else {
+                  if (loop % debug_print_freq == 0 || debug_print_error_first ) {
+                      std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
+                                << "] error limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
+                                << ", qCurrent=" << m_qCurrent.data[i] << " "
+                                << ", Error=" << limited - m_qCurrent.data[i] << " > " << m_robot->m_servoErrorLimit[i] << " (limit)"
+                                << ", servo_state = " <<  ( 1 ? "ON" : "OFF")
+                                << "total range is empty";
+                  }
+                  if (total_lower_limit > ulimit) limited = total_lower_limit;
+                  if (total_upper_limit < llimit) limited = total_upper_limit;
               }
               totalrange_isempty = true;
           }else{
@@ -367,13 +376,21 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
               ulimit = it->second.getUlimit(m_qRef.data[it->second.getTargetJointId()]);
           }
           // fixed joint have vlimit = ulimit
-          if (!(llimit < ulimit) || (total_lower_limit > ulimit) || (total_upper_limit > llimit)){//range is empty
+          if (!(llimit < ulimit) || (total_lower_limit > ulimit) || (total_upper_limit < llimit)){//range is empty
               if (!(llimit < ulimit)){
                   limited = limited;
-              }else if (total_lower_limit > ulimit){
-                  limited = total_lower_limit;
-              }else if (total_upper_limit > llimit){
-                  limited = total_upper_limit;
+              }else{
+                  if (loop % debug_print_freq == 0 || debug_print_position_first) {
+                      std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
+                                << "] position limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
+                                << ", llimit =" << llimit
+                                << ", ulimit =" << ulimit
+                                << ", servo_state = " <<  ( servo_state[i] ? "ON" : "OFF")
+                                << ", prev_angle = " << prev_angle[i]
+                                << "total range is empty";
+                  }
+                  if (total_lower_limit > ulimit) limited = total_lower_limit;
+                  if (total_upper_limit < llimit) limited = total_upper_limit;
               }
               totalrange_isempty = true;
           }else{
@@ -416,14 +433,14 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
     debug_print_error_first = !soft_limit_error;
     
     // Beep sound
-    if ( soft_limit_error ) { // play beep
+    if ( soft_limit_error && has_servoOn ) { // play beep
         if (is_beep_port_connected) {
             if ( loop % soft_limit_error_beep_freq == 0 ) bc.startBeep(3136, soft_limit_error_beep_freq*0.8);
             else bc.stopBeep();
         } else {
             if ( loop % soft_limit_error_beep_freq == 0 ) start_beep(3136, soft_limit_error_beep_freq*0.8);
         }
-    }else if ( position_limit_error || velocity_limit_error ) { // play beep
+    }else if (( position_limit_error || velocity_limit_error ) && has_servoOn) { // play beep
         if (is_beep_port_connected) {
             if ( loop % position_limit_error_beep_freq == 0 ) bc.startBeep(3520, position_limit_error_beep_freq*0.8);
             else bc.stopBeep();
