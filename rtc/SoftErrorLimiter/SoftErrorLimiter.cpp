@@ -55,6 +55,7 @@ SoftErrorLimiter::SoftErrorLimiter(RTC::Manager* manager)
     // <rtc-template block="initializer">
     m_qRefIn("qRef", m_qRef),
     m_qCurrentIn("qCurrent", m_qCurrent),
+    m_tauIn("tauIn",m_tau),
     m_servoStateIn("servoStateIn", m_servoState),
     m_qOut("q", m_qRef),
     m_servoStateOut("servoStateOut", m_servoState),
@@ -90,6 +91,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   // Set InPort buffers
   addInPort("qRef", m_qRefIn);
   addInPort("qCurrent", m_qCurrentIn);
+  addInPort("tauIn", m_tauIn);
   addInPort("servoState", m_servoStateIn);
   
   // Set OutPort buffer
@@ -153,6 +155,72 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   // load joint limit table
   hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], std::string(m_profile.instance_name));
 
+  // make gain filter
+  // filter_dim, fb_coeffs[0], ..., fb_coeffs[filter_dim], ff_coeffs[0], ..., ff_coeffs[filter_dim]
+  // ex. gain_filter_params: 4, 1.0, 3.7947911, -5.40516686, 3.42474735, -0.814406, 2.15056874e-06, 8.60227495e-06, 1.29034124e-05, 8.60227495e-06, 2.15056874e-06
+  coil::vstring torque_filter_params = coil::split(prop["gain_filter_params"], ","); // filter values
+  int filter_dim = 0;
+  std::vector<double> fb_coeffs, ff_coeffs;
+  bool use_default_flag = false;
+  // check size of toruqe_filter_params
+  if ( torque_filter_params.size() > 0 ) {
+      coil::stringTo(filter_dim, torque_filter_params[0].c_str());
+      if (m_debugLevel > 0) {
+          std::cerr << "[" <<  m_profile.instance_name << "]" << "filter dim: " << filter_dim << std::endl;
+          std::cerr << "[" <<  m_profile.instance_name << "]" << "gain filter param size: " << torque_filter_params.size() << std::endl;
+      }
+  } else {
+      use_default_flag = true;
+      if (m_debugLevel > 0) {
+          std::cerr<< "[" <<  m_profile.instance_name << "]" << "There is no gain_filter_params. Use default values." << std::endl;
+      }
+  }
+  if (!use_default_flag && ((filter_dim + 1) * 2 + 1 != (int)torque_filter_params.size()) ) {
+      if (m_debugLevel > 0) {
+          std::cerr<< "[" <<  m_profile.instance_name << "]" << "Size of gain_filter_params is not correct. Use default values." << std::endl;
+      }
+      use_default_flag = true;
+  }
+  // define parameters
+  if (use_default_flag) {
+      // ex) 2dim butterworth filter sampling = 200[hz] cutoff = 5[hz]
+      // octave$ [a, b] = butter(2, 5/200)
+      // fb_coeffs[0] = 1.00000; <- b0
+      // fb_coeffs[1] = 1.88903; <- -b1
+      // fb_coeffs[2] = -0.89487; <- -b2
+      // ff_coeffs[0] = 0.0014603; <- a0
+      // ff_coeffs[1] = 0.0029206; <- a1
+      // ff_coeffs[2] = 0.0014603; <- a2
+      filter_dim = 2;
+      fb_coeffs.resize(filter_dim+1);
+      fb_coeffs[0] = 1.00000;
+      fb_coeffs[1] = 1.88903;
+      fb_coeffs[2] =-0.89487;
+      ff_coeffs.resize(filter_dim+1);
+      ff_coeffs[0] = 0.0014603;
+      ff_coeffs[1] = 0.0029206;
+      ff_coeffs[2] = 0.0014603;
+  } else {
+      fb_coeffs.resize(filter_dim + 1);
+      ff_coeffs.resize(filter_dim + 1);
+      for (int i = 0; i < filter_dim + 1; i++) {
+          coil::stringTo(fb_coeffs[i], torque_filter_params[i + 1].c_str());
+          coil::stringTo(ff_coeffs[i], torque_filter_params[i + (filter_dim + 2)].c_str());
+      }
+  }
+
+  //if (m_debugLevel > 0) {
+    for (int i = 0; i < filter_dim + 1; i++) {
+        std::cerr << "[" <<  m_profile.instance_name << "]" << "fb[" << i << "]: " << fb_coeffs[i] << std::endl;
+        std::cerr << "[" <<  m_profile.instance_name << "]" << "ff[" << i << "]: " << ff_coeffs[i] << std::endl;
+    }
+    //}
+
+  // make filter instance
+  for(unsigned int i = 0; i < m_robot->numJoints(); i++){
+      m_filters.push_back(IIRFilter(filter_dim, fb_coeffs, ff_coeffs, std::string(m_profile.instance_name)));
+  }
+
   return RTC::RTC_OK;
 }
 
@@ -214,6 +282,9 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
   }
   if (m_qCurrentIn.isNew()) {
     m_qCurrentIn.read();
+  }
+  if (m_tauIn.isNew()) {
+    m_tauIn.read();
   }
   if (m_servoStateIn.isNew()) {
     m_servoStateIn.read();
@@ -319,8 +390,25 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
       
       // Servo error limitation between reference joint angles and actual joint angles
       if (!productrange_isempty){
+          double limit = m_robot->m_servoErrorLimit[i];
           double llimit = m_qCurrent.data[i] - m_robot->m_servoErrorLimit[i];
           double ulimit = m_qCurrent.data[i] + m_robot->m_servoErrorLimit[i];
+
+          if (prev_angle.size() == m_qCurrent.data.length() &&
+              prev_angle.size() == m_tau.data.length() &&
+              prev_angle[i] != m_qCurrent.data[i]){
+              double gain = fabs(m_filters[i].executeFilter(fabs(m_tau.data[i] / (prev_angle[i] - m_qCurrent.data[i]))));
+              // if (loop % 200 == 0 || debug_print_velocity_first ) {
+              //     std::cerr << "[el]joint"<< i <<" gain "<< gain << std::endl;
+              // }
+              if (gain != 0){
+                  double maxtorque = 20;
+                  limit = std::min(limit, maxtorque / gain);
+                  llimit = std::max(llimit, m_qCurrent.data[i] - maxtorque / gain);
+                  ulimit = std::min(ulimit, m_qCurrent.data[i] + maxtorque / gain);
+              }
+          }
+
           if (!(llimit < ulimit) || (total_lower_limit > ulimit) || (total_upper_limit < llimit)){//range is empty
               if (!(llimit < ulimit)){
                   limited = limited;
@@ -329,7 +417,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                       std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
                                 << "] error limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
                                 << ", qCurrent=" << m_qCurrent.data[i] << " "
-                                << ", Error=" << limited - m_qCurrent.data[i] << " > " << m_robot->m_servoErrorLimit[i] << " (limit)"
+                                << ", Error=" << limited - m_qCurrent.data[i] << " > " << limit << " (limit)"
                                 << ", servo_state = " <<  ( servo_state[i] ? "ON" : "OFF")
                                 << "product range is empty";
                   }

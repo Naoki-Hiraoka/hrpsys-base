@@ -543,6 +543,10 @@ class HrpsysConfigurator(object):
         # connection for el
         if self.el:
             connectPorts(self.rh.port("q"), self.el.port("qCurrent"))
+            if self.tf:
+                connectPorts(self.tf.port("tauOut"), self.el.port("tauIn"))
+            else:
+                connectPorts(self.rh.port("tau"), self.el.port("tauIn"))
 
         # connection for es
         if self.es:
