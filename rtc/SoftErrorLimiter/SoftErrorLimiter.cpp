@@ -278,20 +278,22 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
       //  total upper limit = min (vel, pos, err) <= severest upper limit
       double total_upper_limit = std::numeric_limits<double>::max(), total_lower_limit = -std::numeric_limits<double>::max();
       double limited = m_qRef.data[i];
-      bool totalrange_isempty = false;
+      bool productrange_isempty = false;
 
       // Velocity limitation for previous output joint angles
-      if (!totalrange_isempty){
+      if (!productrange_isempty){
           double lvlimit = m_robot->joint(i)->lvlimit + 0.000175; // 0.01 deg / sec
           double uvlimit = m_robot->joint(i)->uvlimit - 0.000175;
           // fixed joint has ulimit = vlimit
           if(!(lvlimit < uvlimit)){//range is empty
               limited = limited;
-              totalrange_isempty = true;
+              productrange_isempty = true;
           }else{
-              double qvel = (limited - prev_angle[i]) / dt;
-              if ((lvlimit > qvel) || (uvlimit < qvel)) {
+              total_lower_limit = std::max(prev_angle[i] + lvlimit * dt, total_lower_limit);
+              total_upper_limit = std::min(prev_angle[i] + uvlimit * dt, total_upper_limit);
+              if ((total_lower_limit > limited) || (total_upper_limit < limited)) {
                   if (loop % debug_print_freq == 0 || debug_print_velocity_first ) {
+                      double qvel = (limited - prev_angle[i]) / dt;
                       std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
                                 << "] velocity limit over " << m_robot->joint(i)->name << "(" << i << "), qvel=" << qvel
                                 << ", lvlimit =" << lvlimit
@@ -299,11 +301,11 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                                 << ", servo_state = " <<  ( servo_state[i] ? "ON" : "OFF");
                   }
                   // fix joint angle
-                  if ( lvlimit > qvel ) {
-                      limited = lvlimit;
+                  if (total_lower_limit > limited) {
+                      limited = total_lower_limit;
                   }
-                  if ( uvlimit < qvel ) {
-                      limited = uvlimit;
+                  if (total_upper_limit < limited) {
+                      limited = total_upper_limit;
                   }
                   if (loop % debug_print_freq == 0 || debug_print_velocity_first ) {
                       std::cerr << ", q(limited) = " << limited << std::endl;
@@ -312,13 +314,11 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
               }else{
                   limited=limited;
               }
-              total_lower_limit = std::max(prev_angle[i] + lvlimit * dt, total_lower_limit);
-              total_upper_limit = std::min(prev_angle[i] + uvlimit * dt, total_upper_limit);
           }
       }
       
       // Servo error limitation between reference joint angles and actual joint angles
-      if (!totalrange_isempty){
+      if (!productrange_isempty){
           double llimit = m_qCurrent.data[i] - m_robot->m_servoErrorLimit[i];
           double ulimit = m_qCurrent.data[i] + m_robot->m_servoErrorLimit[i];
           if (!(llimit < ulimit) || (total_lower_limit > ulimit) || (total_upper_limit < llimit)){//range is empty
@@ -330,28 +330,33 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                                 << "] error limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
                                 << ", qCurrent=" << m_qCurrent.data[i] << " "
                                 << ", Error=" << limited - m_qCurrent.data[i] << " > " << m_robot->m_servoErrorLimit[i] << " (limit)"
-                                << ", servo_state = " <<  ( 1 ? "ON" : "OFF")
-                                << "total range is empty";
+                                << ", servo_state = " <<  ( servo_state[i] ? "ON" : "OFF")
+                                << "product range is empty";
                   }
                   if (total_lower_limit > ulimit) limited = total_lower_limit;
                   if (total_upper_limit < llimit) limited = total_upper_limit;
+                  if (loop % debug_print_freq == 0 || debug_print_error_first ) {
+                      std::cerr << ", q(limited) = " << limited << std::endl;
+                  }
               }
-              totalrange_isempty = true;
+              productrange_isempty = true;
           }else{
-              if ((llimit > limited) || (ulimit < limited)){
+              total_upper_limit = std::min(ulimit, total_upper_limit);
+              total_lower_limit = std::max(llimit, total_lower_limit);
+              if ((total_lower_limit > limited) || (total_upper_limit < limited)){
                   if (loop % debug_print_freq == 0 || debug_print_error_first ) {
                       std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
                                 << "] error limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
                                 << ", qCurrent=" << m_qCurrent.data[i] << " "
                                 << ", Error=" << limited - m_qCurrent.data[i] << " > " << m_robot->m_servoErrorLimit[i] << " (limit)"
-                                << ", servo_state = " <<  ( 1 ? "ON" : "OFF");
+                                << ", servo_state = " <<  ( servo_state[i] ? "ON" : "OFF");
                   }
                   // fix joint angle
-                  if ( llimit > limited ) {
-                      limited = llimit;
+                  if (total_lower_limit > limited) {
+                      limited = total_lower_limit;
                   }
-                  if ( ulimit < limited ) {
-                      limited = ulimit;
+                  if (total_upper_limit < limited) {
+                      limited = total_upper_limit;
                   }
                   if (loop % debug_print_freq == 0 || debug_print_error_first ) {
                       std::cerr << ", q(limited) = " << limited << std::endl;
@@ -361,13 +366,11 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
               }else{
                   limited = limited;
               }
-              total_upper_limit = std::min(ulimit, total_upper_limit);
-              total_lower_limit = std::max(llimit, total_lower_limit);
           }
       }
       
       // Position limitation for reference joint angles
-      if (!totalrange_isempty){
+      if (!productrange_isempty){
           double llimit = m_robot->joint(i)->llimit;
           double ulimit = m_robot->joint(i)->ulimit;
           if (joint_limit_tables.find(m_robot->joint(i)->name) != joint_limit_tables.end()) {
@@ -387,14 +390,19 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                                 << ", ulimit =" << ulimit
                                 << ", servo_state = " <<  ( servo_state[i] ? "ON" : "OFF")
                                 << ", prev_angle = " << prev_angle[i]
-                                << "total range is empty";
+                                << "product range is empty";
                   }
                   if (total_lower_limit > ulimit) limited = total_lower_limit;
                   if (total_upper_limit < llimit) limited = total_upper_limit;
+                  if (loop % debug_print_freq == 0 || debug_print_position_first ) {
+                      std::cerr << ", q(limited) = " << limited << std::endl;
+                  }
               }
-              totalrange_isempty = true;
+              productrange_isempty = true;
           }else{
-              if ((llimit > limited) || (ulimit < limited)){
+              total_upper_limit = std::min(ulimit, total_upper_limit);
+              total_lower_limit = std::max(llimit, total_lower_limit);
+              if ((total_lower_limit > limited) || (total_upper_limit < limited)){
                   if (loop % debug_print_freq == 0 || debug_print_position_first) {
                       std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
                                 << "] position limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
@@ -404,11 +412,11 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                                 << ", prev_angle = " << prev_angle[i];
                   }
                   // fix joint angle
-                  if ( llimit > limited ) {
-                      limited = llimit;
+                  if ( total_lower_limit > limited ) {
+                      limited = total_lower_limit;
                   }
-                  if ( ulimit < limited ) {
-                      limited = ulimit;
+                  if ( total_upper_limit < limited ) {
+                      limited = total_upper_limit;
                   }
                   if (loop % debug_print_freq == 0 || debug_print_position_first ) {
                       std::cerr << ", q(limited) = " << limited << std::endl;
@@ -418,8 +426,6 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
               }else{
                   limited = limited;
               }
-              total_upper_limit = std::min(ulimit, total_upper_limit);
-              total_lower_limit = std::max(llimit, total_lower_limit);
           }
       }
 
