@@ -115,6 +115,7 @@ class ThermoEstimator
   OpenHRP::TimedLongSeqSeq m_servoStateIn;
 
   TimedDoubleSeq m_tempOut;
+  TimedDoubleSeq m_surfacetempOut;
   OpenHRP::TimedLongSeqSeq m_servoStateOut;
 
   // DataInPort declaration
@@ -129,6 +130,7 @@ class ThermoEstimator
   // DataOutPort declaration
   // <rtc-template block="outport_declare">
   OutPort<TimedDoubleSeq> m_tempOutOut;
+  OutPort<TimedDoubleSeq> m_surfacetempOutOut;
   OutPort<OpenHRP::TimedLongSeqSeq> m_servoStateOutOut;
   
   // </rtc-template>
@@ -159,6 +161,7 @@ class ThermoEstimator
   double m_ambientTemp; // Ta
   std::vector<MotorHeatParam> m_motorHeatParams;
   hrp::dvector m_error2tau;
+  bool care_surface;
   void estimateJointTorqueFromJointError(hrp::dvector &error, hrp::dvector &tau);
   void calculateJointTemperature(double tau, MotorHeatParam& param);
   bool isDebug(int cycle = 200);

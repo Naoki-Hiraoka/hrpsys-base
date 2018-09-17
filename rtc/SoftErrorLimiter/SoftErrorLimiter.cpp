@@ -56,6 +56,7 @@ SoftErrorLimiter::SoftErrorLimiter(RTC::Manager* manager)
     m_qRefIn("qRef", m_qRef),
     m_qCurrentIn("qCurrent", m_qCurrent),
     m_tauIn("tauIn",m_tau),
+    m_tauMaxIn("tauMaxIn",m_tauMax),
     m_servoStateIn("servoStateIn", m_servoState),
     m_qOut("q", m_qRef),
     m_servoStateOut("servoStateOut", m_servoState),
@@ -92,6 +93,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   addInPort("qRef", m_qRefIn);
   addInPort("qCurrent", m_qCurrentIn);
   addInPort("tauIn", m_tauIn);
+  addInPort("tauMaxIn", m_tauMaxIn);
   addInPort("servoState", m_servoStateIn);
   
   // Set OutPort buffer
@@ -287,6 +289,9 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
   if (m_tauIn.isNew()) {
     m_tauIn.read();
   }
+  if (m_tauMaxIn.isNew()) {
+    m_tauMaxIn.read();
+  }
   if (m_servoStateIn.isNew()) {
     m_servoStateIn.read();
   }
@@ -400,8 +405,8 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                   // if (loop % 200 == 0 || debug_print_velocity_first ) {
                   //     std::cerr << "[el]joint"<< i <<" gain "<< gain << std::endl;
                   // }
-                  if (gain != 0){
-                      double maxtorque = 20;
+                  if (gain != 0 && m_tau.data.length() == m_tauMax.data.length()){
+                      double maxtorque = m_tauMax.data[i];
                       limit = std::min(limit, maxtorque / gain);
                       llimit = std::max(llimit, m_qCurrent.data[i] - maxtorque / gain);
                       ulimit = std::min(ulimit, m_qCurrent.data[i] + maxtorque / gain);
@@ -435,7 +440,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                           std::cerr << "[" << m_profile.instance_name<< "] [" << m_qRef.tm
                                     << "] error limit over " << m_robot->joint(i)->name << "(" << i << "), qRef=" << limited
                                     << ", qCurrent=" << m_qCurrent.data[i] << " "
-                                    << ", Error=" << limited - m_qCurrent.data[i] << " > " << m_robot->m_servoErrorLimit[i] << " (limit)";
+                                    << ", Error=" << limited - m_qCurrent.data[i] << " > " << limit << " (limit)";
                       }
                       // fix joint angle
                       if (total_lower_limit > limited) {

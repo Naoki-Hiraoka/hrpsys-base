@@ -23,6 +23,13 @@ class MotorHeatParam
   double currentCoeffs; // Re*K^2/C
   double thermoCoeffs; // 1/RC
 
+  double surface_temperature;
+  //double currentCoeffs //Re*K^2
+  double R1; //thermal resistance between Core and Surface
+  double R2; //thermal resistance between Surface ans Air
+  double core_C;
+  double surface_C;
+  
   MotorHeatParam(){
     defaultParams();
   }

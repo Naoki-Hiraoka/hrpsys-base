@@ -41,6 +41,7 @@ ThermoLimiter::ThermoLimiter(RTC::Manager* manager)
   : RTC::DataFlowComponentBase(manager),
     // <rtc-template block="initializer">
     m_tempInIn("tempIn", m_tempIn),
+    m_surfacetempInIn("surfacetempIn", m_surfacetempIn),
     m_tauMaxOutOut("tauMax", m_tauMaxOut),
     m_beepCommandOutOut("beepCommand", m_beepCommandOut),
     m_ThermoLimiterServicePort("ThermoLimiterService"),
@@ -66,6 +67,7 @@ RTC::ReturnCode_t ThermoLimiter::onInitialize()
   // <rtc-template block="registration">
   // Set InPort buffers
   addInPort("tempIn", m_tempInIn);
+  addInPort("surfacetempIn", m_surfacetempInIn);
 
   // Set OutPort buffer
   addOutPort("tauMax", m_tauMaxOutOut);
@@ -131,7 +133,19 @@ RTC::ReturnCode_t ThermoLimiter::onInitialize()
   // set limit of motor heat parameters
   coil::vstring motorHeatParamsFromConf = coil::split(prop["motor_heat_params"], ",");
   m_motorHeatParams.resize(m_robot->numJoints());
-  if (motorHeatParamsFromConf.size() != 2 * m_robot->numJoints()) {
+  if (motorHeatParamsFromConf.size() == 5 * m_robot->numJoints()) {
+      for (unsigned int i = 0; i < m_robot->numJoints(); i++) {
+          m_motorHeatParams[i].temperature = ambientTemp;
+          m_motorHeatParams[i].surface_temperature = ambientTemp;
+          coil::stringTo(m_motorHeatParams[i].currentCoeffs, motorHeatParamsFromConf[5 * i].c_str());
+          coil::stringTo(m_motorHeatParams[i].R1, motorHeatParamsFromConf[5 * i + 1].c_str());
+          coil::stringTo(m_motorHeatParams[i].R2, motorHeatParamsFromConf[5 * i + 2].c_str());
+          coil::stringTo(m_motorHeatParams[i].core_C, motorHeatParamsFromConf[5 * i + 3].c_str());
+          coil::stringTo(m_motorHeatParams[i].surface_C, motorHeatParamsFromConf[5 * i + 4].c_str());
+      }
+      this->care_surface = true;
+      }
+  else if (motorHeatParamsFromConf.size() != 2 * m_robot->numJoints()) {
     std::cerr << "[" << m_profile.instance_name << "] [WARN]: size of motor_heat_param is " << motorHeatParamsFromConf.size() << ", not equal to 2 * " << m_robot->numJoints() << std::endl;
     for (unsigned int i = 0; i < m_robot->numJoints(); i++) {
       m_motorHeatParams[i].defaultParams();
@@ -225,13 +239,16 @@ RTC::ReturnCode_t ThermoLimiter::onExecute(RTC::UniqueId ec_id)
   tauMax.resize(m_robot->numJoints());
 
   double thermoLimitRatio = 0.0;
-  std::string thermoLimitPrefix = "ThermoLimit";
+  std::string thermoLimitPrefix = std::string("[")+(char*)(m_profile.instance_name)+"]";
   
   // update port
   if (m_tempInIn.isNew()) {
     m_tempInIn.read();
   }
-
+  if (m_surfacetempInIn.isNew()) {
+    m_surfacetempInIn.read();
+  }
+  
   Guard guard(m_mutex);
   if (isDebug()) {
     std::cerr << "temperature: ";
@@ -315,7 +332,7 @@ RTC::ReturnCode_t ThermoLimiter::onRateChanged(RTC::UniqueId ec_id)
 void ThermoLimiter::calcMaxTorqueFromTemperature(hrp::dvector &tauMax)
 {
   unsigned int numJoints = m_robot->numJoints();
-  double temp, tempLimit;
+  double temp, tempLimit, surfacetemp;
   hrp::dvector squareTauMax(numJoints);
   
   if (m_tempIn.data.length() ==  m_robot->numJoints()) {
@@ -324,10 +341,21 @@ void ThermoLimiter::calcMaxTorqueFromTemperature(hrp::dvector &tauMax)
       temp = m_tempIn.data[i];
       tempLimit = m_motorTemperatureLimit[i];
 
+      if (!this->care_surface) {
       // limit temperature
       double term = 120;
       squareTauMax[i] = (((tempLimit - temp) / term) + m_motorHeatParams[i].thermoCoeffs * (temp - m_motorHeatParams[i].temperature)) / m_motorHeatParams[i].currentCoeffs;
-
+      } else {
+          if (m_surfacetempIn.data.length() != m_robot->numJoints() || temp < tempLimit) {
+              squareTauMax[i] = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2); // default torque limit from model
+          } else {
+              //Qin = Qmid
+              double term = 0.9;
+              surfacetemp = m_surfacetempIn.data[i];
+              squareTauMax[i] = term * (temp - surfacetemp) / m_motorHeatParams[i].R1 / m_motorHeatParams[i].currentCoeffs;
+          }
+      }
+      
       // determine tauMax
       if (squareTauMax[i] < 0) {
           if (isDebug()) {
