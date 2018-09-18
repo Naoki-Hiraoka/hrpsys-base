@@ -402,14 +402,14 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                   prev_angle.size() == m_tau.data.length() &&
                   prev_angle[i] != m_qCurrent.data[i]){
                   double gain = fabs(m_filters[i].executeFilter(fabs(m_tau.data[i] / (prev_angle[i] - m_qCurrent.data[i]))));
-                  // if (loop % 200 == 0 || debug_print_velocity_first ) {
-                  //     std::cerr << "[el]joint"<< i <<" gain "<< gain << std::endl;
-                  // }
                   if (gain != 0 && m_tau.data.length() == m_tauMax.data.length()){
                       double maxtorque = m_tauMax.data[i];
                       limit = std::min(limit, maxtorque / gain);
                       llimit = std::max(llimit, m_qCurrent.data[i] - maxtorque / gain);
                       ulimit = std::min(ulimit, m_qCurrent.data[i] + maxtorque / gain);
+                      if (loop % 200 == 0) {
+                          std::cerr << "[el]joint"<< i <<" gain "<< gain <<" maxtorque "<<maxtorque<< std::endl;
+                      }
                   }
               }
 
