@@ -343,22 +343,21 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
       
           // Servo error limitation between reference joint angles and actual joint angles
           if (!productrange_isempty){
-              double limit = m_robot->m_servoErrorLimit[i];
-              double llimit = m_qCurrent.data[i] - m_robot->m_servoErrorLimit[i];
-              double ulimit = m_qCurrent.data[i] + m_robot->m_servoErrorLimit[i];
+              double limit = std::abs(m_robot->m_servoErrorLimit[i]);
 
               if (m_pgain.data.length() == m_qCurrent.data.length() && m_pgain.data.length() == hardware_pgains.size()){
                   double gain = m_pgain.data[i] * hardware_pgains[i];
-                  if (gain != 0 && m_pgain.data.length() == m_tauMax.data.length()){
-                      double maxtorque = m_tauMax.data[i];
-                      limit = std::min(limit, maxtorque / gain);
-                      llimit = std::max(llimit, m_qCurrent.data[i] - maxtorque / gain);
-                      ulimit = std::min(ulimit, m_qCurrent.data[i] + maxtorque / gain);
-                      if (loop % 200 == 0) {
-                          std::cerr << "[el]joint"<< i <<" gain "<< gain <<" maxtorque "<<maxtorque<< std::endl;
+                  if (gain != 0.0){
+                      limit = std::min(limit, std::abs(m_robot->m_tauLimit[i] / gain));
+
+                      if (m_pgain.data.length() == m_tauMax.data.length()){
+                          limit = std::min(limit, std::abs(m_tauMax.data[i] / gain));
                       }
                   }
               }
+
+              double llimit = m_qCurrent.data[i] - limit;
+              double ulimit = m_qCurrent.data[i] + limit;
 
               if (!(llimit <= ulimit) || (total_lower_limit > ulimit) || (total_upper_limit < llimit)){//range is empty
                   if (!(llimit <= ulimit)){

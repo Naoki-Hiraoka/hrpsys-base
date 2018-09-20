@@ -15,3 +15,8 @@ void SoftErrorLimiterService_impl::setServoErrorLimit(const char *jname, double 
     m_robot->setServoErrorLimit(jname, limit);
 }
 
+void SoftErrorLimiterService_impl::settauLimit(const char *jname, double limit)
+{
+    m_robot->settauLimit(jname, limit);
+}
+
