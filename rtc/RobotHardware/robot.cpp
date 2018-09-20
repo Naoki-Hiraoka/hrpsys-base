@@ -46,12 +46,16 @@ bool robot::init()
     old_dgain.resize(numJoints());
     default_pgain.resize(numJoints());
     default_dgain.resize(numJoints());
+    current_pgain.resize(numJoints());
+    current_dgain.resize(numJoints());
     tqpgain.resize(numJoints());
     tqdgain.resize(numJoints());
     old_tqpgain.resize(numJoints());
     old_tqdgain.resize(numJoints());
     default_tqpgain.resize(numJoints());
     default_tqdgain.resize(numJoints());
+    current_tqpgain.resize(numJoints());
+    current_tqdgain.resize(numJoints());
     for (unsigned int i=0; i<numJoints(); i++){
         pgain[i] = dgain[i] = 0.0;
         old_pgain[i] = old_dgain[i] = 0.0;
@@ -332,10 +336,10 @@ void robot::gain_control(int i)
     double new_pgain=0,new_dgain=0,new_tqpgain=0,new_tqdgain=0;
     if (gain_counter[i] < GAIN_COUNT){
         gain_counter[i]++;
-        new_pgain = (pgain[i]-old_pgain[i])*gain_counter[i]/GAIN_COUNT + old_pgain[i];
-        new_dgain = (dgain[i]-old_dgain[i])*gain_counter[i]/GAIN_COUNT + old_dgain[i];
-        new_tqpgain = (tqpgain[i]-old_tqpgain[i])*gain_counter[i]/GAIN_COUNT + old_tqpgain[i];
-        new_tqdgain = (tqdgain[i]-old_tqdgain[i])*gain_counter[i]/GAIN_COUNT + old_tqdgain[i];
+        current_pgain[i] = new_pgain = (pgain[i]-old_pgain[i])*gain_counter[i]/GAIN_COUNT + old_pgain[i];
+        current_dgain[i] = new_dgain = (dgain[i]-old_dgain[i])*gain_counter[i]/GAIN_COUNT + old_dgain[i];
+        current_tqpgain[i] = new_tqpgain = (tqpgain[i]-old_tqpgain[i])*gain_counter[i]/GAIN_COUNT + old_tqpgain[i];
+        current_tqdgain[i] = new_tqdgain = (tqdgain[i]-old_tqdgain[i])*gain_counter[i]/GAIN_COUNT + old_tqdgain[i];
         write_pgain(i, new_pgain);
         write_dgain(i, new_dgain);
 #if defined(ROBOT_IOB_VERSION) && ROBOT_IOB_VERSION >= 4
@@ -512,6 +516,20 @@ void robot::readJointVelocities(double *o_velocities)
     read_actual_velocities(o_velocities);
 }
 
+void robot::readJointPgains(double *o_pgains)
+{
+    for (unsigned int i=0; i<numJoints();i++){
+        o_pgains[i]=current_pgain[i];
+    }
+}
+
+void robot::readJointDgains(double *o_dgains)
+{
+    for (unsigned int i=0; i<numJoints();i++){
+        o_dgains[i]=current_dgain[i];
+    }
+}
+
 int robot::readJointTorques(double *o_torques)
 {
     return read_actual_torques(o_torques);
@@ -520,6 +538,20 @@ int robot::readJointTorques(double *o_torques)
 int robot::readJointCommandTorques(double *o_torques)
 {
     return read_command_torques(o_torques);
+}
+
+void robot::readJointTqPgains(double *o_tqpgains)
+{
+    for (unsigned int i=0; i<numJoints();i++){
+        o_tqpgains[i]=current_tqpgain[i];
+    }
+}
+
+void robot::readJointTqDgains(double *o_tqdgains)
+{
+    for (unsigned int i=0; i<numJoints();i++){
+        o_tqdgains[i]=current_tqdgain[i];
+    }
 }
 
 void robot::readGyroSensor(unsigned int i_rank, double *o_rates)

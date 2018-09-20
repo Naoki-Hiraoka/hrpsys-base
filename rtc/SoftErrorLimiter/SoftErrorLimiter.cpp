@@ -55,7 +55,7 @@ SoftErrorLimiter::SoftErrorLimiter(RTC::Manager* manager)
     // <rtc-template block="initializer">
     m_qRefIn("qRef", m_qRef),
     m_qCurrentIn("qCurrent", m_qCurrent),
-    m_tauIn("tauIn",m_tau),
+    m_pgainIn("pgainIn",m_pgain),
     m_tauMaxIn("tauMaxIn",m_tauMax),
     m_servoStateIn("servoStateIn", m_servoState),
     m_qOut("q", m_qRef),
@@ -92,7 +92,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   // Set InPort buffers
   addInPort("qRef", m_qRefIn);
   addInPort("qCurrent", m_qCurrentIn);
-  addInPort("tauIn", m_tauIn);
+  addInPort("pgainIn", m_pgainIn);
   addInPort("tauMaxIn", m_tauMaxIn);
   addInPort("servoState", m_servoStateIn);
   
@@ -157,73 +157,22 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   // load joint limit table
   hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], std::string(m_profile.instance_name));
 
-  // make gain filter
-  // filter_dim, fb_coeffs[0], ..., fb_coeffs[filter_dim], ff_coeffs[0], ..., ff_coeffs[filter_dim]
-  // ex. sampling = 200[hz] cutoff = 1[hz]
-  //  gain_filter_params: 2, 1.0, 1.97778648, -0.97803051, 6.10061788e-05, 1.22012358e-04, 6.10061788e-05
-  coil::vstring torque_filter_params = coil::split(prop["gain_filter_params"], ","); // filter values
-  int filter_dim = 0;
-  std::vector<double> fb_coeffs, ff_coeffs;
-  bool use_default_flag = false;
-  // check size of toruqe_filter_params
-  if ( torque_filter_params.size() > 0 ) {
-      coil::stringTo(filter_dim, torque_filter_params[0].c_str());
+  // load hardware pgain table
+  hardware_pgains.resize(m_robot->numJoints());
+  coil::vstring hardware_pgains_params = coil::split(prop["hardware_pgains"], ",");
+  if (hardware_pgains_params.size() != m_robot->numJoints()){
       if (m_debugLevel > 0) {
-          std::cerr << "[" <<  m_profile.instance_name << "]" << "filter dim: " << filter_dim << std::endl;
-          std::cerr << "[" <<  m_profile.instance_name << "]" << "gain filter param size: " << torque_filter_params.size() << std::endl;
+          std::cerr<< "[" <<  m_profile.instance_name << "]" << "Size of hardware_pgains_params is not correct. Use default values (= 0.0)." << std::endl;
       }
-  } else {
-      use_default_flag = true;
-      if (m_debugLevel > 0) {
-          std::cerr<< "[" <<  m_profile.instance_name << "]" << "There is no gain_filter_params. Use default values." << std::endl;
+      for (int i=0; i<hardware_pgains.size();i++){
+          hardware_pgains[i]=1.0;
       }
-  }
-  if (!use_default_flag && ((filter_dim + 1) * 2 + 1 != (int)torque_filter_params.size()) ) {
-      if (m_debugLevel > 0) {
-          std::cerr<< "[" <<  m_profile.instance_name << "]" << "Size of gain_filter_params is not correct. Use default values." << std::endl;
-      }
-      use_default_flag = true;
-  }
-  // define parameters
-  if (use_default_flag) {
-      // ex) 2dim butterworth filter sampling = 200[hz] cutoff = 5[hz]
-      // octave$ [a, b] = butter(2, 5/200)
-      // fb_coeffs[0] = 1.00000; <- b0
-      // fb_coeffs[1] = 1.88903; <- -b1
-      // fb_coeffs[2] = -0.89487; <- -b2
-      // ff_coeffs[0] = 0.0014603; <- a0
-      // ff_coeffs[1] = 0.0029206; <- a1
-      // ff_coeffs[2] = 0.0014603; <- a2
-      filter_dim = 2;
-      fb_coeffs.resize(filter_dim+1);
-      fb_coeffs[0] = 1.00000;
-      fb_coeffs[1] = 1.88903;
-      fb_coeffs[2] =-0.89487;
-      ff_coeffs.resize(filter_dim+1);
-      ff_coeffs[0] = 0.0014603;
-      ff_coeffs[1] = 0.0029206;
-      ff_coeffs[2] = 0.0014603;
-  } else {
-      fb_coeffs.resize(filter_dim + 1);
-      ff_coeffs.resize(filter_dim + 1);
-      for (int i = 0; i < filter_dim + 1; i++) {
-          coil::stringTo(fb_coeffs[i], torque_filter_params[i + 1].c_str());
-          coil::stringTo(ff_coeffs[i], torque_filter_params[i + (filter_dim + 2)].c_str());
+  }else{
+      for (int i=0;i<hardware_pgains.size();i++){
+          coil::stringTo(hardware_pgains[i], hardware_pgains_params[i].c_str());
       }
   }
-
-  //if (m_debugLevel > 0) {
-    for (int i = 0; i < filter_dim + 1; i++) {
-        std::cerr << "[" <<  m_profile.instance_name << "]" << "fb[" << i << "]: " << fb_coeffs[i] << std::endl;
-        std::cerr << "[" <<  m_profile.instance_name << "]" << "ff[" << i << "]: " << ff_coeffs[i] << std::endl;
-    }
-    //}
-
-  // make filter instance
-  for(unsigned int i = 0; i < m_robot->numJoints(); i++){
-      m_filters.push_back(IIRFilter(filter_dim, fb_coeffs, ff_coeffs, std::string(m_profile.instance_name)));
-  }
-
+  
   return RTC::RTC_OK;
 }
 
@@ -286,8 +235,8 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
   if (m_qCurrentIn.isNew()) {
     m_qCurrentIn.read();
   }
-  if (m_tauIn.isNew()) {
-    m_tauIn.read();
+  if (m_pgainIn.isNew()) {
+    m_pgainIn.read();
   }
   if (m_tauMaxIn.isNew()) {
     m_tauMaxIn.read();
@@ -398,11 +347,9 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
               double llimit = m_qCurrent.data[i] - m_robot->m_servoErrorLimit[i];
               double ulimit = m_qCurrent.data[i] + m_robot->m_servoErrorLimit[i];
 
-              if (prev_angle.size() == m_qCurrent.data.length() &&
-                  prev_angle.size() == m_tau.data.length() &&
-                  prev_angle[i] != m_qCurrent.data[i]){
-                  double gain = fabs(m_filters[i].executeFilter(fabs(m_tau.data[i] / (prev_angle[i] - m_qCurrent.data[i]))));
-                  if (gain != 0 && m_tau.data.length() == m_tauMax.data.length()){
+              if (m_pgain.data.length() == m_qCurrent.data.length() && m_pgain.data.length() == hardware_pgains.size()){
+                  double gain = m_pgain.data[i] * hardware_pgains[i];
+                  if (gain != 0 && m_pgain.data.length() == m_tauMax.data.length()){
                       double maxtorque = m_tauMax.data[i];
                       limit = std::min(limit, maxtorque / gain);
                       llimit = std::max(llimit, m_qCurrent.data[i] - maxtorque / gain);

@@ -232,6 +232,30 @@ public:
        \param o_torques array of all pd controller torques
        \param TRUE if read successfully, FALSE otherwise
      */
+    void readJointPgains(double *o_pgains);
+
+    /**
+       \brief read array of current pgains of joint servo
+       \param o_pgains array of current pgains of joint servo
+    */
+    void readJointDgains(double *o_dgains);
+
+    /**
+       \brief read array of current dgains of joint servo
+       \param o_dgains array of current dgains of joint servo
+    */
+    void readJointTqPgains(double *o_tqpgains);
+
+    /**
+       \brief read array of current torque pgains of joint servo
+       \param o_tqpgains array of current torque pgains of joint servo
+    */
+    void readJointTqDgains(double *o_tqdgains);
+
+    /**
+       \brief read array of current torque dgains of joint servo
+       \param o_tqdgains array of current torque dgains of joint servo
+    */
     int readPDControllerTorques(double *o_torques);
 
     /**
@@ -387,10 +411,10 @@ private:
     std::vector< boost::array<double,3> > att_sum;
     std::vector< boost::array<double,6> > force_sum;
 
-    std::vector<double> pgain, old_pgain, default_pgain;
-    std::vector<double> dgain, old_dgain, default_dgain;
-    std::vector<double> tqpgain, old_tqpgain, default_tqpgain;
-    std::vector<double> tqdgain, old_tqdgain, default_tqdgain;
+    std::vector<double> pgain, old_pgain, default_pgain, current_pgain;
+    std::vector<double> dgain, old_dgain, default_dgain, current_dgain;
+    std::vector<double> tqpgain, old_tqpgain, default_tqpgain, current_tqpgain;
+    std::vector<double> tqdgain, old_tqdgain, default_tqdgain, current_tqdgain;
 
     int m_lLegForceSensorId, m_rLegForceSensorId;
     std::map<std::string, std::vector<int> > m_jointGroups;
