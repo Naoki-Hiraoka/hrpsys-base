@@ -48,7 +48,8 @@ ThermoEstimator::ThermoEstimator(RTC::Manager* manager)
     m_servoStateInIn("servoStateIn", m_servoStateIn),
     m_tempOutOut("tempOut", m_tempOut),
     m_surfacetempOutOut("surfacetempOut", m_surfacetempOut),
-    m_servoStateOutOut("servoStateOut", m_servoStateOut),    
+    m_servoStateOutOut("servoStateOut", m_servoStateOut),
+    m_ThermoEstimatorServicePort("ThermoEstimatorService"),
     // </rtc-template>
     m_debugLevel(0),
     care_surface(false)
@@ -82,10 +83,12 @@ RTC::ReturnCode_t ThermoEstimator::onInitialize()
   addOutPort("servoStateOut", m_servoStateOutOut);
   
   // Set service provider to Ports
+  m_ThermoEstimatorServicePort.registerProvider("service0", "ThermoEstimatorService", m_service0);
   
   // Set service consumers to Ports
   
   // Set CORBA Service Ports
+  addPort(m_ThermoEstimatorServicePort);
   
   // </rtc-template>
 
@@ -109,6 +112,8 @@ RTC::ReturnCode_t ThermoEstimator::onInitialize()
     std::cerr << "[" << m_profile.instance_name << "] failed to load model[" << prop["model"] << "]"
               << std::endl;
   }
+
+  m_service0.Estimator(this);
 
   // init outport
   m_tempOut.data.length(m_robot->numJoints());
@@ -364,6 +369,18 @@ RTC::ReturnCode_t ThermoEstimator::onExecute(RTC::UniqueId ec_id)
   return RTC::RTC_OK;
   }
 */
+
+bool ThermoEstimator::setSurfaceTemperature(const char *jname, double temperature)
+{
+    hrp::Link *l = NULL;
+    if ((l = m_robot->link(jname))){
+        m_motorHeatParams[l->jointId].surface_temperature = temperature;
+    }else{
+        std::cerr << "[" << m_profile.instance_name << "] Invalid joint name of setSurfaceTemperature " << jname << "!" << std::endl;
+        return false;
+    }
+    return true;
+}
 
 void ThermoEstimator::estimateJointTorqueFromJointError(hrp::dvector &error, hrp::dvector &tau)
 {

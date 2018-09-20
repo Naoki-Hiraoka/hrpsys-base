@@ -27,7 +27,7 @@
 
 // Service implementation headers
 // <rtc-template block="service_impl_h">
-// #include "ThermoEstimator_impl.h"
+#include "ThermoEstimatorService_impl.h"
 
 // </rtc-template>
 
@@ -103,7 +103,8 @@ class ThermoEstimator
   // no corresponding operation exists in OpenRTm-aist-0.2.0
   // virtual RTC::ReturnCode_t onRateChanged(RTC::UniqueId ec_id);
 
-
+  bool setSurfaceTemperature(const char *jname, double temperature);
+    
  protected:
   // Configuration variable declaration
   // <rtc-template block="config_declare">
@@ -137,18 +138,18 @@ class ThermoEstimator
 
   // CORBA Port declaration
   // <rtc-template block="corbaport_declare">
-  
+  RTC::CorbaPort m_ThermoEstimatorServicePort;
+
   // </rtc-template>
 
   // Service declaration
   // <rtc-template block="service_declare">
-  //RTC::CorbaPort m_ThermoEstimatorServicePort;
+  ThermoEstimatorService_impl m_service0;
   
   // </rtc-template>
 
   // Consumer declaration
   // <rtc-template block="consumer_declare">
-  //ThermoEstimatorService_impl m_ThermoEstimatorService;
   
   // </rtc-template>
 

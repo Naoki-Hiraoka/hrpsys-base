@@ -25,6 +25,7 @@ set(idl_files
   RemoveForceSensorLinkOffsetService.idl
   ServoControllerService.idl
   TorqueControllerService.idl
+  ThermoEstimatorService.idl
   ThermoLimiterService.idl
   ReferenceForceUpdaterService.idl
   AccelerationFilterService.idl

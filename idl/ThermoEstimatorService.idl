@@ -1,0 +1,17 @@
+/**
+ * @file ThermoEstimatorService.idl
+ * @brief Services for the thermoEstimator interface
+ */
+module OpenHRP
+{
+  interface ThermoEstimatorService
+  {
+    /**
+     * @brief set actual surface temperature
+     * @param name joint name
+     * @param temperature actual surface temperature[degree]
+     */
+    void setSurfaceTemperature(in string name, in double temperature);
+  };
+};
+

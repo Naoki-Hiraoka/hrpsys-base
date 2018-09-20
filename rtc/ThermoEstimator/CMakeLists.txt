@@ -1,4 +1,4 @@
-set(comp_sources ThermoEstimator.cpp)
+set(comp_sources ThermoEstimator.cpp ThermoEstimatorService_impl.cpp)
 set(libs hrpModel-3.1 hrpUtil-3.1 hrpsysBaseStub)
 add_library(ThermoEstimator SHARED ${comp_sources})
 target_link_libraries(ThermoEstimator ${libs})
