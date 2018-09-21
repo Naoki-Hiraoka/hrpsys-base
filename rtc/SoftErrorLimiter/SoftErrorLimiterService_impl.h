@@ -24,6 +24,8 @@ public:
 
 	void settauLimit(const char *jname, double limit);
 
+	void setVelocityLimit(const char *jname, double limit);
+
     //
     void setRobot(boost::shared_ptr<robot>& i_robot) { m_robot = i_robot; }
 

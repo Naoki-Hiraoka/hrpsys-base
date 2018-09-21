@@ -19,5 +19,12 @@ module OpenHRP
      * @param limit the maximum joint torque[Nm]
      */
     void settauLimit(in string name, in double limit);
+
+      /**
+     * @brief set the maximum joint servo velocity
+     * @param name joint name, part name or "all"
+     * @param limit the maximum joint servo velocity[rad/s]
+     */
+    void setVelocityLimit(in string name, in double limit);
   };
 };

@@ -307,8 +307,8 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
       if (servo_state[i]==1){
           // Velocity limitation for previous output joint angles
           if (!productrange_isempty){
-              double lvlimit = m_robot->joint(i)->lvlimit + 0.000175; // 0.01 deg / sec
-              double uvlimit = m_robot->joint(i)->uvlimit - 0.000175;
+              double lvlimit = std::max(-m_robot->m_VelocityLimit[i], m_robot->joint(i)->lvlimit + 0.000175); // 0.01 deg / sec
+              double uvlimit = std::min(m_robot->m_VelocityLimit[i], m_robot->joint(i)->uvlimit - 0.000175);
               // fixed joint has ulimit = vlimit
               if(!(lvlimit <= uvlimit)){//range is empty
                   limited = limited;

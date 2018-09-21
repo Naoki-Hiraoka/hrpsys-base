@@ -37,8 +37,17 @@ public:
      */
     bool settauLimit(const char *i_jname, double i_limit);
 
+    /**
+       \brief set servo velocity limit value for specific joint or joint group
+       \param i_jname joint name or joint group name
+       \param i_limit new limit value[rad/s]
+       \return true if set successfully, false otherwise 
+     */
+    bool setVelocityLimit(const char *i_jname, double i_limit);
+
     //boost::interprocess::interprocess_semaphore wait_sem;
 
     std::vector<double> m_servoErrorLimit;
     std::vector<double> m_tauLimit;
+    std::vector<double> m_VelocityLimit;
 };

@@ -20,3 +20,8 @@ void SoftErrorLimiterService_impl::settauLimit(const char *jname, double limit)
     m_robot->settauLimit(jname, limit);
 }
 
+void SoftErrorLimiterService_impl::setVelocityLimit(const char *jname, double limit)
+{
+    m_robot->setVelocityLimit(jname, limit);
+}
+
