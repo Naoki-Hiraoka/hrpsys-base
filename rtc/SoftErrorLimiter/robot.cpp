@@ -47,7 +47,7 @@ bool robot::settauLimit(const char *i_jname, double i_limit) {
     std::cerr << "[el] settauLimit " << i_limit << "[Nm] for all joints" << std::endl;
   }else if ((l = this->link(i_jname))){
       m_tauLimit[l->jointId] = std::min(i_limit, this->joint(l->jointId)->climit * this->joint(l->jointId)->gearRatio * this->joint(l->jointId)->torqueConst);
-      std::cerr << "[el] settauLimit " << i_limit << "[Nm] for " << i_jname << " limited= " << m_taulimit[l->jointId] << "[Nm]" << std::endl;
+      std::cerr << "[el] settauLimit " << i_limit << "[Nm] for " << i_jname << " limited= " << m_tauLimit[l->jointId] << "[Nm]" << std::endl;
   }else{
     std::cerr << "[el] Invalid joint name of settauLimit " << i_jname << "!" << std::endl;
     return false;
