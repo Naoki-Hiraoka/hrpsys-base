@@ -19,7 +19,7 @@ bool robot::init() {
   for (unsigned int i=0; i<numJoints(); i++){
     m_tauLimit[i] = this->joint(i)->climit * this->joint(i)->gearRatio * this->joint(i)->torqueConst;
   }
-  m_servoErrorLimit.resize(numJoints());
+  m_VelocityLimit.resize(numJoints());
   for (unsigned int i=0; i<numJoints(); i++){
     m_VelocityLimit[i] = DEFAULT_VELOCITY_LIMIT;
   }
