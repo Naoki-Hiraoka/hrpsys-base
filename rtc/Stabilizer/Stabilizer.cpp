@@ -1060,9 +1060,8 @@ void Stabilizer::getActualParameters ()
             act_force.at(i) = sensor_force;
         }
         //act_total_foot_origin_moment += (target->R * ikp.localCOPPos + target->p).cross(sensor_force) + ee_moment;
-        act_total_foot_origin_moment += (target->R * ikp.localp + target->p - foot_origin_pos).cross(sensor_force) + ee_moment;
+        act_total_foot_origin_moment += (foot_origin_rot.transpose() * (target->R * ikp.localp + target->p - foot_origin_pos)).cross(sensor_force) + ee_moment;
       }
-      act_total_foot_origin_moment = foot_origin_rot.transpose() * act_total_foot_origin_moment;
 
       if (eefm_use_force_difference_control) {
           // fxyz control
