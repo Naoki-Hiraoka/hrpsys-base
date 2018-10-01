@@ -925,7 +925,7 @@ void Stabilizer::getActualParameters ()
           ee_name.push_back(ikp.ee_name);
           limb_gains.push_back(ikp.swing_support_gain);
           tmp_ref_force.push_back(hrp::Vector3(foot_origin_rot * ref_force[i]));
-          tmp_ref_moment.push_back(hrp::Vector3(foot_origin_rot * ref_moment[i]));
+          tmp_ref_moment.push_back(hrp::Vector3(foot_origin_rot * ref_moment[i]  + ((target->R * ikp.localp + target->p) - (target->R * ikp.localCOPPos + target->p)).cross(foot_origin_rot * ref_force[i])));
           rel_ee_pos.push_back(foot_origin_rot.transpose() * (ee_pos.back() - foot_origin_pos));
           rel_ee_rot.push_back(foot_origin_rot.transpose() * ee_rot.back());
           rel_ee_name.push_back(ee_name.back());
