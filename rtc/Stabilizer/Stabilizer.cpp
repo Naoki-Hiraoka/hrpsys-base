@@ -1029,7 +1029,7 @@ void Stabilizer::getActualParameters ()
         }
         // Moment limitation
         hrp::Matrix33 ee_R(target->R * ikp.localR);
-        ikp.ref_moment = ee_R * vlimit((ee_R.transpose() * ikp.ref_moment), ikp.eefm_ee_moment_limit);
+        ikp.ref_moment = foot_origin_rot.transpose() * ee_R * vlimit((ee_R.transpose() * foot_origin_rot * ikp.ref_moment), ikp.eefm_ee_moment_limit);
         // calcDampingControl
         // d_foot_rpy and d_foot_pos is (actual) foot origin coords relative value because these use foot origin coords relative force & moment
         { // Rot
