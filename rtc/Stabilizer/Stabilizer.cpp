@@ -1557,7 +1557,7 @@ void Stabilizer::calcEEForceMomentControl() {
       // Fix for toe joint
       for (size_t i = 0; i < jpe_v.size(); i++) {
           if (is_ik_enable[i]) {
-              if (jpe_v[i]->numJoints() == 7) {
+              if (stikp[i].ee_name.find("leg") != std::string::npos && jpe_v[i]->numJoints() == 7) {
                   int idx = jpe_v[i]->joint(jpe_v[i]->numJoints() -1)->jointId;
                   m_robot->joint(idx)->q = qrefv[idx];
               }
