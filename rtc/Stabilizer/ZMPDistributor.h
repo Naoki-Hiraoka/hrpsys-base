@@ -132,7 +132,7 @@ public:
       hrp::Vector3 tpos;
       tvs.reserve(cs.size()*vs[0].size());
       for (size_t i = 0; i < cs.size(); i++) {
-        if (cs[i]) {
+        if (cs[i] && i < vs.size()) {
           for (size_t j = 0; j < vs[i].size(); j++) {
             tpos = ee_pos[i] + ee_rot[i] * hrp::Vector3(vs[i][j](0), vs[i][j](1), 0.0);
             tvs.push_back(tpos.head(2));
