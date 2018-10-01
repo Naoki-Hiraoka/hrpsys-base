@@ -214,6 +214,8 @@ module OpenHRP
       DblArray2 cp_offset;
       /// contact decision threshold [N]
       double contact_decision_threshold;
+      /// Sequence of all end-effector contact decision threshold [N]
+      sequence<double> eef_contact_decision_threshold;
       /// Foot origin position offset
       sequence< sequence<double, 3> > foot_origin_offset;
       /// Emergency signal checking mode
