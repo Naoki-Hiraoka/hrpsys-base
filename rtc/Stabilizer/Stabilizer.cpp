@@ -767,7 +767,9 @@ void Stabilizer::getCurrentParameters ()
 
 void Stabilizer::calcFootOriginCoords (hrp::Vector3& foot_origin_pos, hrp::Matrix33& foot_origin_rot)
 {
-  rats::coordinates leg_c[2], tmpc;
+  rats::coordinates tmpc;
+  std::vector<rats::coordinates> leg_c;
+  leg_c.resize(stikp.size());
   hrp::Vector3 ez = hrp::Vector3::UnitZ();
   hrp::Vector3 ex = hrp::Vector3::UnitX();
   for (size_t i = 0; i < stikp.size(); i++) {
