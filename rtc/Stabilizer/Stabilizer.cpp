@@ -457,6 +457,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
     prev_ref_contact_states.push_back(true);
     m_actContactStates.data[i] = false;
     act_contact_states.push_back(false);
+    eef_contact_decision_threshold.push_back(25.0);
     toeheel_ratio.push_back(1.0);
   }
   m_COPInfo.data.length(m_contactStates.data.length()*3); // nx, ny, fz for each end-effectors
@@ -2003,6 +2004,10 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
     i_stp.tilt_margin[i] = tilt_margin[i];
   }
   i_stp.contact_decision_threshold = contact_decision_threshold;
+  i_stp.eef_contact_decision_threshold.length(eef_contact_decision_threshold.size());
+  for (size_t i = 0; i < eef_contact_decision_threshold.size(); i++) {
+    i_stp.eef_contact_decision_threshold[i] = eef_contact_decision_threshold[i];
+  }
   i_stp.is_estop_while_walking = is_estop_while_walking;
   switch(control_mode) {
   case MODE_IDLE: i_stp.controller_mode = OpenHRP::StabilizerService::MODE_IDLE; break;
@@ -2192,6 +2197,9 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
     tilt_margin[i] = i_stp.tilt_margin[i];
   }
   contact_decision_threshold = i_stp.contact_decision_threshold;
+  for (size_t i = 0; i < eef_contact_decision_threshold.size(); i++) {
+    eef_contact_decision_threshold[i] = i_stp.eef_contact_decision_threshold[i];
+  }
   is_estop_while_walking = i_stp.is_estop_while_walking;
   use_limb_stretch_avoidance = i_stp.use_limb_stretch_avoidance;
   use_zmp_truncation = i_stp.use_zmp_truncation;
