@@ -396,6 +396,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   eefm_gravitational_acceleration = 9.80665; // [m/s^2]
   cop_check_margin = 20.0*1e-3; // [m]
   cp_check_margin.resize(4, 30*1e-3); // [m]
+  cp_check_armmargin.resize(4, 0*1e-3); // [m]
   cp_offset = hrp::Vector3(0.0, 0.0, 0.0); // [m]
   tilt_margin.resize(2, 30 * M_PI / 180); // [rad]
   contact_decision_threshold = 50; // [N]
@@ -1951,6 +1952,10 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
   i_stp.eefm_leg_outside_margin = szd->get_leg_outside_margin();
   i_stp.eefm_leg_front_margin = szd->get_leg_front_margin();
   i_stp.eefm_leg_rear_margin = szd->get_leg_rear_margin();
+  i_stp.eefm_arm_inside_margin = szd->get_arm_inside_margin();
+  i_stp.eefm_arm_outside_margin = szd->get_arm_outside_margin();
+  i_stp.eefm_arm_front_margin = szd->get_arm_front_margin();
+  i_stp.eefm_arm_rear_margin = szd->get_arm_rear_margin();
 
   std::vector<std::vector<Eigen::Vector2d> > support_polygon_vec;
   szd->get_vertices(support_polygon_vec);
@@ -1999,6 +2004,9 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
   i_stp.cop_check_margin = cop_check_margin;
   for (size_t i = 0; i < cp_check_margin.size(); i++) {
     i_stp.cp_check_margin[i] = cp_check_margin[i];
+  }
+    for (size_t i = 0; i < cp_check_armmargin.size(); i++) {
+    i_stp.cp_check_armmargin[i] = cp_check_armmargin[i];
   }
   for (size_t i = 0; i < tilt_margin.size(); i++) {
     i_stp.tilt_margin[i] = tilt_margin[i];
@@ -2149,6 +2157,10 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
   szd->set_leg_outside_margin(i_stp.eefm_leg_outside_margin);
   szd->set_leg_front_margin(i_stp.eefm_leg_front_margin);
   szd->set_leg_rear_margin(i_stp.eefm_leg_rear_margin);
+  szd->set_arm_inside_margin(i_stp.eefm_arm_inside_margin);
+  szd->set_arm_outside_margin(i_stp.eefm_arm_outside_margin);
+  szd->set_arm_front_margin(i_stp.eefm_arm_front_margin);
+  szd->set_arm_rear_margin(i_stp.eefm_arm_rear_margin);
   szd->set_vertices_from_margin_params();
 
   if (i_stp.eefm_support_polygon_vertices_sequence.length() != stikp.size()) {
@@ -2192,7 +2204,10 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
   for (size_t i = 0; i < cp_check_margin.size(); i++) {
     cp_check_margin[i] = i_stp.cp_check_margin[i];
   }
-  szd->set_vertices_from_margin_params(cp_check_margin);
+  for (size_t i = 0; i < cp_check_armmargin.size(); i++) {
+    cp_check_armmargin[i] = i_stp.cp_check_armmargin[i];
+  }
+  szd->set_vertices_from_margin_params(cp_check_margin,cp_check_armmargin);
   for (size_t i = 0; i < tilt_margin.size(); i++) {
     tilt_margin[i] = i_stp.tilt_margin[i];
   }
@@ -2286,6 +2301,7 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
   std::cerr << "[" << m_profile.instance_name << "]   transition_time = " << transition_time << "[s]" << std::endl;
   std::cerr << "[" << m_profile.instance_name << "]   cop_check_margin = " << cop_check_margin << "[m], "
             << "cp_check_margin = [" << cp_check_margin[0] << ", " << cp_check_margin[1] << ", " << cp_check_margin[2] << ", " << cp_check_margin[3] << "] [m], "
+            << "cp_check_armmargin = [" << cp_check_armmargin[0] << ", " << cp_check_armmargin[1] << ", " << cp_check_armmargin[2] << ", " << cp_check_armmargin[3] << "] [m], "
             << "tilt_margin = [" << tilt_margin[0] << ", " << tilt_margin[1] << "] [rad]" << std::endl;
   std::cerr << "[" << m_profile.instance_name << "]   contact_decision_threshold = " << contact_decision_threshold << "[N], detection_time_to_air = " << detection_count_to_air * dt << "[s]" << std::endl;
   std::cerr << "[" << m_profile.instance_name << "]   root_rot_compensation_limit = [" << root_rot_compensation_limit[0] << " " << root_rot_compensation_limit[1] << "][rad]" << std::endl;

@@ -56,7 +56,7 @@ public:
 class SimpleZMPDistributor
 {
     FootSupportPolygon fs, fs_mgn;
-    double leg_inside_margin, leg_outside_margin, leg_front_margin, leg_rear_margin, wrench_alpha_blending;
+    double leg_inside_margin, leg_outside_margin, leg_front_margin, leg_rear_margin, arm_inside_margin, arm_outside_margin, arm_front_margin, arm_rear_margin, wrench_alpha_blending;
     boost::shared_ptr<FirstOrderLowPassFilter<double> > alpha_filter;
     std::vector<Eigen::Vector2d> convex_hull;
     enum projected_point_region {LEFT, MIDDLE, RIGHT};
@@ -182,6 +182,10 @@ public:
     void set_leg_rear_margin (const double a) { leg_rear_margin = a; };
     void set_leg_inside_margin (const double a) { leg_inside_margin = a; };
     void set_leg_outside_margin (const double a) { leg_outside_margin = a; };
+    void set_arm_front_margin (const double a) { arm_front_margin = a; };
+    void set_arm_rear_margin (const double a) { arm_rear_margin = a; };
+    void set_arm_inside_margin (const double a) { arm_inside_margin = a; };
+    void set_arm_outside_margin (const double a) { arm_outside_margin = a; };
     void set_alpha_cutoff_freq (const double a) { alpha_filter->setCutOffFreq(a); };
     void set_vertices (const std::vector<std::vector<Eigen::Vector2d> >& vs)
     {
@@ -230,27 +234,46 @@ public:
         set_vertices(vec);
     };
     // Set vertices only for cp_check_margin for now
-    void set_vertices_from_margin_params (const std::vector<double>& margin)
+    void set_vertices_from_margin_params (const std::vector<double>& legmargin, const std::vector<double>& armmargin)
     {
       std::vector<std::vector<Eigen::Vector2d> > vec;
       // RLEG
       {
         std::vector<Eigen::Vector2d> tvec;
-        tvec.push_back(Eigen::Vector2d(leg_front_margin - margin[0], leg_inside_margin - margin[2]));
-        tvec.push_back(Eigen::Vector2d(leg_front_margin - margin[0], -1*(leg_outside_margin - margin[3])));
-        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - margin[1]), -1*(leg_outside_margin - margin[3])));
-        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - margin[1]), leg_inside_margin - margin[2]));
+        tvec.push_back(Eigen::Vector2d(leg_front_margin - legmargin[0], leg_inside_margin - legmargin[2]));
+        tvec.push_back(Eigen::Vector2d(leg_front_margin - legmargin[0], -1*(leg_outside_margin - legmargin[3])));
+        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - legmargin[1]), -1*(leg_outside_margin - legmargin[3])));
+        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - legmargin[1]), leg_inside_margin - legmargin[2]));
         vec.push_back(tvec);
       }
       // LLEG
       {
         std::vector<Eigen::Vector2d> tvec;
-        tvec.push_back(Eigen::Vector2d(leg_front_margin - margin[0], leg_inside_margin - margin[3]));
-        tvec.push_back(Eigen::Vector2d(leg_front_margin - margin[0], -1*(leg_outside_margin - margin[2])));
-        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - margin[1]), -1*(leg_outside_margin - margin[2])));
-        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - margin[1]), leg_inside_margin - margin[3]));
+        tvec.push_back(Eigen::Vector2d(leg_front_margin - legmargin[0], leg_inside_margin - legmargin[3]));
+        tvec.push_back(Eigen::Vector2d(leg_front_margin - legmargin[0], -1*(leg_outside_margin - legmargin[2])));
+        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - legmargin[1]), -1*(leg_outside_margin - legmargin[2])));
+        tvec.push_back(Eigen::Vector2d(-1*(leg_rear_margin - legmargin[1]), leg_inside_margin - legmargin[3]));
         vec.push_back(tvec);
       }
+      // RARM
+      {
+        std::vector<Eigen::Vector2d> tvec;
+        tvec.push_back(Eigen::Vector2d(arm_front_margin - armmargin[0], arm_inside_margin - armmargin[2]));
+        tvec.push_back(Eigen::Vector2d(arm_front_margin - armmargin[0], -1*(arm_outside_margin - armmargin[3])));
+        tvec.push_back(Eigen::Vector2d(-1*(arm_rear_margin - armmargin[1]), -1*(arm_outside_margin - armmargin[3])));
+        tvec.push_back(Eigen::Vector2d(-1*(arm_rear_margin - armmargin[1]), arm_inside_margin - armmargin[2]));
+        vec.push_back(tvec);
+      }
+      // LARM
+      {
+        std::vector<Eigen::Vector2d> tvec;
+        tvec.push_back(Eigen::Vector2d(arm_front_margin - armmargin[0], arm_inside_margin - armmargin[3]));
+        tvec.push_back(Eigen::Vector2d(arm_front_margin - armmargin[0], -1*(arm_outside_margin - armmargin[2])));
+        tvec.push_back(Eigen::Vector2d(-1*(arm_rear_margin - armmargin[1]), -1*(arm_outside_margin - armmargin[2])));
+        tvec.push_back(Eigen::Vector2d(-1*(arm_rear_margin - armmargin[1]), arm_inside_margin - armmargin[3]));
+        vec.push_back(tvec);
+      }
+
       fs_mgn.set_vertices(vec);
     };
     // getter
@@ -259,6 +282,10 @@ public:
     double get_leg_rear_margin () { return leg_rear_margin; };
     double get_leg_inside_margin () { return leg_inside_margin; };
     double get_leg_outside_margin () { return leg_outside_margin; };
+    double get_arm_front_margin () { return arm_front_margin; };
+    double get_arm_rear_margin () { return arm_rear_margin; };
+    double get_arm_inside_margin () { return arm_inside_margin; };
+    double get_arm_outside_margin () { return arm_outside_margin; };
     double get_alpha_cutoff_freq () { return alpha_filter->getCutOffFreq(); };
     void get_vertices (std::vector<std::vector<Eigen::Vector2d> >& vs) { fs.get_vertices(vs); };
     void get_margined_vertices (std::vector<std::vector<Eigen::Vector2d> >& vs) { fs_mgn.get_vertices(vs); };

@@ -153,6 +153,14 @@ module OpenHRP
       double eefm_leg_front_margin;
       /// Rear foot margine [m]. Distance between foot end effector position and foot rear edge.
       double eefm_leg_rear_margin;
+      /// Inside hand margine [m]. Distance between foot end effector position and foot inside edge.
+      double eefm_arm_inside_margin;
+      /// Outside hand margine [m]. Distance between foot end effector position and foot outside edge.
+      double eefm_arm_outside_margin;
+      /// Front hand margine [m]. Distance between foot end effector position and foot front edge.
+      double eefm_arm_front_margin;
+      /// Rear hand margine [m]. Distance between foot end effector position and foot rear edge.
+      double eefm_arm_rear_margin;
       /// Body attitude control gain [rad/s] (roll, pitch) for EEFM.
       DblArray2 eefm_body_attitude_control_gain;
       /// Time constant for body attitude control [s] (roll, pitch) for EEFM.
@@ -202,8 +210,10 @@ module OpenHRP
       BoolSequence is_zmp_calc_enable;
       /// COP margin [m] from edges for COP checking
       double cop_check_margin;
-      /// CP margin [m] (front, rear, inside, outside)
+      /// CP leg margin [m] (front, rear, inside, outside)
       DblArray4 cp_check_margin;
+      /// CP arm margin [m] (front, rear, inside, outside)
+      DblArray4 cp_check_armmargin;
       /// tilt margin [rad] (single support phase, double support phase) from reference floor
       DblArray2 tilt_margin;
       /// ref_CP [m] (x,y) (foot_origin relative coordinate)

@@ -333,7 +333,7 @@ class Stabilizer
   hrp::Vector3 eefm_swing_pos_damping_gain, eefm_swing_rot_damping_gain;
   double total_mass, transition_time, cop_check_margin, contact_decision_threshold;
   std::vector<double> eef_contact_decision_threshold;
-  std::vector<double> cp_check_margin, tilt_margin;
+  std::vector<double> cp_check_margin, cp_check_armmargin, tilt_margin;
   OpenHRP::StabilizerService::EmergencyCheckMode emergency_check_mode;
 };
 
