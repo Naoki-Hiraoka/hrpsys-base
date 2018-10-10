@@ -291,6 +291,8 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       ikp.target_ee_diff_r_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())); // [Hz]
       ikp.prev_d_pos_swing = hrp::Vector3::Zero();
       ikp.prev_d_rpy_swing = hrp::Vector3::Zero();
+      ikp.ref_force = hrp::Vector3::Zero();
+      ikp.ref_moment = hrp::Vector3::Zero();
       //
       stikp.push_back(ikp);
       jpe_v.push_back(hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->link(ee_base), m_robot->link(ee_target), dt, false, std::string(m_profile.instance_name))));
