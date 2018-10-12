@@ -110,6 +110,7 @@ class SoftErrorLimiter
   TimedDoubleSeq m_qRef;
   TimedDoubleSeq m_qCurrent;
   TimedDoubleSeq m_pgain;
+  TimedDoubleSeq m_tau;
   TimedDoubleSeq m_tauMax;
   OpenHRP::TimedLongSeqSeq m_servoState;
   TimedLongSeq m_beepCommand;
@@ -119,6 +120,7 @@ class SoftErrorLimiter
   InPort<TimedDoubleSeq> m_qRefIn;
   InPort<TimedDoubleSeq> m_qCurrentIn;
   InPort<TimedDoubleSeq> m_pgainIn;
+  InPort<TimedDoubleSeq> m_tauIn;
   InPort<TimedDoubleSeq> m_tauMaxIn;
   InPort<OpenHRP::TimedLongSeqSeq> m_servoStateIn;
   

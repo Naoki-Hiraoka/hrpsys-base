@@ -547,6 +547,10 @@ class HrpsysConfigurator(object):
             connectPorts(self.rh.port("pgain"), self.el.port("pgainIn"))
             if self.tl:
                 connectPorts(self.tl.port("tauMax"), self.el.port("tauMaxIn"))
+            if self.tf:
+                connectPorts(self.tf.port("tauOut"), self.el.port("tauIn"))
+            else:
+                connectPorts(self.rh.port("tau"), self.el.port("tauIn"))
 
         # connection for es
         if self.es:

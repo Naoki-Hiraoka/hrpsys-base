@@ -56,6 +56,7 @@ SoftErrorLimiter::SoftErrorLimiter(RTC::Manager* manager)
     m_qRefIn("qRef", m_qRef),
     m_qCurrentIn("qCurrent", m_qCurrent),
     m_pgainIn("pgainIn",m_pgain),
+    m_tauIn("tauIn",m_tau),
     m_tauMaxIn("tauMaxIn",m_tauMax),
     m_servoStateIn("servoStateIn", m_servoState),
     m_qOut("q", m_qRef),
@@ -93,6 +94,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   addInPort("qRef", m_qRefIn);
   addInPort("qCurrent", m_qCurrentIn);
   addInPort("pgainIn", m_pgainIn);
+  addInPort("tauIn", m_tauIn);
   addInPort("tauMaxIn", m_tauMaxIn);
   addInPort("servoState", m_servoStateIn);
   
@@ -238,6 +240,9 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
   if (m_pgainIn.isNew()) {
     m_pgainIn.read();
   }
+  if (m_tauIn.isNew()) {
+    m_tauIn.read();
+  }
   if (m_tauMaxIn.isNew()) {
     m_tauMaxIn.read();
   }
@@ -276,6 +281,11 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
     servo_state.resize(m_qRef.data.length(), 0);
     for ( unsigned int i = 0; i < m_qRef.data.length(); i++ ){
         servo_state[i] = (m_servoState.data[i][0] & OpenHRP::RobotHardwareService::SERVO_STATE_MASK) >> OpenHRP::RobotHardwareService::SERVO_STATE_SHIFT; // enum SwitchStatus {SWITCH_ON, SWITCH_OFF};
+    }
+
+    static std::vector<bool> taumax_over;
+    if ( taumax_over.size() != m_tau.data.length() ) { // initialize taumax_over
+        taumax_over.resize(m_tau.data.length(), false);
     }
 
       /*
@@ -345,14 +355,18 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
           if (!productrange_isempty){
               double limit = std::abs(m_robot->m_servoErrorLimit[i]);
 
-              if (m_pgain.data.length() == m_qCurrent.data.length() && m_pgain.data.length() == hardware_pgains.size()){
-                  double gain = m_pgain.data[i] * hardware_pgains[i];
-                  if (gain != 0.0){
-                      limit = std::min(limit, std::abs(m_robot->m_tauLimit[i] / gain));
+              if (m_pgain.data.length() == m_qCurrent.data.length() && m_pgain.data.length() == hardware_pgains.size() && m_tau.data.length() == m_pgain.data.length()){
+                  double taumax = std::abs(m_robot->m_tauLimit[i]);
+                  if (m_pgain.data.length() == m_tauMax.data.length()){
+                      taumax = std::min(taumax, std::abs(m_tauMax.data[i]));
+                  }
 
-                      if (m_pgain.data.length() == m_tauMax.data.length()){
-                          limit = std::min(limit, std::abs(m_tauMax.data[i] / gain));
-                      }
+                  if(m_tau.data[i]<taumax*0.9)taumax_over[i] = false;
+                  else if(m_tau.data[i]>taumax)taumax_over[i] = true;
+
+                  double gain = m_pgain.data[i] * hardware_pgains[i];
+                  if (taumax_over[i] && gain != 0.0){
+                      limit = std::min(limit, std::abs(taumax / gain));
                   }
               }
 
