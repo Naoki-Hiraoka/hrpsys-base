@@ -932,6 +932,7 @@ class HrpsysConfigurator(object):
         if self.octd != None:
             self.connectLoggerPort(self.octd, "octdData")
         self.log_svc.clear()
+        self.log.setProperty("log_precision","16")
         ## parallel running log process (outside from rtcd) for saving logs by emergency signal
         if self.log and (self.log_use_owned_ec or not isinstance(self.log.owned_ecs[0], OpenRTM._objref_ExtTrigExecutionContextService)):
             print(self.configurator_name + "\033[32mruning DataLogger with own Execution Context\033[0m")
