@@ -33,6 +33,7 @@ module OpenHRP
       double EKF_Q_gyro;
       double EKF_R_k1;
       double EKF_R_k2;
+      double EKF_drift_T;
       // Common
       KFAlgorithm kf_algorithm;
       DblArray3 acc_offset;
