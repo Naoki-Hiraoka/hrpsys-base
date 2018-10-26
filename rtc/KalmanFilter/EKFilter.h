@@ -15,12 +15,19 @@ class EKFilter {
 public:
   EKFilter()
     : P(hrp::Matrix77::Identity() * 0.1),
-      Q(Eigen::Matrix3d::Identity() * 0.001),
+      Qg(Eigen::Matrix3d::Identity() * 0.001),
+      Q(hrp::Matrix77::Identity() * 0.001 * 0.005),
       R(Eigen::Matrix3d::Identity() * 0.03),
       g_vec(Eigen::Vector3d(0.0, 0.0, 9.80665)),
       z_k(Eigen::Vector3d(0.0, 0.0, 9.80665)),
       min_mag_thre_acc(0.005), max_mag_thre_acc(0.05),
-      min_mag_thre_gyro(0.0075), max_mag_thre_gyro(0.035)
+      min_mag_thre_gyro(0.0075), max_mag_thre_gyro(0.035),
+      dt(0.005),
+      Q_quot(0.001),
+      Q_rate(0.001),
+      Q_gyro(0.001),
+      R_k1(400),
+      R_k2(0.03)
   {
     x << 1, 0, 0, 0, 0, 0, 0;
   }
@@ -78,9 +85,9 @@ public:
       + q[3], + q[0], - q[1],
       - q[2], + q[1], + q[0];
     V_upper *= dt / 2;
-    hrp::Matrix77 VQVt = hrp::Matrix77::Zero();
-    VQVt.block<4, 4>(0, 0) = V_upper * Q * V_upper.transpose();
-    _P_a_priori = F * P * F.transpose() + VQVt;
+    hrp::Matrix77 VQgVt = hrp::Matrix77::Zero();
+    VQgVt.block<4, 4>(0, 0) = V_upper * Qg * V_upper.transpose();
+    _P_a_priori = F * P * F.transpose() + VQgVt + Q;
   }
 
   Eigen::Vector3d calcAcc(const Eigen::Vector4d& q) const {
@@ -155,8 +162,7 @@ public:
     w3 = large_mu_acc * (1.0 - large_mu_gyro);
     w4 = large_mu_acc * large_mu_gyro;
     double z = (w1 * 0.0 + w2 * (3.5 * alpha + 8.0 * beta + 0.5) + w3 * (3.5 * alpha + 8.0 * beta + 0.5) + w4 * 1.0) / (w1 + w2 + w3 + w4);
-    double k1 = 400;
-    fuzzyR = R + k1 * z * z * Eigen::Matrix3d::Identity();
+    fuzzyR = R + R_k1 * z * z * Eigen::Matrix3d::Identity();
   };
 
   void main_one (hrp::Vector3& rpy, hrp::Vector3& rpyRaw, const hrp::Vector3& acc, const hrp::Vector3& gyro)
@@ -171,15 +177,41 @@ public:
   };
 
   void setdt (const double _dt) { dt = _dt;};
+
+  void setParam (const double _dt, const double _Q_quot, const double _Q_rate, const double _Q_gyro, const double _R_k1, const double _R_k2 , const std::string print_str = "")
+    {
+      setdt(_dt);
+      Q_quot = _Q_quot;
+      Q_rate = _Q_rate;
+      Q_gyro = _Q_gyro;
+      R_k1 = _R_k1;
+      R_k2 = _R_k2;
+
+      for(int i=0;i<3;i++) Qg(i,i)=Q_gyro;
+      for(int i=0;i<4;i++) Q(i,i)=Q_quot*dt;
+      for(int i=4;i<7;i++) Q(i,i)=Q_rate*dt;
+      for(int i=0;i<3;i++) R(i,i)=R_k2;
+
+      std::cerr << "[" << print_str << "]   Q_quot=" << Q_quot << ", Q_rate=" << Q_rate << ", Q_gyro= " << Q_gyro << ", R_k1=" << R_k1 << ", R_k2=" << R_k2 << std::endl;
+    };
+
   void resetKalmanFilterState() {
     Eigen::Quaternion<double> tmp_q;
     tmp_q.setFromTwoVectors(z_k, g_vec);
     x << tmp_q.w(), tmp_q.x(), tmp_q.y(), tmp_q.z(), 0, 0, 0;
   };
+  double getQquot () const {return Q_quot;};
+  double getQrate () const {return Q_rate;};
+  double getQgyro () const {return Q_gyro;};
+  double getR_k1 () const {return R_k1;};
+  double getR_k2 () const {return R_k2;};
+
 private:
   hrp::Vector7 x, x_a_priori;
   hrp::Matrix77 P, P_a_priori;
-  Eigen::Matrix3d Q, R;
+  Eigen::Matrix3d Qg, R;
+  hrp::Matrix77 Q;
+  double Q_quot, Q_rate, Q_gyro ,R_k1, R_k2;
   Eigen::Vector3d g_vec, z_k;
   double dt;
   double min_mag_thre_acc, max_mag_thre_acc, min_mag_thre_gyro, max_mag_thre_gyro;
