@@ -55,7 +55,11 @@ public:
     calcOmega(omega, gyro_compensated);
     q_a_priori = q + dt / 2 * omega * q;
     _x_a_priori.head<4>() = q_a_priori.normalized();
-    _x_a_priori.tail<3>() = drift;
+    if(drift_T!=0.0){
+      _x_a_priori.tail<3>() = drift * (1.0-dt/drift_T);
+    }else{
+      _x_a_priori.tail<3>() = drift;
+    }
   }
 
   void calcF(hrp::Matrix77& F,
