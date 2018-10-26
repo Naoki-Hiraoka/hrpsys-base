@@ -63,7 +63,9 @@ public:
              const Eigen::Vector3d& gyro,
              const Eigen::Vector3d& drift) const {
     F = hrp::Matrix77::Identity();
-    for(int i=4;i<7;i++) F(i,i)*=1.0-dt/drift_T;
+    if(drift_T!=0.0){
+      for(int i=4;i<7;i++) F(i,i)=1.0-dt/drift_T;
+    }
     Eigen::Vector3d gyro_compensated = gyro - drift;
     Eigen::Matrix4d omega;
     calcOmega(omega, gyro_compensated);
@@ -208,6 +210,7 @@ public:
   double getQgyro () const {return Q_gyro;};
   double getR_k1 () const {return R_k1;};
   double getR_k2 () const {return R_k2;};
+  double getdrift_T () const {return drift_T;};
 
 private:
   hrp::Vector7 x, x_a_priori;

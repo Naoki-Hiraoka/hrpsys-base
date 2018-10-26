@@ -324,6 +324,7 @@ bool KalmanFilter::getKalmanFilterParam(OpenHRP::KalmanFilterService::KalmanFilt
   i_param.EKF_Q_gyro =  ekf_filter.getQgyro();
   i_param.EKF_R_k1 =  ekf_filter.getR_k1();
   i_param.EKF_R_k2 =  ekf_filter.getR_k2();
+  i_param.EKF_drift_T = ekf_filter.getdrift_T();
 
   i_param.kf_algorithm = kf_algorithm;
   for (size_t i = 0; i < 3; i++) {
