@@ -27,7 +27,8 @@ public:
       Q_rate(0.001),
       Q_gyro(0.001),
       R_k1(400),
-      R_k2(0.03)
+      R_k2(0.03),
+      drift_T(3.0)
   {
     x << 1, 0, 0, 0, 0, 0, 0;
   }
@@ -62,6 +63,7 @@ public:
              const Eigen::Vector3d& gyro,
              const Eigen::Vector3d& drift) const {
     F = hrp::Matrix77::Identity();
+    for(int i=4;i<7;i++) F(i,i)*=1.0-dt/drift_T;
     Eigen::Vector3d gyro_compensated = gyro - drift;
     Eigen::Matrix4d omega;
     calcOmega(omega, gyro_compensated);
@@ -178,7 +180,7 @@ public:
 
   void setdt (const double _dt) { dt = _dt;};
 
-  void setParam (const double _dt, const double _Q_quot, const double _Q_rate, const double _Q_gyro, const double _R_k1, const double _R_k2 , const std::string print_str = "")
+  void setParam (const double _dt, const double _Q_quot, const double _Q_rate, const double _Q_gyro, const double _R_k1, const double _R_k2, const double _drift_T, const std::string print_str = "")
     {
       setdt(_dt);
       Q_quot = _Q_quot;
@@ -186,13 +188,14 @@ public:
       Q_gyro = _Q_gyro;
       R_k1 = _R_k1;
       R_k2 = _R_k2;
+      drift_T = _drift_T;
 
       for(int i=0;i<3;i++) Qg(i,i)=Q_gyro;
       for(int i=0;i<4;i++) Q(i,i)=Q_quot*dt;
       for(int i=4;i<7;i++) Q(i,i)=Q_rate*dt;
       for(int i=0;i<3;i++) R(i,i)=R_k2;
 
-      std::cerr << "[" << print_str << "]   Q_quot=" << Q_quot << ", Q_rate=" << Q_rate << ", Q_gyro= " << Q_gyro << ", R_k1=" << R_k1 << ", R_k2=" << R_k2 << std::endl;
+      std::cerr << "[" << print_str << "]   Q_quot=" << Q_quot << ", Q_rate=" << Q_rate << ", Q_gyro= " << Q_gyro << ", R_k1=" << R_k1 << ", R_k2=" << R_k2 << ", drift_T=" << drift_T << std::endl;
     };
 
   void resetKalmanFilterState() {
@@ -213,7 +216,7 @@ private:
   hrp::Matrix77 Q;
   double Q_quot, Q_rate, Q_gyro ,R_k1, R_k2;
   Eigen::Vector3d g_vec, z_k;
-  double dt;
+  double dt, drift_T;
   double min_mag_thre_acc, max_mag_thre_acc, min_mag_thre_gyro, max_mag_thre_gyro;
 };
 
