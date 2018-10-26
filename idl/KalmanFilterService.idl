@@ -27,6 +27,13 @@ module OpenHRP
       double Q_angle;
       double Q_rate;
       double R_angle;
+      // EKFilter
+      double EKF_Q_quot;
+      double EKF_Q_rate;
+      double EKF_Q_gyro;
+      double EKF_R_k1;
+      double EKF_R_k2;
+      double EKF_drift_T;
       // Common
       KFAlgorithm kf_algorithm;
       DblArray3 acc_offset;

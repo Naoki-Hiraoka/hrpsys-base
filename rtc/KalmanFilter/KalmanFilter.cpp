@@ -132,7 +132,7 @@ RTC::ReturnCode_t KalmanFilter::onInitialize()
   }
   rpy_kf.setParam(m_dt, 0.001, 0.003, 1000, std::string(m_profile.instance_name));
   rpy_kf.setSensorR(m_sensorR);
-  ekf_filter.setdt(m_dt);
+  ekf_filter.setParam(m_dt, 0.001, 0.003, 0.001, 400, 0.03, 3.0, std::string(m_profile.instance_name));
   kf_algorithm = OpenHRP::KalmanFilterService::RPYKalmanFilter;
   m_qCurrent.data.length(m_robot->numJoints());
   acc_offset = hrp::Vector3::Zero();
@@ -292,6 +292,7 @@ bool KalmanFilter::setKalmanFilterParam(const OpenHRP::KalmanFilterService::Kalm
 {
     std::cerr << "[" << m_profile.instance_name << "] setKalmanFilterParam" << std::endl;
     rpy_kf.setParam(m_dt, i_param.Q_angle, i_param.Q_rate, i_param.R_angle, std::string(m_profile.instance_name));
+    ekf_filter.setParam(m_dt, i_param.EKF_Q_quot, i_param.EKF_Q_rate, i_param.EKF_Q_gyro, i_param.EKF_R_k1, i_param.EKF_R_k2, i_param.EKF_drift_T, std::string(m_profile.instance_name));
     kf_algorithm = i_param.kf_algorithm;
     for (size_t i = 0; i < 3; i++) {
         acc_offset(i) = i_param.acc_offset[i];
@@ -318,6 +319,13 @@ bool KalmanFilter::getKalmanFilterParam(OpenHRP::KalmanFilterService::KalmanFilt
   i_param.Q_angle = rpy_kf.getQangle();
   i_param.Q_rate = rpy_kf.getQrate();
   i_param.R_angle = rpy_kf.getRangle();
+  i_param.EKF_Q_quot =  ekf_filter.getQquot();
+  i_param.EKF_Q_rate =  ekf_filter.getQrate();
+  i_param.EKF_Q_gyro =  ekf_filter.getQgyro();
+  i_param.EKF_R_k1 =  ekf_filter.getR_k1();
+  i_param.EKF_R_k2 =  ekf_filter.getR_k2();
+  i_param.EKF_drift_T = ekf_filter.getdrift_T();
+
   i_param.kf_algorithm = kf_algorithm;
   for (size_t i = 0; i < 3; i++) {
       i_param.acc_offset[i] = acc_offset(i);
