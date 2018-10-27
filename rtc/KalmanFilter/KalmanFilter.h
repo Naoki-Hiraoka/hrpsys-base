@@ -118,6 +118,7 @@ protected:
   TimedOrientation3D m_rpyRaw;
   TimedOrientation3D m_rpy_prev;
   TimedOrientation3D m_rpyRaw_prev;
+  TimedOrientation3D m_rpydebug;
 
   // DataInPort declaration
   // <rtc-template block="inport_declare">
@@ -131,6 +132,7 @@ protected:
   // DataOutPort declaration
   // <rtc-template block="outport_declare">
   OutPort<TimedOrientation3D> m_rpyOut;
+  OutPort<TimedOrientation3D> m_rpydebugOut;
   OutPort<TimedOrientation3D> m_rpyRawOut;
   RTC::TimedDoubleSeq m_qCurrent;
   RTC::InPort<RTC::TimedDoubleSeq> m_qCurrentIn;
