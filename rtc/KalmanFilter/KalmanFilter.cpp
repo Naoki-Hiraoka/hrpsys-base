@@ -132,7 +132,7 @@ RTC::ReturnCode_t KalmanFilter::onInitialize()
   }
   rpy_kf.setParam(m_dt, 0.001, 0.003, 1000, std::string(m_profile.instance_name));
   rpy_kf.setSensorR(m_sensorR);
-  ekf_filter.setParam(m_dt, 0.001, 0.003, 0.001, 400, 0.03, 3.0, std::string(m_profile.instance_name));
+  ekf_filter.setParam(m_dt, 0.001, 0.003, 0.001, 2000, 500, 3.0, std::string(m_profile.instance_name));
   kf_algorithm = OpenHRP::KalmanFilterService::RPYKalmanFilter;
   m_qCurrent.data.length(m_robot->numJoints());
   acc_offset = hrp::Vector3::Zero();
