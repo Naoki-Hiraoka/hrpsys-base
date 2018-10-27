@@ -46,6 +46,7 @@ KalmanFilter::KalmanFilter(RTC::Manager* manager)
     m_rpyIn("rpyIn", m_rate),
     m_qCurrentIn("qCurrent", m_qCurrent),
     m_rpyOut("rpy", m_rpy),
+    m_rpydebugOut("rpydebug", m_rpydebug),
     m_rpyRawOut("rpy_raw", m_rpyRaw),
     m_baseRpyCurrentOut("baseRpyCurrent", m_baseRpyCurrent),
     m_KalmanFilterServicePort("KalmanFilterService"),
@@ -84,6 +85,7 @@ RTC::ReturnCode_t KalmanFilter::onInitialize()
 
   // Set OutPort buffer
   addOutPort("rpy", m_rpyOut);
+  addOutPort("rpydebug", m_rpydebugOut);
   addOutPort("rpy_raw", m_rpyRawOut);
   addOutPort("baseRpyCurrent", m_baseRpyCurrentOut);
 
@@ -215,9 +217,22 @@ RTC::ReturnCode_t KalmanFilter::onExecute(RTC::UniqueId ec_id)
         std::cerr << "[" << m_profile.instance_name << "] raw data acc : " << std::endl << acc << std::endl;
         std::cerr << "[" << m_profile.instance_name << "] raw data gyro : " << std::endl << gyro << std::endl;
     }
-    hrp::Vector3 rpy, rpyRaw, baseRpyCurrent;
+    hrp::Vector3 rpy, rpyRaw, baseRpyCurrent, rpydebug;
     if (kf_algorithm == OpenHRP::KalmanFilterService::QuaternionExtendedKalmanFilter) {
         ekf_filter.main_one(rpy, rpyRaw, acc, gyro);
+
+        double sl_y;
+        hrp::Matrix33 BtoS;
+        m_robot->calcForwardKinematics();
+        if (m_robot->numSensors(hrp::Sensor::ACCELERATION) > 0) {
+            hrp::Sensor* sensor = m_robot->sensor(hrp::Sensor::ACCELERATION, 0);
+            sl_y = hrp::rpyFromRot(sensor->link->R)[2];
+            BtoS = (m_robot->rootLink()->R).transpose() * (sensor->link->R * sensor->localR);
+        } else {
+            sl_y = 0.0;
+            BtoS = (m_robot->rootLink()->R).transpose();
+        }
+        rpy_kf.main_one(rpydebug, rpyRaw, baseRpyCurrent, acc, gyro, sl_y, BtoS);
     } else if (kf_algorithm == OpenHRP::KalmanFilterService::RPYKalmanFilter) {
         double sl_y;
         hrp::Matrix33 BtoS;
@@ -238,15 +253,20 @@ RTC::ReturnCode_t KalmanFilter::onExecute(RTC::UniqueId ec_id)
     m_rpy.data.r = rpy(0);
     m_rpy.data.p = rpy(1);
     m_rpy.data.y = rpy(2);
+    m_rpydebug.data.r = rpy(0);
+    m_rpydebug.data.p = rpy(1);
+    m_rpydebug.data.y = rpy(2);
     m_baseRpyCurrent.data.r = baseRpyCurrent(0);
     m_baseRpyCurrent.data.p = baseRpyCurrent(1);
     m_baseRpyCurrent.data.y = baseRpyCurrent(2);
     // add time stamp
     m_rpyRaw.tm = m_acc.tm;
     m_rpy.tm = m_acc.tm;
+    m_rpydebug.tm = m_acc.tm;
     m_baseRpyCurrent.tm = m_acc.tm;
 
     m_rpyOut.write();
+    m_rpydebugOut.write();
     m_rpyRawOut.write();
     m_baseRpyCurrentOut.write();
   }
