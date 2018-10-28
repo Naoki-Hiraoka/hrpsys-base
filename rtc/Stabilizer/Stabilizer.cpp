@@ -1461,6 +1461,63 @@ void Stabilizer::moveBasePosRotForBodyRPYControl ()
     }
 };
 
+void Stabilizer::moveBasePosRotForBodyQuaternionControl ()
+{
+    // Body rpy control
+    //   Basically Equation (1) and (2) in the paper [1]
+    // use Quarternion instead of RPY
+
+    // d_zaxis = H * d_q
+    // d_q = pseudo_inverse(H) * d_zaxis
+
+    hrp::Vector3 world_zaxis_act_base_local = hrp::rotFromRpy(act_base_rpy).transpose() * hrp::Vector3::UnitZ();
+    hrp::Vector3 world_zaxis_target_root_local = target_root_R.transpose() * hrp::Vector3::UnitZ();
+    hrp::Vector3 d_zaxis = world_zaxis_act_base_local - world_zaxis_target_root_local;
+
+    Eigen::Quaternion<double> target_q(target_root_R);
+    if (target_q.w() * prev_target_root_q.w() + target_q.x() * prev_target_root_q.x() + target_q.y() * prev_target_root_q.y() + target_q.z() * prev_target_root_q.z() < 0.0){
+        target_q.w() *= -1;
+        target_q.x() *= -1;
+        target_q.y() *= -1;
+        target_q.z() *= -1;
+    }
+    prev_target_root_q = target_q;
+    hrp::dmatrix H(3,4);
+    H <<
+        -target_q.y(), target_q.z(), -target_q.w(), target_q.x(),
+        target_q.x(), target_q.w(), target_q.z(), target_q.y(),
+        target_q.w(), -target_q.x(), -target_q.y(), target_q.z();
+    hrp::dmatrix Hinv = H.transpose() * (H * H.transpose()).inverse();
+    Eigen::Vector4d d_q = Hinv * d_zaxis;
+
+    bool is_root_rot_limit = false;
+    for (size_t i=0; i<4; i++){
+        d_quaternion[i] = transition_smooth_gain * (eefm_body_attitude_control_gain[0] * (-d_q[i]) - 1/eefm_body_attitude_control_time_const[0] * d_quaternion[i]) * dt + d_quaternion[i];
+        d_quaternion[i] = vlimit(d_quaternion[i], -1 * root_rot_compensation_limit[0], root_rot_compensation_limit[0]);
+        is_root_rot_limit = is_root_rot_limit || (std::fabs(std::fabs(d_quaternion[i]) - root_rot_compensation_limit[0] ) < 1e-5); // near the limit
+    }
+
+    Eigen::Vector4d current_q_raw(target_q.w()+d_quaternion[0], target_q.x()+d_quaternion[1], target_q.y()+d_quaternion[2], target_q.z()+d_quaternion[3]);
+    current_q_raw = current_q_raw.normalized();
+    Eigen::Quaternion<double> current_q(current_q_raw[0], current_q_raw[1], current_q_raw[2], current_q_raw[3]);
+    current_root_R = current_q.toRotationMatrix();
+
+    m_robot->rootLink()->R = current_root_R;
+    m_robot->rootLink()->p = target_root_p + target_root_R * rel_cog - current_root_R * rel_cog;
+    m_robot->calcForwardKinematics();
+    current_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R);
+    current_base_pos = m_robot->rootLink()->p;
+    if ( DEBUGP || (is_root_rot_limit && loop%200==0) ) {
+        hrp::Vector3 ref_root_rpy = hrp::rpyFromRot(target_root_R);
+        std::cerr << "[" << m_profile.instance_name << "] Root rot control" << std::endl;
+        if (is_root_rot_limit) std::cerr << "[" << m_profile.instance_name << "]   Root rot limit reached!!" << std::endl;
+        std::cerr << "[" << m_profile.instance_name << "]   ref = [" << rad2deg(ref_root_rpy(0)) << " " << rad2deg(ref_root_rpy(1)) << " " << rad2deg(ref_root_rpy(2)) << "], "
+                  << "act = [" << rad2deg(act_base_rpy(0)) << " " << rad2deg(act_base_rpy(1)) << " " << rad2deg(act_base_rpy(2)) << "], "
+                  << "cur = [" << rad2deg(current_base_rpy(0)) << " " << rad2deg(current_base_rpy(1)) << " " << rad2deg(current_base_rpy(2)) << "], "
+                  << "limit = [" << rad2deg(root_rot_compensation_limit[0]) << "][quaternion]" << std::endl;
+    }
+};
+
 void Stabilizer::calcSwingSupportLimbGain ()
 {
     for (size_t i = 0; i < stikp.size(); i++) {
@@ -1598,7 +1655,11 @@ void Stabilizer::calcEEForceMomentControl() {
       //   joint angle : current control output
       //   root pos : target + keep COG against rpy control
       //   root rot : target + rpy control
-      moveBasePosRotForBodyRPYControl ();
+      if(eefm_use_quaternion_body_attitude_control){
+          moveBasePosRotForBodyQuaternionControl ();
+      }else{
+          moveBasePosRotForBodyRPYControl ();
+      }
 
       // Convert d_foot_pos in foot origin frame => "current" world frame
       hrp::Vector3 foot_origin_pos;
@@ -1904,6 +1965,7 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
     i_stp.act_capture_point[i] = act_cp(i);
     i_stp.cp_offset[i] = cp_offset(i);
   }
+  i_stp.eefm_use_quaternion_body_attitude_control = eefm_use_quaternion_body_attitude_control;
   i_stp.eefm_pos_time_const_support.length(stikp.size());
   i_stp.eefm_pos_damping_gain.length(stikp.size());
   i_stp.eefm_pos_compensation_limit.length(stikp.size());
@@ -2181,6 +2243,7 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
       szd->set_vertices(support_polygon_vec);
       szd->print_vertices(std::string(m_profile.instance_name));
   }
+  eefm_use_quaternion_body_attitude_control = i_stp.eefm_use_quaternion_body_attitude_control;
   eefm_use_force_difference_control = i_stp.eefm_use_force_difference_control;
   eefm_use_swing_damping = i_stp.eefm_use_swing_damping;
   for (size_t i = 0; i < 3; ++i) {
@@ -2258,7 +2321,7 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
   std::cerr << "[m]" << std::endl;
   std::cerr << "[" << m_profile.instance_name << "]   eefm_k1  = [" << eefm_k1[0] << ", " << eefm_k1[1] << "], eefm_k2  = [" << eefm_k2[0] << ", " << eefm_k2[1] << "], eefm_k3  = [" << eefm_k3[0] << ", " << eefm_k3[1] << "]" << std::endl;
   std::cerr << "[" << m_profile.instance_name << "]   eefm_zmp_delay_time_const  = [" << eefm_zmp_delay_time_const[0] << ", " << eefm_zmp_delay_time_const[1] << "][s], eefm_ref_zmp_aux  = [" << ref_zmp_aux(0) << ", " << ref_zmp_aux(1) << "][m]" << std::endl;
-  std::cerr << "[" << m_profile.instance_name << "]   eefm_body_attitude_control_gain  = [" << eefm_body_attitude_control_gain[0] << ", " << eefm_body_attitude_control_gain[1] << "], eefm_body_attitude_control_time_const  = [" << eefm_body_attitude_control_time_const[0] << ", " << eefm_body_attitude_control_time_const[1] << "][s]" << std::endl;
+  std::cerr << "[" << m_profile.instance_name << "]   eefm_body_attitude_control_gain  = [" << eefm_body_attitude_control_gain[0] << ", " << eefm_body_attitude_control_gain[1] << "], eefm_body_attitude_control_time_const  = [" << eefm_body_attitude_control_time_const[0] << ", " << eefm_body_attitude_control_time_const[1] << "][s], eefm_use_quaternion_body_attitude_control = " << eefm_use_quaternion_body_attitude_control << std::endl;
   if (is_damping_parameter_ok) {
       for (size_t j = 0; j < stikp.size(); j++) {
           std::cerr << "[" << m_profile.instance_name << "]   [" << stikp[j].ee_name << "] eefm_rot_damping_gain = "

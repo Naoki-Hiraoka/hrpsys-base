@@ -115,6 +115,7 @@ class Stabilizer
   void calcStateForEmergencySignal();
   void calcRUNST();
   void moveBasePosRotForBodyRPYControl ();
+  void moveBasePosRotForBodyQuaternionControl ();
   void calcSwingSupportLimbGain();
   void calcTPCC();
   void calcEEForceMomentControl();
@@ -295,7 +296,7 @@ class Stabilizer
   int m_is_falling_counter;
   std::vector<int> m_will_fall_counter;
   int is_air_counter, detection_count_to_air;
-  bool is_legged_robot, on_ground, is_emergency, is_seq_interpolating, reset_emergency_flag, eefm_use_force_difference_control, eefm_use_swing_damping, initial_cp_too_large_error, use_limb_stretch_avoidance, use_zmp_truncation;
+  bool is_legged_robot, on_ground, is_emergency, is_seq_interpolating, reset_emergency_flag, eefm_use_force_difference_control, eefm_use_swing_damping, initial_cp_too_large_error, use_limb_stretch_avoidance, use_zmp_truncation, eefm_use_quaternion_body_attitude_control;
   bool is_walking, is_estop_while_walking;
   hrp::Vector3 current_root_p, target_root_p;
   hrp::Matrix33 current_root_R, target_root_R, prev_act_foot_origin_rot, prev_ref_foot_origin_rot, target_foot_origin_rot, ref_foot_origin_rot;
@@ -313,7 +314,8 @@ class Stabilizer
   SimpleZMPDistributor* szd;
   std::vector<std::vector<Eigen::Vector2d> > support_polygon_vetices, margined_support_polygon_vetices;
   // TPCC
-  double k_tpcc_p[2], k_tpcc_x[2], d_rpy[2], k_brot_p[2], k_brot_tc[2];
+  double k_tpcc_p[2], k_tpcc_x[2], d_rpy[2], d_quaternion[4], k_brot_p[2], k_brot_tc[2];
+  Eigen::Quaternion<double> prev_target_root_q;
   // RUN ST
   TwoDofController m_tau_x[2], m_tau_y[2], m_f_z;
   hrp::Vector3 pdr;
