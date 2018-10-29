@@ -23,7 +23,7 @@ public:
       min_mag_thre_acc(0.005), max_mag_thre_acc(0.05),
       min_mag_thre_gyro(0.0075), max_mag_thre_gyro(0.035),
       dt(0.005),
-      Q_quot(0.001),
+      Q_quat(0.001),
       Q_rate(0.001),
       Q_gyro(0.001),
       R_k1(400),
@@ -186,10 +186,10 @@ public:
 
   void setdt (const double _dt) { dt = _dt;};
 
-  void setParam (const double _dt, const double _Q_quot, const double _Q_rate, const double _Q_gyro, const double _R_k1, const double _R_k2, const double _drift_T, const std::string print_str = "")
+  void setParam (const double _dt, const double _Q_quat, const double _Q_rate, const double _Q_gyro, const double _R_k1, const double _R_k2, const double _drift_T, const std::string print_str = "")
     {
       setdt(_dt);
-      Q_quot = _Q_quot;
+      Q_quat = _Q_quat;
       Q_rate = _Q_rate;
       Q_gyro = _Q_gyro;
       R_k1 = _R_k1;
@@ -197,11 +197,11 @@ public:
       drift_T = _drift_T;
 
       for(int i=0;i<3;i++) Qg(i,i)=Q_gyro;
-      for(int i=0;i<4;i++) Q(i,i)=Q_quot*dt;
+      for(int i=0;i<4;i++) Q(i,i)=Q_quat*dt;
       for(int i=4;i<7;i++) Q(i,i)=Q_rate*dt;
       for(int i=0;i<3;i++) R(i,i)=R_k2;
 
-      std::cerr << "[" << print_str << "]   Q_quot=" << Q_quot << ", Q_rate=" << Q_rate << ", Q_gyro= " << Q_gyro << ", R_k1=" << R_k1 << ", R_k2=" << R_k2 << ", drift_T=" << drift_T << std::endl;
+      std::cerr << "[" << print_str << "]   Q_quat=" << Q_quat << ", Q_rate=" << Q_rate << ", Q_gyro= " << Q_gyro << ", R_k1=" << R_k1 << ", R_k2=" << R_k2 << ", drift_T=" << drift_T << std::endl;
     };
 
   void resetKalmanFilterState() {
@@ -209,7 +209,7 @@ public:
     tmp_q.setFromTwoVectors(z_k, g_vec);
     x << tmp_q.w(), tmp_q.x(), tmp_q.y(), tmp_q.z(), 0, 0, 0;
   };
-  double getQquot () const {return Q_quot;};
+  double getQquat () const {return Q_quat;};
   double getQrate () const {return Q_rate;};
   double getQgyro () const {return Q_gyro;};
   double getR_k1 () const {return R_k1;};
@@ -221,7 +221,7 @@ private:
   hrp::Matrix77 P, P_a_priori;
   Eigen::Matrix3d Qg, R;
   hrp::Matrix77 Q;
-  double Q_quot, Q_rate, Q_gyro ,R_k1, R_k2;
+  double Q_quat, Q_rate, Q_gyro ,R_k1, R_k2;
   Eigen::Vector3d g_vec, z_k;
   double dt, drift_T;
   double min_mag_thre_acc, max_mag_thre_acc, min_mag_thre_gyro, max_mag_thre_gyro;
