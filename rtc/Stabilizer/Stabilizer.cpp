@@ -354,6 +354,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
     eefm_body_attitude_control_gain[i] = 0.5;
     eefm_body_attitude_control_time_const[i] = 1e5;
   }
+  eefm_use_quaternion_body_attitude_control = false;
   for (size_t i = 0; i < stikp.size(); i++) {
       STIKParam& ikp = stikp[i];
       hrp::Link* root = m_robot->link(ikp.target_name);
