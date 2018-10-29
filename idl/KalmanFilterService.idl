@@ -28,7 +28,7 @@ module OpenHRP
       double Q_rate;
       double R_angle;
       // EKFilter
-      double EKF_Q_quot;
+      double EKF_Q_quat;
       double EKF_Q_rate;
       double EKF_Q_gyro;
       double EKF_R_k1;
