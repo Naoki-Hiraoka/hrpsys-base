@@ -1877,6 +1877,7 @@ void Stabilizer::sync_2_st ()
   pangx_ref = pangy_ref = pangx = pangy = 0;
   rdx = rdy = rx = ry = 0;
   d_rpy[0] = d_rpy[1] = 0;
+  d_quaternion[0] = d_quaternion[1] = d_quaternion[2] = d_quaternion[3] = 0;
   pdr = hrp::Vector3::Zero();
   pos_ctrl = hrp::Vector3::Zero();
   for (size_t i = 0; i < stikp.size(); i++) {
