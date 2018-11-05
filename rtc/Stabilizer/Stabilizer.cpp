@@ -503,6 +503,9 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   if (sen == NULL) {
       std::cerr << "[" << m_profile.instance_name << "] WARNING! This robot model has no GyroSensor named 'gyrometer'! " << std::endl;
   }
+
+  multicontactstabilizer.initialize();
+
   return RTC::RTC_OK;
 }
 
