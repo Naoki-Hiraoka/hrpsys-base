@@ -504,7 +504,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       std::cerr << "[" << m_profile.instance_name << "] WARNING! This robot model has no GyroSensor named 'gyrometer'! " << std::endl;
   }
 
-  multicontactstabilizer.initialize();
+  multicontactstabilizer.initialize(*m_robot, dt, stikp.size());
 
   return RTC::RTC_OK;
 }
@@ -771,6 +771,7 @@ void Stabilizer::getCurrentParameters ()
   for ( int i = 0; i < m_robot->numJoints(); i++ ){
     qorg[i] = m_robot->joint(i)->q;
   }
+  multicontactstabilizer.getCurrentParameters(current_root_p,current_root_R,qorg);
 }
 
 void Stabilizer::calcFootOriginCoords (hrp::Vector3& foot_origin_pos, hrp::Matrix33& foot_origin_rot)
