@@ -771,7 +771,7 @@ void Stabilizer::getCurrentParameters ()
   for ( int i = 0; i < m_robot->numJoints(); i++ ){
     qorg[i] = m_robot->joint(i)->q;
   }
-  multicontactstabilizer.getCurrentParameters(current_root_p,current_root_R,qorg);
+  multicontactstabilizer.getCurrentParameters(qorg);
 }
 
 void Stabilizer::calcFootOriginCoords (hrp::Vector3& foot_origin_pos, hrp::Matrix33& foot_origin_rot)
