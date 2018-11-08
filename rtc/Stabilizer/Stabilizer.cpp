@@ -860,6 +860,26 @@ void Stabilizer::getActualParameters ()
       
       on_ground = multicontactstabilizer.getActualParameters(qactv,m_robot->rootLink()->p/*Zero*/,m_robot->rootLink()->R/*actworld系*/,act_ee_p_world/*原点不明,actworld系*/,act_ee_R_world/*actworld系*/,act_force_world/*actworld系*/,act_moment_world/*actworld系,eefまわり*/,act_contact_states, contact_decision_threshold);
 
+      for ( int i = 0; i < m_robot->numJoints(); i++ ){
+          m_robot->joint(i)->q = qrefv[i];
+      }
+      m_robot->rootLink()->p = target_root_p;
+      m_robot->rootLink()->R = target_root_R;
+      if ( !(control_mode == MODE_IDLE || control_mode == MODE_AIR) ) {
+          for (size_t i = 0; i < jpe_v.size(); i++) {
+              if (is_ik_enable[i]) {
+                  for ( int j = 0; j < jpe_v[i]->numJoints(); j++ ){
+                      int idx = jpe_v[i]->joint(j)->jointId;
+                      m_robot->joint(idx)->q = qorg[idx];
+                  }
+              }
+          }
+          m_robot->rootLink()->p = current_root_p;
+          m_robot->rootLink()->R = current_root_R;
+          m_robot->calcForwardKinematics();
+      }
+      copy (ref_contact_states.begin(), ref_contact_states.end(), prev_ref_contact_states.begin());
+
       return;
   }
   
