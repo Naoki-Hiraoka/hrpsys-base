@@ -827,6 +827,7 @@ void Stabilizer::getActualParameters ()
     m_robot->rootLink()->R = act_Rs * (senR.transpose() * m_robot->rootLink()->R);
     m_robot->calcForwardKinematics();
     act_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R);
+    
     calcFootOriginCoords (foot_origin_pos, foot_origin_rot);
   } else {
     for ( int i = 0; i < m_robot->numJoints(); i++ ) {
@@ -836,6 +837,32 @@ void Stabilizer::getActualParameters ()
     m_robot->rootLink()->R = current_root_R;
     m_robot->calcForwardKinematics();
   }
+
+  if (st_algorithm == OpenHRP::StabilizerService::MCS) {
+      hrp::dvector qactv(m_robot->numJoints());
+      for ( int i = 0; i < m_robot->numJoints(); i++ ){
+          qactv[i] = m_robot->joint(i)->q;
+      }
+      std::vector<hrp::Vector3> act_ee_p_world(stikp.size());
+      std::vector<hrp::Matrix33> act_ee_R_world(stikp.size());
+      std::vector<hrp::Vector3> act_force_world(stikp.size());
+      std::vector<hrp::Vector3> act_moment_world(stikp.size());
+      for (size_t i = 0;i<stikp.size();i++){
+          hrp::Link* target = m_robot->link(stikp[i].target_name);
+          hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(stikp[i].sensor_name);
+          act_ee_p_world[i] = target->p + target->R * stikp[i].localp;
+          act_ee_R_world[i] = target->R * stikp[i].localR;
+          act_force_world[i] = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[0], m_wrenches[i].data[1], m_wrenches[i].data[2]);
+          hrp::Vector3 sensor_moment/*センサまわり*/ = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[3], m_wrenches[i].data[4], m_wrenches[i].data[5]);
+          act_moment_world[i]/*eefまわり*/ = ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * stikp[i].localp + target->p)).cross(act_force_world[i]) + sensor_moment;
+          act_contact_states[i] = multicontactstabilizer.contactconstraints[i].isContact(act_ee_R_world[i].transpose()*act_force_world[i],act_ee_R_world[i].transpose()*act_moment_world[i]);
+      }
+      
+      on_ground = multicontactstabilizer.getActualParameters(qactv,m_robot->rootLink()->p/*Zero*/,m_robot->rootLink()->R/*actworld系*/,act_ee_p_world/*原点不明,actworld系*/,act_ee_R_world/*actworld系*/,act_force_world/*actworld系*/,act_moment_world/*actworld系,eefまわり*/,act_contact_states, contact_decision_threshold);
+
+      return;
+  }
+  
   // cog
   act_cog = m_robot->calcCM();
   // zmp
@@ -1195,6 +1222,30 @@ void Stabilizer::getTargetParameters ()
   target_root_R = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
   m_robot->rootLink()->R = target_root_R;
   m_robot->calcForwardKinematics();
+
+  if(st_algorithm == OpenHRP::StabilizerService::MCS){
+      // Calc swing support limb gain param
+      calcSwingSupportLimbGain();
+
+      std::vector<hrp::Vector3> target_ee_p_world(stikp.size());
+      std::vector<hrp::Matrix33> target_ee_R_world(stikp.size());
+      std::vector<hrp::Vector3> ref_force_world(stikp.size());
+      std::vector<hrp::Vector3> ref_moment_world(stikp.size());
+      std::vector<double> swing_support_gains(stikp.size());
+      for (size_t i = 0; i < stikp.size() ;i++){
+          hrp::Link* target = m_robot->link(stikp[i].target_name);
+          //target_ee_p[i] = target->p + target->R * stikp[i].localCOPPos;
+          target_ee_p_world[i] = target->p + target->R * stikp[i].localp;
+          target_ee_R_world[i] = target->R * stikp[i].localR;
+          ref_force_world[i] = hrp::Vector3(m_ref_wrenches[i].data[0], m_ref_wrenches[i].data[1], m_ref_wrenches[i].data[2]);
+          ref_moment_world[i] = hrp::Vector3(m_ref_wrenches[i].data[3], m_ref_wrenches[i].data[4], m_ref_wrenches[i].data[5]);
+          swing_support_gains[i] = stikp[i].swing_support_gain;
+      }
+
+      multicontactstabilizer.getTargetParameters(transition_smooth_gain,qrefv,target_root_p/*refworld系*/,target_root_R/*refworld系*/,target_ee_p_world/*refworld系*/,target_ee_R_world/*refworld系*/,ref_force_world/*refworld系*/,ref_moment_world/*refworld系,eefまわり*/,ref_contact_states,swing_support_gains);
+      return;
+  }
+  
   ref_zmp = m_robot->rootLink()->R * hrp::Vector3(m_zmpRef.data.x, m_zmpRef.data.y, m_zmpRef.data.z) + m_robot->rootLink()->p; // base frame -> world frame
   hrp::Vector3 foot_origin_pos;
   hrp::Matrix33 foot_origin_rot;
@@ -1317,6 +1368,10 @@ bool Stabilizer::calcZMP(hrp::Vector3& ret_zmp, const double zmp_z)
 
 void Stabilizer::calcStateForEmergencySignal()
 {
+    if(st_algorithm == OpenHRP::StabilizerService::MCS){
+        is_emergency = multicontactstabilizer.calcStateForEmergencySignal(emergency_check_mode,on_ground, transition_count, control_mode==MODE_ST);
+        return;
+    }
   // COP Check
   bool is_cop_outside = false;
   if (DEBUGP) {
@@ -1606,6 +1661,21 @@ void Stabilizer::calcTPCC() {
 void Stabilizer::calcEEForceMomentControl() {
 
     // stabilizer loop
+    if(st_algorithm == OpenHRP::StabilizerService::MCS){
+        std::vector<std::string> ee_names(stikp.size());
+        std::vector<int> ik_loop_count(stikp.size());
+        std::vector<hrp::Vector3> localps(stikp.size());
+        std::vector<hrp::Matrix33> localRs(stikp.size());
+        for(size_t i =0;i<stikp.size();i++){
+            ee_names[i] = stikp[i].ee_name;
+            ik_loop_count[i] = stikp[i].ik_loop_count;
+            localps[i] = stikp[i].localp;
+            localRs[i] = stikp[i].localR;
+        }
+        multicontactstabilizer.calcMultiContactControl(is_ik_enable,jpe_v,m_robot,ee_names,ik_loop_count,localps,localRs);
+        return;
+    }
+    
       // return to referencea
       m_robot->rootLink()->R = target_root_R;
       m_robot->rootLink()->p = target_root_p;
@@ -1901,6 +1971,7 @@ void Stabilizer::sync_2_st ()
     transition_count = 0;
     control_mode = MODE_AIR;
   }
+  multicontactstabilizer.sync_2_st();
 }
 
 void Stabilizer::sync_2_idle ()
