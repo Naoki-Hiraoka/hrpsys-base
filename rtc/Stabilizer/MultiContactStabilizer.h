@@ -121,8 +121,8 @@ public:
         force_k1 = -1357.2;//TODO 適切なゲインを入れよ
         force_k2 = -1687.8;
         force_k3 = 0.14;
-        moment_k1 = -1.95;
-        moment_k2 = 0.2;
+        moment_k1 = -2.55;
+        moment_k2 = -1.128;
         external_input_damping_gain = 0.05;
         external_input_time_const = 1.5;
         external_time_const = 10000.0;//多分いらない
@@ -144,7 +144,6 @@ public:
     }
 
     void getTargetParameters(const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_ee_p/*refworld系*/, const std::vector <hrp::Matrix33>& _ref_ee_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains) {
-        std::cerr << "[MCS] getTargetParameters" << std::endl;
         //Pg Pgdot Fg hg Ngの目標値を受け取る
         transition_smooth_gain = _transition_smooth_gain;
         qrefv = _qrefv;
@@ -188,7 +187,6 @@ public:
 
     //on_groundかを返す
     bool getActualParameters(const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_ee_p/*actworld系*/, const std::vector <hrp::Matrix33>& _act_ee_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, const std::vector<bool>& _act_contact_states, const double& contact_decision_threshold) {
-        std::cerr << "[MCS] getActualParameters" << std::endl;
         //接触eefとの相対位置関係と，重力方向さえ正確なら，root位置，yaw,は微分が正確なら誤差が蓄積しても良い
         //root位置が与えられない場合は，接触拘束から推定する
         
@@ -366,12 +364,15 @@ public:
             act_total_force_origin/*actorigin系*/ = act_origin_R/*actworld系*/.transpose() * act_total_force/*actworld系*/;
             act_total_moment_origin/*actorigin系,cogまわり*/ = act_origin_R/*actworld系*/.transpose() * act_total_moment/*actworld系,cogまわり*/;
 
+            std::cerr << "re" <<std::endl;            
             //external wrenchについて考える
 
             //制御モデルから，必要な入力Fg, Ngを求める
             hrp::Vector3 dcog/*curorigin系*/ = act_cog_origin/*actorigin系*/ - ref_cog_origin/*reforigin系*/;
             hrp::Vector3 dcogvel/*curorigin系*/ = act_cogvel_origin/*actorigin系*/ - ref_cogvel_origin/*reforigin系*/;
             hrp::Vector3 dforce/*curorigin系*/ = act_total_force_origin/*actorigin系*/ - ref_total_force_origin/*reforigin系*/;
+            std::cerr << "actcog" << act_cog_origin <<std::endl;
+            std::cerr << "refcog" << ref_cog_origin <<std::endl;
             std::cerr << "dcog" << dcog <<std::endl;
             std::cerr << "dcogvel" << dcogvel <<std::endl;
             std::cerr << "dforce" << dforce <<std::endl;
@@ -390,17 +391,14 @@ public:
             {
                 //必要な加速度に変換
                 d_total_pos_acc_origin/*curorigin系*/ = d_total_force_origin/*curorigin系*/ /  act_robot->totalMass();
+                std::cerr << "posacc" << d_total_pos_acc_origin <<std::endl;
                 hrp::Matrix33 I;
                 act_robot/*actworld系*/->rootLink()->calcSubMassCM();
                 act_robot/*actworld系*/->rootLink()->calcSubMassInertia(I/*actworld系,cogまわり*/);
-                std::cerr << "I" << I <<std::endl;
                 I/*actorigin系,cogまわり*/ = act_origin_R/*actworld系*/.transpose() * I/*actworld系,cogまわり*/ * act_origin_R/*actworld系*/;
-                std::cerr << "I" << I <<std::endl;
                 hrp::Matrix33 I_inv/*actorigin系,cogまわり*/ = I/*actorigin系,cogまわり*/.inverse();
                 d_total_rot_acc_origin/*curorigin系,cogまわり*/ = I_inv/*actorigin系,cogまわり*/ * d_total_moment_origin/*curorigin系,cogまわり*/; //I * wdot = N - Idot * w  <=>  I * wdot = N - [wx] * I * w  <=>  I * wdot = N - [wx] * L  => d_wdot = Iinv * d_N
-                std::cerr << "I_inv" << I_inv <<std::endl;
-                std::cerr << "act_origin_R" << act_origin_R <<std::endl;
-                std::cerr << "acc" << d_total_rot_acc_origin <<std::endl;
+                std::cerr << "omegaacc" << d_total_rot_acc_origin <<std::endl;
                 //RPYを使う場合
                 //hrp::Vector3 d_omega/*curorigin系,cogまわり*/ = I_inv/*actorigin系,cogまわり*/ * (d_total_moment_origin/*curorigin系,cogまわり*/ - w/*actorigin系,cogまわり*/.cross(act_L_origin/*actorigin系,cogまわり*/)); //I * wdot = N - Idot * w  <=>  I * wdot = N - [wx] * I * w  <=>  I * wdot = N - [wx] * L
                 //hrp::Matrix33 d_R;
@@ -441,7 +439,8 @@ public:
                         hrp::Vector3 ddrx_p/*eef系*/ = act_ee_R_origin[i]/*actorigin系*/.transpose() * (-hrp::Vector3::UnitX()/*curorigin系*/).cross(act_ee_p_origin[i]/*actorigin系*/ - act_cog/*actorigin系*/);
                         hrp::Vector3 ddrx_omega/*eef系,eefまわり*/ = act_ee_R_origin[i]/*actorigin系*/.transpose() * (eps * -hrp::Vector3::UnitX()/*curorigin系*/);
                         hrp::Matrix33 ddrx_R;
-                        hrp::calcRodrigues(ddrx_R/*eef系,eefまわり*/,ddrx_omega/*eef系,eefまわり*/.normalized(), ddrx_omega/*eef系,eefまわり*/.norm());
+                        if(ddrx_omega.norm()!=0.0) hrp::calcRodrigues(ddrx_R/*eef系,eefまわり*/,ddrx_omega/*eef系,eefまわり*/.normalized(), ddrx_omega/*eef系,eefまわり*/.norm());
+                        else ddrx_R = hrp::Matrix33::Identity();
                         hrp::Vector3 ddrx_rpy/*eef系,eefまわり*/ = hrp::rpyFromRot(ddrx_R/*eef系,eefまわり*/) / eps;
                         external_eef_vectors(6*act_contact_idx+0,3) = ddrx_p[0];
                         external_eef_vectors(6*act_contact_idx+1,3) = ddrx_p[1];
@@ -453,7 +452,8 @@ public:
                         hrp::Vector3 ddry_p/*eef系*/ = act_ee_R_origin[i]/*actorigin系*/.transpose() * (-hrp::Vector3::UnitY()/*curorigin系*/).cross(act_ee_p_origin[i]/*actorigin系*/ - act_cog/*actorigin系*/);
                         hrp::Vector3 ddry_omega/*eef系,eefまわり*/ = act_ee_R_origin[i]/*actorigin系*/.transpose() * (eps * -hrp::Vector3::UnitY()/*curorigin系*/);
                         hrp::Matrix33 ddry_R;
-                        hrp::calcRodrigues(ddry_R/*eef系,eefまわり*/,ddry_omega/*eef系,eefまわり*/.normalized(), ddry_omega/*eef系,eefまわり*/.norm());
+                        if(ddry_omega.norm()!=0.0) hrp::calcRodrigues(ddry_R/*eef系,eefまわり*/,ddry_omega/*eef系,eefまわり*/.normalized(), ddry_omega/*eef系,eefまわり*/.norm());
+                        else ddry_R = hrp::Matrix33::Identity();
                         hrp::Vector3 ddry_rpy/*eef系,eefまわり*/ = hrp::rpyFromRot(ddry_R/*eef系,eefまわり*/) / eps;
                         external_eef_vectors(6*act_contact_idx+0,4) = ddry_p[0];
                         external_eef_vectors(6*act_contact_idx+1,4) = ddry_p[1];
@@ -465,7 +465,8 @@ public:
                         hrp::Vector3 ddrz_p/*eef系*/ = act_ee_R_origin[i]/*actorigin系*/.transpose() * (-hrp::Vector3::UnitZ()/*curorigin系*/).cross(act_ee_p_origin[i]/*actorigin系*/ - act_cog/*actorigin系*/);
                         hrp::Vector3 ddrz_omega/*eef系,eefまわり*/ = act_ee_R_origin[i]/*actorigin系*/.transpose() * (eps * -hrp::Vector3::UnitZ()/*curorigin系*/);
                         hrp::Matrix33 ddrz_R;
-                        hrp::calcRodrigues(ddrz_R/*eef系,eefまわり*/,ddrz_omega/*eef系,eefまわり*/.normalized(), ddrz_omega/*eef系,eefまわり*/.norm());
+                        if(ddrz_omega.norm()!=0.0) hrp::calcRodrigues(ddrz_R/*eef系,eefまわり*/,ddrz_omega/*eef系,eefまわり*/.normalized(), ddrz_omega/*eef系,eefまわり*/.norm());
+                        else ddrz_R = hrp::Matrix33::Identity();
                         hrp::Vector3 ddrz_rpy/*eef系,eefまわり*/ = hrp::rpyFromRot(ddrz_R/*eef系,eefまわり*/) / eps;
                         external_eef_vectors(6*act_contact_idx+0,5) = ddrz_p[0];
                         external_eef_vectors(6*act_contact_idx+1,5) = ddrz_p[1];
@@ -583,21 +584,25 @@ public:
             d_rotacc_external/*refworld系,cogまわり*/ += - d_rotacc_external/*refworld系,cogまわり*/ / air_external_time_const * dt;
             d_rotvel_external/*refworld系,cogまわり*/ += d_rotacc_external/*refworld系,cogまわり*/ * dt - d_rotvel_external/*refworld,cogまわり系*/ / air_external_time_const * dt;
             hrp::Matrix33 d_Rvel_external/*refworld系,cogまわり*/;
-            hrp::calcRodrigues(d_Rvel_external/*refworld系,cogまわり*/,d_rotvel_external/*refworld系,cogまわり*/.normalized(), d_rotvel_external/*refworld系,cogまわり*/.norm());
+            if(d_rotvel_external.norm()!=0.0) hrp::calcRodrigues(d_Rvel_external/*refworld系,cogまわり*/,d_rotvel_external/*refworld系,cogまわり*/.normalized(), d_rotvel_external/*refworld系,cogまわり*/.norm());
+            else d_Rvel_external = hrp::Matrix33::Identity();
             hrp::Vector3 d_rot_external/*refworld系,cogまわり*/ = rats::matrix_log(d_R_external/*refworld系,cogまわり*/);
             d_rot_external/*refworld系,cogまわり*/ += - d_rot_external/*refworld系,cogまわり*/ / air_external_time_const * dt;
-            hrp::calcRodrigues(d_R_external/*refworld系,cogまわり*/,d_rot_external/*refworld系,cogまわり*/.normalized(), d_rot_external/*refworld系,cogまわり*/.norm());
+            if(d_rot_external.norm()!=0.0) hrp::calcRodrigues(d_R_external/*refworld系,cogまわり*/,d_rot_external/*refworld系,cogまわり*/.normalized(), d_rot_external/*refworld系,cogまわり*/.norm());
+            else d_R_external = hrp::Matrix33::Identity();
             d_R_external/*refworld系,cogまわり*/ = d_Rvel_external/*refworld系,cogまわり*/ * d_R_external/*refworld系,cogまわり*/;
 
         }else{//if(!product_contact)
             d_posacc_external/*refworld系*/ += (transition_smooth_gain / external_input_damping_gain * ref_origin_R/*refworld系*/ * d_total_pos_acc_origin/*curorigin系*/ - d_posacc_external/*refworld系*/ / external_input_time_const) * dt;
             d_posvel_external/*refworld系*/ += d_posacc_external/*refworld系*/ * dt - d_posvel_external/*refworld系*/ / external_time_const * dt;
             d_pos_external/*refworld系*/ += d_posvel_external/*refworld系*/ * dt - d_pos_external/*refworld系*/ / external_time_const * dt;
-            d_rotacc_external/*refworld系,cogまわり*/ += (transition_smooth_gain / external_input_damping_gain *  ref_origin_R/*refworld系*/ * d_total_rot_acc_origin/*curorigin系,cogまわり*/ - d_rotacc_external/*refworld系,cogまわり*/ / external_input_time_const) * dt;
+            d_rotacc_external/*refworld系,cogまわり*/ += (0.0/*TODO*/ * transition_smooth_gain / external_input_damping_gain *  ref_origin_R/*refworld系*/ * d_total_rot_acc_origin/*curorigin系,cogまわり*/ - d_rotacc_external/*refworld系,cogまわり*/ / external_input_time_const) * dt;
             d_rotvel_external/*refworld系,cogまわり*/ += d_rotacc_external/*refworld系,cogまわり*/ * dt - d_rotvel_external/*refworld,cogまわり系*/ / external_time_const * dt;
+            std::cerr << "d_rotvel_external" << d_rotvel_external <<std::endl;
             hrp::Matrix33 d_Rvel_external/*refworld系,cogまわり*/;
-            hrp::calcRodrigues(d_Rvel_external/*refworld系,cogまわり*/,d_rotvel_external/*refworld系,cogまわり*/.normalized(), d_rotvel_external/*refworld系,cogまわり*/.norm());
-
+            if(d_rotvel_external.norm()!=0.0) hrp::calcRodrigues(d_Rvel_external/*refworld系,cogまわり*/,d_rotvel_external/*refworld系,cogまわり*/.normalized(), d_rotvel_external/*refworld系,cogまわり*/.norm());
+            else d_Rvel_external = hrp::Matrix33::Identity();
+            std::cerr << "d_Rvel_external" << d_Rvel_external <<std::endl;
             //指令値と実際の値でrootリンクのContactEEFOrigin系での傾きを比べ,補正する
             Eigen::Quaternion<double> ref_q/*refworld系*/(ref_root_R/*refrefworld系*/);
             Eigen::Quaternion<double> act_q/*refworld系*/(ref_origin_R/*refworld系*/ * act_root_R_origin/*actorigin系*/);
@@ -618,13 +623,14 @@ public:
             q_cur_raw = q_cur_raw.normalized();
             Eigen::Quaternion<double> q_cur/*refworld系*/(q_cur_raw[0],q_cur_raw[1],q_cur_raw[2],q_cur_raw[3]);
             d_R_external/*refworld系,cogまわり*/ = (q_cur.toRotationMatrix()/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) * d_R_external/*refworld系,cogまわり*/;
-
+            std::cerr << "d_R_external" << d_R_external <<std::endl;
             
             hrp::Vector3 d_rot_external/*refworld系,cogまわり*/ = rats::matrix_log(d_R_external/*refworld系,cogまわり*/);
             d_rot_external/*refworld系,cogまわり*/ += - d_rot_external/*refworld系,cogまわり*/ / external_time_const * dt;
-            hrp::calcRodrigues(d_R_external/*refworld系,cogまわり*/,d_rot_external/*refworld系,cogまわり*/.normalized(), d_rot_external/*refworld系,cogまわり*/.norm());
+            if(d_rot_external.norm()!=0.0) hrp::calcRodrigues(d_R_external/*refworld系,cogまわり*/,d_rot_external/*refworld系,cogまわり*/.normalized(), d_rot_external/*refworld系,cogまわり*/.norm());
+            else d_R_external =hrp::Matrix33::Identity();
             d_R_external/*refworld系,cogまわり*/ = d_Rvel_external/*refworld系,cogまわり*/ * d_R_external/*refworld系,cogまわり*/;
-            std::cerr << "d_R_external" << d_R_external <<std::endl;
+        
         }//if(!product_contact)
 
         //internalについて
@@ -637,8 +643,8 @@ public:
             size_t act_contact_idx = 0;
             for(size_t i = 0;i<eefnum;i++){
                 if(act_contact_states[i]){
-                    d_cureefpos[i]/*eef系*/ = transition_smooth_gain * d_curpos_internal/*eef系,eefまわり*/.block(act_contact_idx * 6,0,3,1);
-                    d_cureefrpy[i]/*eef系*/ = transition_smooth_gain * d_curpos_internal/*eef系,eefまわり*/.block(act_contact_idx * 6 + 3,0,3,1);
+                    d_cureefpos[i]/*eef系*/ = 0.0/*TODO*/ * transition_smooth_gain * d_curpos_internal/*eef系,eefまわり*/.block(act_contact_idx * 6,0,3,1);
+                    d_cureefrpy[i]/*eef系*/ = 0.0/*TODO*/ * transition_smooth_gain * d_curpos_internal/*eef系,eefまわり*/.block(act_contact_idx * 6 + 3,0,3,1);
                     act_contact_idx++;
                 }else{
                     d_cureefpos[i]/*eef系*/ += - d_cureefpos[i]/*eef系*/ / air_internal_time_const * dt;
@@ -675,6 +681,9 @@ public:
         m_robot->rootLink()->R/*refworld系*/ = d_R_external/*refworld系,cogまわり*/ * m_robot->rootLink()->R/*refworld系*/;
         m_robot->rootLink()->p/*refworld系*/ = m_robot->rootLink()->p/*refworld系*/ + d_pos_external/*refworld系*/ + ((cur_cog/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/) - d_R_external/*refworld系,cogまわり*/ * (cur_cog/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/));
         m_robot->calcForwardKinematics();
+
+        std::cerr << "dpos" << d_pos_external/*refworld系*/<< std::endl;
+        std::cerr << "drot" << d_R_external/*refworld系*/<< std::endl;
         
         //IKを解く
         std::vector<hrp::Vector3> tmpp(eefnum);
@@ -685,12 +694,8 @@ public:
                 tmpR[i]/*refworld系*/ = ref_ee_R[i]/*refworld系*/ * hrp::rotFromRpy(d_cureefrpy[i])/*eef系*/;
             }
         }
-        std::cerr << m_robot->rootLink()->p <<std::endl;
-        std::cerr << m_robot->rootLink()->R <<std::endl;
         for (size_t i = 0; i < eefnum; i++) {
             if (is_ik_enable[i]) {
-                std::cerr << tmpp[i] << std::endl;
-                std::cerr << tmpR[i] << std::endl;
                 for (size_t jj = 0; jj < ik_loop_count[i]; jj++) {
                     jpe_v[i]->calcInverseKinematics2Loop(tmpp[i]/*refworld系*/, tmpR[i]/*refworld系*/, 1.0, 0.001, 0.01, &qrefv, transition_smooth_gain,
                                                          localps[i]/*eef系*/,
