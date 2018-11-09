@@ -2559,6 +2559,8 @@ std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService
         return "EEFMQPCOP";
     case OpenHRP::StabilizerService::EEFMQPCOP2:
         return "EEFMQPCOP2";
+    case OpenHRP::StabilizerService::MCS:
+        return "MCS";
     default:
         return "";
     }
