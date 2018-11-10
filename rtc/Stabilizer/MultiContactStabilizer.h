@@ -57,22 +57,22 @@ public:
     MultiContactStabilizer() {
     }
 
-    void initialize(const hrp::Body& _m_robot, const double& _dt,int _eefnum){
+    void initialize( hrp::BodyPtr& m_robot, const double& _dt,int _eefnum){
         std::cerr << "[MCS] initialize" << std::endl;
         dt = _dt;
         eefnum = _eefnum;
-        
-        ref_robot = hrp::BodyPtr(new hrp::Body(_m_robot));
-        ref_robot->calcTotalMass();
-        act_robot = hrp::BodyPtr(new hrp::Body(_m_robot));
-        act_robot->calcTotalMass();
+
+        m_robot->calcTotalMass();
 
         transition_smooth_gain = 0;
-        qcurv = hrp::dvector::Zero(ref_robot->numJoints());
+        qcurv = hrp::dvector::Zero(m_robot->numJoints());
 
-        qrefv = hrp::dvector::Zero(ref_robot->numJoints());
+        qrefv = hrp::dvector::Zero(m_robot->numJoints());
+        dqrefv = hrp::dvector::Zero(m_robot->numJoints());
         ref_root_p = hrp::Vector3::Zero();
         ref_root_R = hrp::Matrix33::Identity();
+        ref_root_v = hrp::Vector3::Zero();
+        ref_root_w = hrp::Vector3::Zero();
         ref_ee_p.resize(eefnum,hrp::Vector3::Zero());
         ref_ee_R.resize(eefnum,hrp::Matrix33::Identity());
         ref_force.resize(eefnum,hrp::Vector3::Zero());
@@ -88,9 +88,12 @@ public:
         ref_total_force = hrp::Vector3::Zero();
         ref_total_moment = hrp::Vector3::Zero();
 
-        qactv = hrp::dvector::Zero(act_robot->numJoints());
+        qactv = hrp::dvector::Zero(m_robot->numJoints());
+        dqactv = hrp::dvector::Zero(m_robot->numJoints());
         act_root_p = hrp::Vector3::Zero();
         act_root_R = hrp::Matrix33::Identity();
+        act_root_v = hrp::Vector3::Zero();
+        act_root_w = hrp::Vector3::Zero();
         act_ee_p.resize(eefnum,hrp::Vector3::Zero());
         act_ee_R.resize(eefnum,hrp::Matrix33::Identity());
         act_force.resize(eefnum,hrp::Vector3::Zero());
@@ -107,7 +110,7 @@ public:
         act_total_force = hrp::Vector3::Zero();
         act_total_moment = hrp::Vector3::Zero();
 
-        d_q = hrp::dvector::Zero(6+ref_robot->numJoints());
+        d_q = hrp::dvector::Zero(6+m_robot->numJoints());
 
         force_k1 = -1357.2;
         force_k2 = -1687.8;
@@ -115,7 +118,7 @@ public:
         moment_k1 = -2.55;
         moment_k2 = -1.128;
         moment_k3 = 10.0;
-        limb_gains.resize(eefnum);
+        limb_gains.resize(eefnum*6);
         for(size_t i= 0;i<eefnum;i++){
             limb_gains[i*6+0]=0.1;
             limb_gains[i*6+1]=0.1;
@@ -124,7 +127,7 @@ public:
             limb_gains[i*6+4]=0.01;
             limb_gains[i*6+5]=0.1;
         }
-        hardware_gains.resize(ref_robot->numJoints(),700.0);
+        hardware_gains.resize(m_robot->numJoints(),700.0);
         d_q_time_const = 1.5;
         d_q_damping_gain = 0.05;
         contacteeforiginweight.resize(eefnum, 1.0);
@@ -134,18 +137,19 @@ public:
     }
     
     void getCurrentParameters(const hrp::dvector& _qcurv) {
-        std::cerr << "[MCS] getCurrentParameters"<< std::endl;
         //前回の指令値を記憶する
         qcurv = _qcurv;
 
     }
 
-    void getTargetParameters(const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_ee_p/*refworld系*/, const std::vector <hrp::Matrix33>& _ref_ee_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains) {
-        std::cerr << "[MCS] getTargetParameters"<< std::endl;
+    void getTargetParameters(hrp::BodyPtr& m_robot, const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_ee_p/*refworld系*/, const std::vector <hrp::Matrix33>& _ref_ee_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains) {
         //Pg Pgdot Fg hg Ngの目標値を受け取る
         transition_smooth_gain = _transition_smooth_gain;
+        dqrefv = (_qrefv - qrefv/*前回の値*/)/dt;
         qrefv = _qrefv;
+        ref_root_v/*refworld系*/ = (_ref_root_p/*refworld系*/ - ref_root_p/*refworld系,前回の値*/) / dt;
         ref_root_p/*refworld系*/ = _ref_root_p/*refworld系*/;
+        ref_root_w/*refworld系*/ = rats::matrix_log(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系,前回の値*/.transpose()) / dt;
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
         ref_ee_p/*refworld系*/ = _ref_ee_p/*refworld系*/;
         ref_ee_R/*refworld系*/ = _ref_ee_R/*refworld系*/;
@@ -153,56 +157,42 @@ public:
         ref_moment/*refworld系,eefまわり*/ = _ref_moment/*refworld系,eefまわり*/;
         ref_contact_states = _ref_contact_states;
         swing_support_gains = _swing_support_gains;
-        std::cerr << "[MCS] getTargetParameters1"<< std::endl;
         for (int i = 0; i < eefnum;i++){
             ref_force_eef[i]/*refeef系*/ = ref_ee_R[i]/*refworld系*/.transpose() * ref_force[i]/*refworld系*/;
             ref_moment_eef[i]/*refeef系*/ = ref_ee_R[i]/*refworld系*/.transpose() * ref_moment[i]/*refworld系*/;
         }
-        std::cerr << "[MCS] getTargetParameters2"<< std::endl;
-        for ( int i = 0;i< ref_robot->numJoints();i++){
-            ref_robot->joint(i)->dq = (qrefv[i] - ref_robot->joint(i)->q/*前回の値*/) / dt;
-            ref_robot->joint(i)->q = qrefv[i];
-            std::cerr << ref_robot->joint(i)->q << " " << ref_robot->joint(i)->dq << std::endl;
+        for ( int i = 0;i< m_robot->numJoints();i++){
+            m_robot->joint(i)->dq = dqrefv[i];
+            m_robot->joint(i)->q = qrefv[i];
         }
-        std::cerr << "[MCS] getTargetParameters3"<< std::endl;
-        ref_robot->rootLink()->v/*refworld系*/ = (ref_root_p/*refworld系*/ - ref_robot->rootLink()->p/*refworld系,前回の値*/) / dt;
-        std::cerr << ref_robot->rootLink()->v << std::endl;
-        std::cerr << "[MCS] getTargetParameters3.1"<< std::endl;
-        ref_robot->rootLink()->p/*refworld系*/ = ref_root_p/*refworld系*/;
-        std::cerr << ref_robot->rootLink()->p << std::endl;
-        std::cerr << "[MCS] getTargetParameters3.2"<< std::endl;
-        ref_robot->rootLink()->w/*refworld系*/ = rats::matrix_log(ref_root_R/*refworld系*/ * ref_robot->rootLink()->R/*refworld系,前回の値*/.transpose()) / dt;
-        std::cerr << ref_robot->rootLink()->w << std::endl;
-        std::cerr << "[MCS] getTargetParameters3.4"<< std::endl;
-        ref_robot->rootLink()->R/*refworld系*/ = ref_root_R/*refworld系*/;
-        std::cerr << ref_robot->rootLink()->R << std::endl;
-        std::cerr << "[MCS] getTargetParameters3.5"<< std::endl;
-        ref_robot->calcForwardKinematics(true);
-        std::cerr << "[MCS] getTargetParameters3.6"<< std::endl;
-        ref_cog/*refworld系*/ = ref_robot->calcCM();
-        std::cerr << "[MCS] getTargetParameters4"<< std::endl;
-        ref_robot->calcTotalMomentum(ref_P/*refworld系*/,ref_L/*refworld系,refworld原点まわり*/);//rootLinkのv,w，各jointのdqはこちらで与えること
-        ref_L/*refworld系,cogまわり*/ = ref_L/*refworld系,refworld原点まわり*/ - ref_robot->totalMass() * ref_cog/*refworld系*/.cross(ref_cogvel/*refworld系*/);
-        ref_cogvel/*refworld系*/ = ref_P/*refworld系*/ / ref_robot->totalMass();
+        m_robot->rootLink()->v/*refworld系*/ = ref_root_v/*refworld系*/;
+        m_robot->rootLink()->p/*refworld系*/ = ref_root_p/*refworld系*/;
+        m_robot->rootLink()->w/*refworld系*/ = ref_root_w/*refworld系*/;
+        m_robot->rootLink()->R/*refworld系*/ = ref_root_R/*refworld系*/;
+        m_robot->calcForwardKinematics();//erase
+        m_robot->calcForwardKinematics(true);
+        ref_cog/*refworld系*/ = m_robot->calcCM();
+        m_robot->calcTotalMomentum(ref_P/*refworld系*/,ref_L/*refworld系,refworld原点まわり*/);//rootLinkのv,w，各jointのdqはこちらで与えること
+        ref_L/*refworld系,cogまわり*/ = ref_L/*refworld系,refworld原点まわり*/ - m_robot->totalMass() * ref_cog/*refworld系*/.cross(ref_cogvel/*refworld系*/);
+        ref_cogvel/*refworld系*/ = ref_P/*refworld系*/ / m_robot->totalMass();
         ref_total_force/*refworld系*/ = hrp::Vector3::Zero();
         ref_total_moment/*refworld系,cogまわり*/ = hrp::Vector3::Zero();
-        std::cerr << "[MCS] getTargetParameters5"<< std::endl;
         for (size_t i = 0; i < eefnum;i++){
             ref_total_force/*refworld系*/ += ref_force[i]/*refworld系*/;
             ref_total_moment/*refworld系,cogまわり*/ += (ref_ee_p[i]/*refworld系*/-ref_cog/*refworld系*/).cross(ref_force[i]/*refworld系*/) + ref_moment[i]/*refworld系,eefまわり*/;
         }
-        std::cerr << "[MCS] getTargetParameters end"<< std::endl;
         //目標cogをちょっと進める処理は必要か TODO
     }
 
     //on_groundかを返す
-    bool getActualParameters(const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_ee_p/*actworld系*/, const std::vector <hrp::Matrix33>& _act_ee_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, const std::vector<bool>& _act_contact_states, const double& contact_decision_threshold) {
-        std::cerr << "[MCS] getActualParameters"<< std::endl;
+    bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_ee_p/*actworld系*/, const std::vector <hrp::Matrix33>& _act_ee_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, const std::vector<bool>& _act_contact_states, const double& contact_decision_threshold) {
         //接触eefとの相対位置関係と，重力方向さえ正確なら，root位置，yaw,は微分が正確なら誤差が蓄積しても良い
         //root位置が与えられない場合は，接触拘束から推定する
         
         //Pg Pgdot Fg hg Ngの実際の値を受け取る
+        dqactv = (_qactv - qactv/*前回の値*/)/dt;
         qactv = _qactv;
+        act_root_w/*actworld系*/ = rats::matrix_log(_act_root_R/*actworld系*/ * act_root_R/*actworld系,前回の値*/.transpose()) / dt;
         act_root_R/*actworld系*/ = _act_root_R/*原点不明,actworld系*/;
         act_ee_R/*actworld系*/ = _act_ee_R/*原点不明,actworld系*/;
         act_force/*actworld系*/ = _act_force/*原点不明,actworld系*/;
@@ -214,6 +204,7 @@ public:
         }
 
         if(_act_root_p!=hrp::Vector3::Zero()){
+            act_root_v/*actworld系*/ = (_act_root_p/*actworld系*/ - act_root_p/*actworld系,前回の値*/) / dt;
             act_root_p/*actworld系*/ = _act_root_p/*actworld系*/;
             act_ee_p/*actworld系*/ = _act_ee_p/*actworld系*/;
         }else{
@@ -230,6 +221,7 @@ public:
             if(act_contact_weight!=0){
                 d_act_root_p/*actworld系*/ = d_ee_p/*actworld系*/ / act_contact_weight;
             }
+            act_root_v/*actworld系*/ = d_act_root_p/*actworld系*/ / dt;
             act_root_p/*actworld系*/ += d_act_root_p/*actworld系*/;
             for(size_t i = 0; i < eefnum; i++){
                 act_ee_p[i]/*actworld系*/ = act_root_p/*actworld系*/ + _act_ee_p[i]/*原点rootlink,actworld系*/;
@@ -242,19 +234,19 @@ public:
             act_moment_eef[i]/*acteef系*/ = act_ee_R[i]/*actworld系*/.transpose() * act_moment[i]/*actworld系*/;
         }
         
-        for ( int i = 0;i< act_robot->numJoints();i++){
-            act_robot->joint(i)->dq = (qactv[i] - act_robot->joint(i)->q/*前回の値*/) / dt;
-            act_robot->joint(i)->q = qactv[i];
+        for ( int i = 0;i< m_robot->numJoints();i++){
+            m_robot->joint(i)->dq = dqactv[i];
+            m_robot->joint(i)->q = qactv[i];
         }
-        act_robot->rootLink()->v/*actworld系*/ = (act_root_p/*actworld系*/ - act_robot->rootLink()->p/*actworld系,前回の値*/) / dt;
-        act_robot->rootLink()->p/*actworld系*/ = act_root_p/*actworld系*/;
-        act_robot->rootLink()->w/*actworld系*/ = rats::matrix_log(act_root_R/*actworld系*/ * act_robot->rootLink()->R/*actworld系,前回の値*/.transpose()) / dt;
-        act_robot->rootLink()->R/*actworld系*/ = act_root_R/*actworld系*/;
-        act_robot->calcForwardKinematics(true);
-        act_cog/*actworld系*/ = act_robot->calcCM();
-        act_robot->calcTotalMomentum(act_P/*actworld系*/,act_L/*actworld系,actworld原点まわり*/);
-        act_cogvel/*actworld系*/ = act_cogvel_filter->passFilter(act_P/*actworld系*/ / act_robot->totalMass());
-        act_L/*actworld系,cogまわり*/ = act_L/*actworld系,actworld原点まわり*/ - act_robot->totalMass() * act_cog/*actworld系*/.cross(act_cogvel/*actworld系*/);
+        m_robot->rootLink()->v/*actworld系*/ = act_root_v/*actworld系*/;
+        m_robot->rootLink()->p/*actworld系*/ = act_root_p/*actworld系*/;
+        m_robot->rootLink()->w/*actworld系*/ = act_root_w/*actworld系*/;
+        m_robot->rootLink()->R/*actworld系*/ = act_root_R/*actworld系*/;
+        m_robot->calcForwardKinematics(true);
+        act_cog/*actworld系*/ = m_robot->calcCM();
+        m_robot->calcTotalMomentum(act_P/*actworld系*/,act_L/*actworld系,actworld原点まわり*/);
+        act_cogvel/*actworld系*/ = act_cogvel_filter->passFilter(act_P/*actworld系*/ / m_robot->totalMass());
+        act_L/*actworld系,cogまわり*/ = act_L/*actworld系,actworld原点まわり*/ - m_robot->totalMass() * act_cog/*actworld系*/.cross(act_cogvel/*actworld系*/);
         act_L/*actworld系,cogまわり*/ = act_L_filter->passFilter(act_L);
         act_total_force/*actworld系*/ = hrp::Vector3::Zero();
         act_total_moment/*actworld系,cogまわり*/ = hrp::Vector3::Zero();
@@ -292,6 +284,8 @@ public:
 
         hrp::Vector3 act_root_p_origin/*actorigin系*/;
         hrp::Matrix33 act_root_R_origin/*actorigin系*/;
+        hrp::Vector3 act_root_v_origin/*actorigin系*/;
+        hrp::Vector3 act_root_w_origin/*actorigin系*/;
         std::vector <hrp::Vector3> act_ee_p_origin(eefnum)/*actorigin系*/;
         std::vector <hrp::Matrix33> act_ee_R_origin(eefnum)/*actorigin系*/;
         std::vector <hrp::Vector3> act_force_origin(eefnum)/*actorigin系*/;
@@ -354,6 +348,8 @@ public:
             //actual
             calcContactEEFOriginCoords(act_ee_p/*actworld系*/, act_ee_R/*actworld系*/, product_contact_states, act_origin_p/*actworld系*/, act_origin_R/*actworld系*/);
             act_root_p_origin/*actorigin系*/ = act_origin_R/*actworld系*/.transpose() * (act_root_p/*actworld系*/ - act_origin_p/*actworld系*/);
+            act_root_v_origin/*actorigin系*/ = act_origin_R/*actworld系*/.transpose() * act_root_v/*actworld系*/;
+            act_root_w_origin/*actorigin系*/ = act_origin_R/*actworld系*/.transpose() * act_root_w/*actworld系*/;
             act_root_R_origin/*actorigin系*/ = act_origin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/;
             for (size_t i = 0; i < eefnum; i++){
                 act_ee_p_origin[i]/*actorigin系*/ = act_origin_R/*actworld系*/.transpose() * (act_ee_p[i]/*actworld系*/ - act_origin_p/*actworld系*/);
@@ -414,7 +410,7 @@ public:
             cogwrench_cur_origin.block(0,0,3,1) = cur_total_force_origin/*curorigin系,cogまわり*/;
             cogwrench_cur_origin.block(3,0,3,1) = cur_total_moment_origin/*curorigin系,cogまわり*/;
             
-            hrp::dvector d_FgMg/*curorigin系,cogまわり*/ = cogwrench_cur_origin/*curorigin系,cogまわり*/ - G/*actorigin系,cogまわり<->eef系,eefまわり*/ * wrench_ref_eef/*eef系,eefまわり*/;
+            hrp::dvector d_FgMg/*curorigin系,cogまわり*/ = transition_smooth_gain * (cogwrench_cur_origin/*curorigin系,cogまわり*/ - G/*actorigin系,cogまわり<->eef系,eefまわり*/ * wrench_ref_eef/*eef系,eefまわり*/);
             hrp::dmatrix W2 = hrp::dmatrix::Zero(6*act_contact_eef_num,6*act_contact_eef_num);
             {
                 size_t act_contact_idx = 0.0;
@@ -487,18 +483,17 @@ public:
             //実際の値のangle-vectorにする
             m_robot->rootLink()->R/*actorigin系*/ = act_root_R_origin/*actorigin系*/;
             m_robot->rootLink()->p/*actorigin系*/ = act_root_p_origin/*actorigin系*/;
-            m_robot->rootLink()->w/*actorigin系*/ = act_origin_R.transpose()/*actworld系*/ * act_robot->rootLink()->w/*actworld系*/;
-            m_robot->rootLink()->v/*actorigin系*/ = act_origin_R.transpose()/*actworld系*/ * act_robot->rootLink()->v/*actworld系*/;
+            m_robot->rootLink()->w/*actorigin系*/ = act_root_w_origin/*actorigin系*/;
+            m_robot->rootLink()->v/*actorigin系*/ = act_root_v_origin/*actorigin系*/;
             for (size_t i = 0;i < m_robot->numJoints(); i++){
-                m_robot->joint(i)->q = act_robot->joint(i)->q;
-                m_robot->joint(i)->dq = act_robot->joint(i)->dq;
+                m_robot->joint(i)->q = qactv[i];
+                m_robot->joint(i)->dq = dqactv[i];
             }
             m_robot->calcForwardKinematics(true);
-            std::cerr << "vo_before" << m_robot->rootLink()->vo <<std::endl;
             for(size_t i =0 ; i< m_robot->numLinks();i++){//FKで自動で計算されない? TODO
                 m_robot->link(i)->vo/*actorigin系*/ = m_robot->link(i)->v/*actorigin系*/ - m_robot->link(i)->w/*actorigin系*/.cross(m_robot->link(i)->p/*actorigin系*/);
             }
-            std::cerr << "vo_after" << m_robot->rootLink()->vo <<std::endl;
+            std::cerr << "vo" << m_robot->rootLink()->vo <<std::endl;
             hrp::dmatrix J/*actorigin系,eefまわり<->virtualjoint+joint*/ = hrp::dmatrix::Zero(6*act_contact_eef_num,6+act_contact_joint_num);
             {
                 size_t act_contact_idx =0;
@@ -516,8 +511,10 @@ public:
                     }
                 }
             }
+            std::cerr << "J" << J <<std::endl;
             hrp::dmatrix M_all;//virtualjoint+全joint
             m_robot->calcMassMatrix(M_all);
+            std::cerr << "M_all" << M_all <<std::endl;
             hrp::dmatrix M(6+act_contact_joint_num,6+act_contact_joint_num);//virtualjoint+act_contactで使うjointのみ //chestlinkを無視して大丈夫か? TODO
             M.block(0,0,6,6) = M_all.block(0,0,6,6);
             {
@@ -572,7 +569,7 @@ public:
                     }
                 }
             }
-
+            std::cerr << "M" << M <<std::endl;
             hrp::dmatrix K = hrp::dmatrix::Zero(6+act_contact_joint_num,6+act_contact_joint_num);
             {
                 size_t act_contact_idx=0;
@@ -586,8 +583,8 @@ public:
                         act_contact_idx++;
                     }
                 }
-                
             }
+
             hrp::dmatrix M_inv = M.inverse();
             hrp::dmatrix JMJJMK = (J * M_inv * J.transpose()).inverse() * J * M_inv * K;
             JMJJMK = JMJJMK.block(0,6,JMJJMK.rows(),JMJJMK.cols()-6);
@@ -627,7 +624,7 @@ public:
                     }
                 }
             }
-
+            std::cerr << "K" << K <<std::endl;
             double manipulability = std::sqrt((JMJJMK * JMJJMK.transpose()).determinant());
             double k=0;
             if(manipulability < 0.1){
@@ -635,8 +632,8 @@ public:
             }
             hrp::calcSRInverse(JMJJMK,JMJJMK_inv,k,w);
             
-            delta_q = - JMJJMK_inv * d_wrench_origin/*actorigin系,eefまわり*/;
-            
+            delta_q = - transition_smooth_gain * JMJJMK_inv * d_wrench_origin/*actorigin系,eefまわり*/;
+            std::cerr << "delta_q" << delta_q <<std::endl;
         }//if(product_contact)
         
         d_q += - d_q_time_const * d_q * dt;
@@ -652,7 +649,6 @@ public:
             }
         }
         
-        //前回の指令値のangle-vectorにする
         for (size_t i = 0;i < m_robot->numJoints(); i++){
             m_robot->joint(i)->q = qrefv[i];
         }
@@ -673,6 +669,7 @@ public:
                 }
             }
         }
+        std::cerr << "FK" <<std::endl;
         m_robot->calcForwardKinematics();
 
 
@@ -706,12 +703,13 @@ public:
         //m_currentBaseRpy
         //m_currentbasePos
         //m_emergencySignal
+        std::cerr << "calc end" <<std::endl;
     }
 
     void sync_2_st(){//初期化
         std::cerr << "[MCS] sync_2_st"<< std::endl;
 
-        d_q = hrp::dvector::Zero(6+ref_robot->numJoints());
+        d_q = hrp::dvector::Zero(d_q.rows());
 
     }
 
@@ -781,10 +779,12 @@ private:
     
     hrp::dvector qcurv;
     
-    hrp::BodyPtr ref_robot/*refworld系*/;
     hrp::dvector qrefv;//目標のq
+    hrp::dvector dqrefv;
     hrp::Vector3 ref_root_p/*refworld系*/;
     hrp::Matrix33 ref_root_R/*refworld系*/;
+    hrp::Vector3 ref_root_v/*refworld系*/;
+    hrp::Vector3 ref_root_w/*refworld系*/;
     std::vector <hrp::Vector3> ref_ee_p/*refworld系*/;
     std::vector <hrp::Matrix33> ref_ee_R/*refworld系*/;
     std::vector <hrp::Vector3> ref_force/*refworld系*/, ref_force_eef/*refeef系*/;
@@ -799,10 +799,12 @@ private:
     hrp::Vector3 ref_total_force/*refworld系*/;
     hrp::Vector3 ref_total_moment/*refworld系,cogまわり*/;
 
-    hrp::BodyPtr act_robot/*actworld系*/;
     hrp::dvector qactv;
+    hrp::dvector dqactv;
     hrp::Vector3 act_root_p/*actworld系*/;
     hrp::Matrix33 act_root_R/*actworld系*/;
+    hrp::Vector3 act_root_v/*actworld系*/;
+    hrp::Vector3 act_root_w/*actworld系*/;
     std::vector <hrp::Vector3> act_ee_p/*actworld系*/;
     std::vector <hrp::Matrix33> act_ee_R/*actworld系*/;
     std::vector <hrp::Vector3> act_force/*actworld系*/,act_force_eef/*acteef系*/;
