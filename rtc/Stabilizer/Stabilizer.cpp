@@ -839,6 +839,7 @@ void Stabilizer::getActualParameters ()
   }
 
   if (st_algorithm == OpenHRP::StabilizerService::MCS) {
+      std::cerr << "[ST] getActualParameters"<< std::endl;
       hrp::dvector qactv(m_robot->numJoints());
       for ( int i = 0; i < m_robot->numJoints(); i++ ){
           qactv[i] = m_robot->joint(i)->q;
