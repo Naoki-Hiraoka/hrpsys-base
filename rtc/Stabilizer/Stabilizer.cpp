@@ -504,7 +504,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       std::cerr << "[" << m_profile.instance_name << "] WARNING! This robot model has no GyroSensor named 'gyrometer'! " << std::endl;
   }
 
-  multicontactstabilizer.initialize(*m_robot, dt, stikp.size());
+  multicontactstabilizer.initialize(m_robot, dt, stikp.size());
 
   return RTC::RTC_OK;
 }
@@ -839,7 +839,6 @@ void Stabilizer::getActualParameters ()
   }
 
   if (st_algorithm == OpenHRP::StabilizerService::MCS) {
-      std::cerr << "[ST] getActualParameters"<< std::endl;
       hrp::dvector qactv(m_robot->numJoints());
       for ( int i = 0; i < m_robot->numJoints(); i++ ){
           qactv[i] = m_robot->joint(i)->q;
@@ -859,7 +858,7 @@ void Stabilizer::getActualParameters ()
           act_contact_states[i] = multicontactstabilizer.contactconstraints[i].isContact(act_ee_R_world[i].transpose()*act_force_world[i],act_ee_R_world[i].transpose()*act_moment_world[i]);
       }
       
-      on_ground = multicontactstabilizer.getActualParameters(qactv,m_robot->rootLink()->p/*Zero*/,m_robot->rootLink()->R/*actworld系*/,act_ee_p_world/*原点不明,actworld系*/,act_ee_R_world/*actworld系*/,act_force_world/*actworld系*/,act_moment_world/*actworld系,eefまわり*/,act_contact_states, contact_decision_threshold);
+      on_ground = multicontactstabilizer.getActualParameters(m_robot, qactv,m_robot->rootLink()->p/*Zero*/,m_robot->rootLink()->R/*actworld系*/,act_ee_p_world/*原点不明,actworld系*/,act_ee_R_world/*actworld系*/,act_force_world/*actworld系*/,act_moment_world/*actworld系,eefまわり*/,act_contact_states, contact_decision_threshold);
 
       for ( int i = 0; i < m_robot->numJoints(); i++ ){
           m_robot->joint(i)->q = qrefv[i];
@@ -1263,7 +1262,7 @@ void Stabilizer::getTargetParameters ()
           swing_support_gains[i] = stikp[i].swing_support_gain;
       }
 
-      multicontactstabilizer.getTargetParameters(transition_smooth_gain,qrefv,target_root_p/*refworld系*/,target_root_R/*refworld系*/,target_ee_p_world/*refworld系*/,target_ee_R_world/*refworld系*/,ref_force_world/*refworld系*/,ref_moment_world/*refworld系,eefまわり*/,ref_contact_states,swing_support_gains);
+      multicontactstabilizer.getTargetParameters(m_robot, transition_smooth_gain,qrefv,target_root_p/*refworld系*/,target_root_R/*refworld系*/,target_ee_p_world/*refworld系*/,target_ee_R_world/*refworld系*/,ref_force_world/*refworld系*/,ref_moment_world/*refworld系,eefまわり*/,ref_contact_states,swing_support_gains);
       return;
   }
   
