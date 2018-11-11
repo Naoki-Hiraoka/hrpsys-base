@@ -120,7 +120,8 @@ public:
         }
         hardware_gains.resize(m_robot->numJoints(),700.0);
         d_q_time_const = 1.5;
-        d_q_damping_gain = 0.05;
+        //d_q_damping_gain = 0.05;
+        d_q_damping_gain = 5;
         d_quaternion_time_const = 1000;
         d_quaternion_damping_gain = 0.7;
         contacteeforiginweight.resize(eefnum, 1.0);
@@ -414,14 +415,14 @@ public:
 
             //d_FgNgを分配する.QP
             //USE_QPOASES を ON にすること
-            bool qp_solved=false;
+            bool qp_solved=false;bool looseqp_solved=false;
             hrp::dvector wrench_d_eef(6*act_contact_eef_num)/*eef系,eefまわり*/;
             {
                 size_t state_len = act_contact_eef_num * 6;
                 size_t inequality_len = 6 + act_contact_eef_num * 11;
                 real_t* H = new real_t[state_len * state_len];
                 real_t* A = new real_t[inequality_len * state_len];
-                real_t* g = NULL;
+                real_t* g = new real_t[state_len];
                 real_t* ub = NULL;
                 real_t* lb = NULL;
                 real_t* ubA = new real_t[inequality_len];
@@ -478,6 +479,9 @@ public:
                         }
                     }
                 }
+                for (size_t i=0;i<state_len;i++){
+                    g[i]=0.0;
+                }
                 {
                     for (int i = 0; i < 6; i++) {
                         lbA[i] = ubA[i] = d_FgNg[i];
@@ -506,17 +510,18 @@ public:
                 
                 qpOASES::QProblem example( state_len ,inequality_len);
                 qpOASES::Options options;
-                //options.enableFlippingBounds = BT_FALSE;
-                options.initialStatusBounds = ST_INACTIVE;
+                //options.enableFlippingBounds = qpOASES::BT_FALSE;
+                options.initialStatusBounds = qpOASES::ST_INACTIVE;
                 options.numRefinementSteps = 1;
                 options.enableCholeskyRefactorisation = 1;
-                //options.printLevel = PL_LOW;
-                options.printLevel = PL_NONE;
+                //options.printLevel = qpOASES::PL_HIGH;
+                options.printLevel = qpOASES::PL_NONE;
                 example.setOptions( options );
                 /* Solve first QP. */
-                int nWSR = 10;
-                
-                if(example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0 )== qpOASES::SUCCESSFUL_RETURN){
+                //高速化のためSQPしたいTODO
+                int nWSR = 1000;
+                qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0);
+                if(qpOASES::getSimpleStatus(status)==0){
                     qp_solved=true;
                     real_t* xOpt = new real_t[state_len];
                     example.getPrimalSolution( xOpt );
@@ -629,24 +634,24 @@ public:
                 
                     qpOASES::QProblem example( state_len ,inequality_len);
                     qpOASES::Options options;
-                    //options.enableFlippingBounds = BT_FALSE;
-                    options.initialStatusBounds = ST_INACTIVE;
+                    //options.enableFlippingBounds = qpOASES::BT_FALSE;
+                    options.initialStatusBounds = qpOASES::ST_INACTIVE;
                     options.numRefinementSteps = 1;
                     options.enableCholeskyRefactorisation = 1;
-                    //options.printLevel = PL_LOW;
-                    options.printLevel = PL_NONE;
+                    //options.printLevel = qpOASES::PL_LOW;
+                    options.printLevel = qpOASES::PL_NONE;
                     example.setOptions( options );
                     /* Solve first QP. */
-                    int nWSR = 10;
-                
-                    if(example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0 )== qpOASES::SUCCESSFUL_RETURN){
-                        qp_solved=true;
+                    int nWSR = 1000;
+                    qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0);
+                    if(qpOASES::getSimpleStatus(status)==0){
+                        looseqp_solved=true;
                         real_t* xOpt = new real_t[state_len];
                         example.getPrimalSolution( xOpt );
                         for(size_t i=0; i<state_len;i++){
                             wrench_d_eef[i]=xOpt[i];
                         }
-                        std::cerr << "easy QP solved" <<std::endl;
+                        std::cerr << "loose QP solved" <<std::endl;
                         delete[] xOpt;
                     }
                     delete[] H;
@@ -659,11 +664,8 @@ public:
                 }
             }
             
-            if(qp_solved){
+            if(qp_solved||looseqp_solved){
                 hrp::dvector wrench_cur_eef/*eef系,eefまわり*/ = wrench_ref_eef/*eef系,eefまわり*/ + wrench_d_eef/*eef系,eefまわり*/; //目標反力
-
-                std::cerr << "ref_eef" << wrench_ref_eef <<std::endl;
-                std::cerr << "cur_eef" << wrench_cur_eef <<std::endl;
 
                 //目標反力と実際の反力を比べる
                 hrp::dvector wrench_cur_origin(6 * act_contact_eef_num)/*curorigin系,eefまわり*/;
@@ -873,7 +875,10 @@ public:
                     d_wrench_internal/*actorigin系,eefまわり*/[i*6+5] = d_wrench_origin/*actorigin系,eefまわり*/[i*6+5];
                 }
                 delta_q -= (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-JMJJMK_fznxny_inv*JMJJMK_fznxny) * (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-G_originJMJJMK_inv*G_originJMJJMK) * JMJJMK_inv * d_wrench_internal/*actorigin系,eefまわり*/;
-            }else{//if(qp_solved)
+                if(looseqp_solved){
+                    delta_q *= 0.1;
+                }
+            }else{//if(qp_solved||looseqp_solved)
                 delta_q = hrp::dvector::Zero(act_contact_joint_num);
                 std::cerr << "QP fail" <<std::endl;
             }
