@@ -106,9 +106,6 @@ public:
         force_k1 = -1357.2;
         force_k2 = -1687.8;
         force_k3 = 0.14;
-        moment_k1 = -2.55;
-        moment_k2 = -1.128;
-        moment_k3 = 10.0;
         limb_gains.resize(eefnum*6);
         for(size_t i= 0;i<eefnum;i++){
             limb_gains[i*6+0]=0.1;
@@ -464,13 +461,13 @@ public:
                             A[(6+act_contact_idx*11+4)*state_len + (act_contact_idx*6+1)] = 1;//y摩擦
                             A[(6+act_contact_idx*11+4)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].friction_coefficient;//y摩擦
                             A[(6+act_contact_idx*11+5)*state_len + (act_contact_idx*6+3)] = -1;//xCOP
-                            A[(6+act_contact_idx*11+5)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_x_margin;//xCOP
+                            A[(6+act_contact_idx*11+5)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_y_margin;//xCOP
                             A[(6+act_contact_idx*11+6)*state_len + (act_contact_idx*6+3)] = 1;//xCOP
-                            A[(6+act_contact_idx*11+6)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_x_margin;//xCOP
+                            A[(6+act_contact_idx*11+6)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_y_margin;//xCOP
                             A[(6+act_contact_idx*11+7)*state_len + (act_contact_idx*6+4)] = -1;//yCOP
-                            A[(6+act_contact_idx*11+7)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_y_margin;//yCOP
+                            A[(6+act_contact_idx*11+7)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_x_margin;//yCOP
                             A[(6+act_contact_idx*11+8)*state_len + (act_contact_idx*6+4)] = 1;//yCOP
-                            A[(6+act_contact_idx*11+8)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_y_margin;//yCOP
+                            A[(6+act_contact_idx*11+8)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_x_margin;//yCOP
                             A[(6+act_contact_idx*11+9)*state_len + (act_contact_idx*6+5)] = -1;//回転摩擦
                             A[(6+act_contact_idx*11+9)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].rotation_friction_coefficient;//回転摩擦
                             A[(6+act_contact_idx*11+10)*state_len + (act_contact_idx*6+5)] = 1;//回転摩擦
@@ -497,10 +494,10 @@ public:
                             lbA[6+act_contact_idx*11+2] = -wrench_ref_eef[act_contact_idx*6+0] - contactconstraints[i].friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//x摩擦
                             lbA[6+act_contact_idx*11+3] = wrench_ref_eef[act_contact_idx*6+1] - contactconstraints[i].friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//y摩擦
                             lbA[6+act_contact_idx*11+4] = -wrench_ref_eef[act_contact_idx*6+1] - contactconstraints[i].friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//y摩擦
-                            lbA[6+act_contact_idx*11+5] = wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].upper_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
-                            lbA[6+act_contact_idx*11+6] = -wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].lower_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
-                            lbA[6+act_contact_idx*11+7] = wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].upper_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
-                            lbA[6+act_contact_idx*11+8] = -wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].lower_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
+                            lbA[6+act_contact_idx*11+5] = wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].upper_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
+                            lbA[6+act_contact_idx*11+6] = -wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].lower_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
+                            lbA[6+act_contact_idx*11+7] = wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].lower_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
+                            lbA[6+act_contact_idx*11+8] = -wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].upper_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
                             lbA[6+act_contact_idx*11+9] = wrench_ref_eef[act_contact_idx*6+5] - contactconstraints[i].rotation_friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//回転摩擦
                             lbA[6+act_contact_idx*11+10] = -wrench_ref_eef[act_contact_idx*6+5] - contactconstraints[i].rotation_friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//回転摩擦
                             act_contact_idx++;
@@ -594,13 +591,13 @@ public:
                                 A[(act_contact_idx*11+4)*state_len + (act_contact_idx*6+1)] = 1;//y摩擦
                                 A[(act_contact_idx*11+4)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].friction_coefficient;//y摩擦
                                 A[(act_contact_idx*11+5)*state_len + (act_contact_idx*6+3)] = -1;//xCOP
-                                A[(act_contact_idx*11+5)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_x_margin;//xCOP
+                                A[(act_contact_idx*11+5)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_y_margin;//xCOP
                                 A[(act_contact_idx*11+6)*state_len + (act_contact_idx*6+3)] = 1;//xCOP
-                                A[(act_contact_idx*11+6)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_x_margin;//xCOP
+                                A[(act_contact_idx*11+6)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_y_margin;//xCOP
                                 A[(act_contact_idx*11+7)*state_len + (act_contact_idx*6+4)] = -1;//yCOP
-                                A[(act_contact_idx*11+7)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_y_margin;//yCOP
+                                A[(act_contact_idx*11+7)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_x_margin;//yCOP
                                 A[(act_contact_idx*11+8)*state_len + (act_contact_idx*6+4)] = 1;//yCOP
-                                A[(act_contact_idx*11+8)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].lower_cop_y_margin;//yCOP
+                                A[(act_contact_idx*11+8)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].upper_cop_x_margin;//yCOP
                                 A[(act_contact_idx*11+9)*state_len + (act_contact_idx*6+5)] = -1;//回転摩擦
                                 A[(act_contact_idx*11+9)*state_len + (act_contact_idx*6+2)] = contactconstraints[i].rotation_friction_coefficient;//回転摩擦
                                 A[(act_contact_idx*11+10)*state_len + (act_contact_idx*6+5)] = 1;//回転摩擦
@@ -621,10 +618,10 @@ public:
                                 lbA[act_contact_idx*11+2] = -wrench_ref_eef[act_contact_idx*6+0] - contactconstraints[i].friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//x摩擦
                                 lbA[act_contact_idx*11+3] = wrench_ref_eef[act_contact_idx*6+1] - contactconstraints[i].friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//y摩擦
                                 lbA[act_contact_idx*11+4] = -wrench_ref_eef[act_contact_idx*6+1] - contactconstraints[i].friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//y摩擦
-                                lbA[act_contact_idx*11+5] = wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].upper_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
-                                lbA[act_contact_idx*11+6] = -wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].lower_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
-                                lbA[act_contact_idx*11+7] = wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].upper_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
-                                lbA[act_contact_idx*11+8] = -wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].lower_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
+                                lbA[act_contact_idx*11+5] = wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].upper_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
+                                lbA[act_contact_idx*11+6] = -wrench_ref_eef[act_contact_idx*6+3] - contactconstraints[i].lower_cop_y_margin * wrench_ref_eef[act_contact_idx*6+2];//xCOP
+                                lbA[act_contact_idx*11+7] = wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].lower_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
+                                lbA[act_contact_idx*11+8] = -wrench_ref_eef[act_contact_idx*6+4] - contactconstraints[i].upper_cop_x_margin * wrench_ref_eef[act_contact_idx*6+2];//yCOP
                                 lbA[act_contact_idx*11+9] = wrench_ref_eef[act_contact_idx*6+5] - contactconstraints[i].rotation_friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//回転摩擦
                                 lbA[act_contact_idx*11+10] = -wrench_ref_eef[act_contact_idx*6+5] - contactconstraints[i].rotation_friction_coefficient * wrench_ref_eef[act_contact_idx*6+2];//回転摩擦
                                 act_contact_idx++;
@@ -668,31 +665,20 @@ public:
                 hrp::dvector wrench_cur_eef/*eef系,eefまわり*/ = wrench_ref_eef/*eef系,eefまわり*/ + wrench_d_eef/*eef系,eefまわり*/; //目標反力
 
                 //目標反力と実際の反力を比べる
-                hrp::dvector wrench_cur_origin(6 * act_contact_eef_num)/*curorigin系,eefまわり*/;
-                {
-                    size_t act_contact_idx = 0;
-                    for(size_t i = 0; i <eefnum;i++){
-                        if(act_contact_states[i]){
-                            wrench_cur_origin.block(6*act_contact_idx,0,3,1)/*actorigin系,eefまわり*/= act_ee_R_origin[i]/*actorigin系*/ * wrench_cur_eef.block(6*act_contact_idx,0,3,1)/*eef系,eefまわり*/;
-                            wrench_cur_origin.block(6*act_contact_idx+3,0,3,1)/*actorigin系,eefまわり*/= act_ee_R_origin[i]/*actorigin系*/ * wrench_cur_eef.block(6*act_contact_idx+3,0,3,1)/*eef系,eefまわり*/;
-                            act_contact_idx++;
-                        }
-                    }
-                }
             
-                hrp::dvector wrench_act_origin/*actorigin系,eefまわり*/ = hrp::dvector(6*act_contact_eef_num);
+                hrp::dvector wrench_act_eef/*eef系,eefまわり*/ = hrp::dvector(6*act_contact_eef_num);
                 {
                     size_t act_contact_idx = 0;
                     for(size_t i = 0; i <eefnum;i++){
                         if(act_contact_states[i]){
-                            wrench_act_origin.block(6*act_contact_idx,0,3,1)= act_force_origin[i]/*actarigin系*/;
-                            wrench_act_origin.block(6*act_contact_idx+3,0,3,1)= act_moment_origin[i]/*actorigin系,eefまわり*/;
+                            wrench_act_eef.block(6*act_contact_idx,0,3,1)= act_force_eef[i]/*eef系*/;
+                            wrench_act_eef.block(6*act_contact_idx+3,0,3,1)= act_moment_eef[i]/*eef系,eefまわり*/;
                             act_contact_idx++;
                         }
                     }
                 }
 
-                hrp::dvector d_wrench_origin/*actorigin系,eefまわり*/ = wrench_cur_origin/*actorigin系,eefまわり*/ - wrench_act_origin/*actorigin系,eefまわり*/;
+                hrp::dvector d_wrench_eef/*eef系,eefまわり*/ = wrench_cur_eef/*eef系,eefまわり*/ - wrench_act_eef/*eef系,eefまわり*/;
                 //実際の値のangle-vectorにする
                 m_robot->rootLink()->R/*actorigin系*/ = act_root_R_origin/*actorigin系*/;
                 m_robot->rootLink()->p/*actorigin系*/ = act_root_p_origin/*actorigin系*/;
@@ -703,20 +689,25 @@ public:
                     m_robot->joint(i)->dq = dqactv[i];
                 }
                 m_robot->calcForwardKinematics(true);
-                for(size_t i =0 ; i< m_robot->numLinks();i++){//FKで自動で計算されない? TODO
+                for(size_t i =0 ; i< m_robot->numLinks();i++){//massmatrixの導出過程で使うようだがFKで自動で計算されない? 
                     m_robot->link(i)->vo/*actorigin系*/ = m_robot->link(i)->v/*actorigin系*/ - m_robot->link(i)->w/*actorigin系*/.cross(m_robot->link(i)->p/*actorigin系*/);
                 }
-                hrp::dmatrix J/*actorigin系,eefまわり<->virtualjoint+joint*/ = hrp::dmatrix::Zero(6*act_contact_eef_num,6+act_contact_joint_num);
+                //jacobianやmassmatrixには，速度成分は影響しないのではないか TODO
+                
+                hrp::dmatrix J/*eef系,eefまわり<->virtualjoint(actorigin系)+joint*/ = hrp::dmatrix::Zero(6*act_contact_eef_num,6+act_contact_joint_num);
+                //calcjacobianで出てくるJはactorigin系,eefまわり<->joint であることに注意
                 {
                     size_t act_contact_idx =0;
                     size_t joint_num =0;
                     for(size_t i=0;i<eefnum;i++){
                         if(act_contact_states[i]){
-                            J.block(act_contact_idx*6,0,3,3)=hrp::Matrix33::Identity();
-                            J.block(act_contact_idx*6,3,3,3)=-hrp::hat(act_ee_p_origin[i]/*actorigin系*/-act_root_p_origin/*actorigin系*/);
-                            J.block(act_contact_idx*6+3,3,3,3)=hrp::Matrix33::Identity();
+                            J.block(act_contact_idx*6,0,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose();
+                            J.block(act_contact_idx*6,3,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose() *  - hrp::hat(act_ee_p_origin[i]/*actorigin系*/-act_root_p_origin/*actorigin系*/);
+                            J.block(act_contact_idx*6+3,3,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose();
                             hrp::dmatrix JJ;
                             jpe_v[i]->calcJacobian(JJ,localps[i]);
+                            JJ.block(0,0,3,JJ.cols()) = act_ee_R_origin[i]/*actorigin系*/.transpose() * JJ.block(0,0,3,JJ.cols());
+                            JJ.block(3,0,3,JJ.cols()) = act_ee_R_origin[i]/*actorigin系*/.transpose() * JJ.block(3,0,3,JJ.cols());
                             J.block(act_contact_idx*6,6+joint_num,6,jpe_v[i]->numJoints())=JJ;
                             act_contact_idx++;
                             joint_num +=jpe_v[i]->numJoints();
@@ -795,7 +786,7 @@ public:
                 }
 
                 hrp::dmatrix M_inv = M.inverse();
-                hrp::dmatrix JMJJMK = (J * M_inv * J.transpose()).inverse() * J * M_inv * K;/*actorigin系,eefまわり<->関節角度*/
+                hrp::dmatrix JMJJMK = (J * M_inv * J.transpose()).inverse() * J * M_inv * K;/*eef系,eefまわり<->関節角度*/
                 JMJJMK = JMJJMK.block(0,6,JMJJMK.rows(),JMJJMK.cols()-6);
                 hrp::dmatrix JMJJMK_inv(act_contact_joint_num,6*act_contact_eef_num);
                 hrp::dmatrix w = hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num);
@@ -815,7 +806,7 @@ public:
                                 } else if ( rats::eps_eq(jang, jmin,e) ) {
                                     jang = jmin + e;
                                 }
-                            
+                                
                                 double r;
                                 if ( rats::eps_eq(jang, jmax,e) && rats::eps_eq(jang, jmin,e) ) {
                                     r = std::numeric_limits<double>::max();
@@ -841,40 +832,28 @@ public:
                 hrp::calcSRInverse(JMJJMK,JMJJMK_inv,k,w);
 
                 //Fz, Nx, Nyのみ制御
-                hrp::dvector d_wrench_external/*actorigin系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
+                hrp::dvector d_wrench_external/*eef系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
                 for(size_t i=0;i<act_contact_eef_num;i++){
-                    d_wrench_external/*actorigin系,eefまわり*/.block(i*6+2,0,3,1) = d_wrench_origin/*actorigin系,eefまわり*/.block(i*6+2,0,3,1);
+                    d_wrench_external/*eef系,eefまわり*/.block(i*6+2,0,3,1) = d_wrench_eef/*eef系,eefまわり*/.block(i*6+2,0,3,1);
                 }
                 std::cerr << "d_eef" << d_wrench_external <<std::endl;
-                delta_q = - JMJJMK_inv * d_wrench_external/*actorigin系,eefまわり*/;
+                delta_q = - JMJJMK_inv * d_wrench_external/*eef系,eefまわり*/;
                 std::cerr << "delta_q" << delta_q <<std::endl;
 
                 //Fx,Fy,NzはFz,Nx,NyやFg,Ngに影響を与えない範囲で
-                hrp::dmatrix JMJJMK_fznxny/*actorigin系,eefまわり<->関節角度*/ = JMJJMK.block(2,0,3,JMJJMK.cols());
+                hrp::dmatrix JMJJMK_fznxny/*eef系,eefまわり<->関節角度*/ = JMJJMK.block(2,0,3,JMJJMK.cols());
                 hrp::dmatrix JMJJMK_fznxny_inv(JMJJMK_fznxny.cols(),JMJJMK_fznxny.rows());
                 hrp::calcPseudoInverse(JMJJMK_fznxny, JMJJMK_fznxny_inv);
-                hrp::dmatrix G_origin/*actorigin系,cogまわり<->actorigin系,eefまわり*/ = hrp::dmatrix::Zero(6,6*act_contact_eef_num);//grasp_matrix
-                {
-                    size_t act_contact_idx = 0;
-                    for(size_t i = 0; i <eefnum;i++){
-                        if(act_contact_states[i]){
-                            G_origin.block(0,6*act_contact_idx,3,3) = hrp::Matrix33::Identity();
-                            G_origin.block(3,6*act_contact_idx,3,3) = hrp::hat(act_ee_p_origin[i]/*actorigin系*/ - act_cog_origin/*actorigin系*/);
-                            G_origin.block(3,6*act_contact_idx+3,3,3) = hrp::Matrix33::Identity();
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                hrp::dmatrix G_originJMJJMK/*actorigin系,cogまわり<->関節角度*/ = G_origin/*actorigin系,cogまわり<->actorigin系,eefまわり*/ * JMJJMK/*actorigin系,eefまわり<->関節角度*/;
-                hrp::dmatrix G_originJMJJMK_inv(G_originJMJJMK.cols(),G_originJMJJMK.rows());
-                hrp::calcPseudoInverse(G_originJMJJMK,G_originJMJJMK_inv);
-                hrp::dvector d_wrench_internal/*actorigin系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
+                hrp::dmatrix GJMJJMK/*actorigin系,cogまわり<->関節角度*/ = G/*actorigin系,cogまわり<->eef系,eefまわり*/ * JMJJMK/*eef系,eefまわり<->関節角度*/;
+                hrp::dmatrix GJMJJMK_inv(GJMJJMK.cols(),GJMJJMK.rows());
+                hrp::calcPseudoInverse(GJMJJMK,GJMJJMK_inv);
+                hrp::dvector d_wrench_internal/*eef系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
                 for(size_t i=0;i<act_contact_eef_num;i++){
-                    d_wrench_internal/*actorigin系,eefまわり*/[i*6+0] = d_wrench_origin/*actorigin系,eefまわり*/[i*6+0];
-                    d_wrench_internal/*actorigin系,eefまわり*/[i*6+1] = d_wrench_origin/*actorigin系,eefまわり*/[i*6+1];
-                    d_wrench_internal/*actorigin系,eefまわり*/[i*6+5] = d_wrench_origin/*actorigin系,eefまわり*/[i*6+5];
+                    d_wrench_internal/*eef系,eefまわり*/[i*6+0] = d_wrench_eef/*eef系,eefまわり*/[i*6+0];
+                    d_wrench_internal/*eef系,eefまわり*/[i*6+1] = d_wrench_eef/*eef系,eefまわり*/[i*6+1];
+                    d_wrench_internal/*eef系,eefまわり*/[i*6+5] = d_wrench_eef/*eef系,eefまわり*/[i*6+5];
                 }
-                delta_q -= (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-JMJJMK_fznxny_inv*JMJJMK_fznxny) * (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-G_originJMJJMK_inv*G_originJMJJMK) * JMJJMK_inv * d_wrench_internal/*actorigin系,eefまわり*/;
+                delta_q -= (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-JMJJMK_fznxny_inv*JMJJMK_fznxny) * (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-GJMJJMK_inv*GJMJJMK) * JMJJMK_inv * d_wrench_internal/*eef系,eefまわり*/;
                 if(looseqp_solved){
                     delta_q *= 0.1;
                 }
@@ -883,7 +862,7 @@ public:
                 std::cerr << "QP fail" <<std::endl;
             }
 
-            //腰リンクの傾きについてbody_attitude_control
+            //腰リンクの傾きについてbody_attitude_control yawは無視してよいか
             delta_quaternion/*refworld系*/ = Eigen::Vector4d::Zero();//TODO
             
         }//if(product_contact)
@@ -974,7 +953,6 @@ public:
     }
 
     double force_k1, force_k2, force_k3;
-    double moment_k1, moment_k2, moment_k3;
     std::vector<double> limb_gains;//6*eef,各eefの各次元にどの比重で力を割り振るか. 0-1
     std::vector<double> hardware_gains;//[Nm/rad]
     double d_q_time_const;
