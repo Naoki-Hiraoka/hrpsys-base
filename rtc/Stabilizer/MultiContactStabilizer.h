@@ -100,27 +100,34 @@ public:
         act_total_force = hrp::Vector3::Zero();
         act_total_moment = hrp::Vector3::Zero();
 
-        d_q = hrp::dvector::Zero(m_robot->numJoints());
-        body_attitude_controlled_qrefv = hrp::dvector::Zero(m_robot->numJoints());
+        d_quaternion = Eigen::Vector4d::Zero();
+        d_foot_pos.resize(eefnum,hrp::Vector3::Zero());
+        d_foot_rpy.resize(eefnum,hrp::Vector3::Zero());
         
-        force_k1 = -1357.2;
-        force_k2 = -1687.8;
-        force_k3 = 0.14;
+        //force_k1 = -1357.2;
+        //force_k2 = -1687.8;
+        //force_k3 = 0.14;
+        force_k1 = -1.272861 * 580/0.72;
+        force_k2 = -0.363673799 * 580/0.72;
+        force_k3 = -0.1620;
         limb_gains.resize(eefnum*6);
         for(size_t i= 0;i<eefnum;i++){
-            limb_gains[i*6+0]=0.1;
-            limb_gains[i*6+1]=0.1;
+            limb_gains[i*6+0]=1.0;
+            limb_gains[i*6+1]=1.0;
             limb_gains[i*6+2]=1.0;
             limb_gains[i*6+3]=0.01;
             limb_gains[i*6+4]=0.01;
-            limb_gains[i*6+5]=0.1;
+            limb_gains[i*6+5]=0.01;
         }
-        hardware_gains.resize(m_robot->numJoints(),700.0);
-        d_q_time_const = 1.5;
-        //d_q_damping_gain = 0.05;
-        d_q_damping_gain = 5;
-        d_quaternion_time_const = 1000;
-        d_quaternion_damping_gain = 0.7;
+        body_attitude_control_time_const = 10000;
+        body_attitude_control_gain = 1.5;
+        root_rot_compensation_limit = 10.0/180.0*M_PI;
+        pos_damping_gain.resize(eefnum,hrp::Vector3(3500*50,3500*50,9240));
+        pos_time_const.resize(eefnum,hrp::Vector3(1.5,1.5,1.5));
+        pos_compensation_limit = 0.025;
+        rot_damping_gain.resize(eefnum,hrp::Vector3(35,35,100000));
+        rot_time_const.resize(eefnum,hrp::Vector3(1.5,1.5,1.5));
+        rot_compensation_limit = 10.0/180.0*M_PI;
         contacteeforiginweight.resize(eefnum, 1.0);
         contactconstraints.resize(eefnum,ContactConstraint());
         act_cogvel_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(4.0, dt, hrp::Vector3::Zero())); // [Hz]
@@ -295,9 +302,8 @@ public:
         hrp::Vector3 act_origin_p/*actworld系*/;
         hrp::Matrix33 act_origin_R/*actworld系*/;
 
-        hrp::dvector delta_q;
-        Eigen::Vector4d delta_quaternion;
-        
+        hrp::dvector d_wrench_eef/*eef系,eefまわり*/;
+       
         //ContactEEFOriginCoords系における値に変換
         //referenceとactualとでともにContactしているEEF
         std::vector<bool> product_contact_states(eefnum);
@@ -678,229 +684,248 @@ public:
                     }
                 }
 
-                hrp::dvector d_wrench_eef/*eef系,eefまわり*/ = wrench_cur_eef/*eef系,eefまわり*/ - wrench_act_eef/*eef系,eefまわり*/;
-                //実際の値のangle-vectorにする
-                m_robot->rootLink()->R/*actorigin系*/ = act_root_R_origin/*actorigin系*/;
-                m_robot->rootLink()->p/*actorigin系*/ = act_root_p_origin/*actorigin系*/;
-                m_robot->rootLink()->w/*actorigin系*/ = act_root_w_origin/*actorigin系*/;
-                m_robot->rootLink()->v/*actorigin系*/ = act_root_v_origin/*actorigin系*/;
-                for (size_t i = 0;i < m_robot->numJoints(); i++){
-                    m_robot->joint(i)->q = qactv[i];
-                    m_robot->joint(i)->dq = dqactv[i];
-                }
-                m_robot->calcForwardKinematics(true);
-                for(size_t i =0 ; i< m_robot->numLinks();i++){//massmatrixの導出過程で使うようだがFKで自動で計算されない? 
-                    m_robot->link(i)->vo/*actorigin系*/ = m_robot->link(i)->v/*actorigin系*/ - m_robot->link(i)->w/*actorigin系*/.cross(m_robot->link(i)->p/*actorigin系*/);
-                }
-                //jacobianやmassmatrixには，速度成分は影響しないのではないか TODO
+                d_wrench_eef/*eef系,eefまわり*/ = wrench_cur_eef/*eef系,eefまわり*/ - wrench_act_eef/*eef系,eefまわり*/;
+                std::cerr << "d_wrench_eef" << d_wrench_eef <<std::endl;
                 
-                hrp::dmatrix J/*eef系,eefまわり<->virtualjoint(actorigin系)+joint*/ = hrp::dmatrix::Zero(6*act_contact_eef_num,6+act_contact_joint_num);
-                //calcjacobianで出てくるJはactorigin系,eefまわり<->joint であることに注意
-                {
-                    size_t act_contact_idx =0;
-                    size_t joint_num =0;
-                    for(size_t i=0;i<eefnum;i++){
-                        if(act_contact_states[i]){
-                            J.block(act_contact_idx*6,0,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose();
-                            J.block(act_contact_idx*6,3,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose() *  - hrp::hat(act_ee_p_origin[i]/*actorigin系*/-act_root_p_origin/*actorigin系*/);
-                            J.block(act_contact_idx*6+3,3,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose();
-                            hrp::dmatrix JJ;
-                            jpe_v[i]->calcJacobian(JJ,localps[i]);
-                            JJ.block(0,0,3,JJ.cols()) = act_ee_R_origin[i]/*actorigin系*/.transpose() * JJ.block(0,0,3,JJ.cols());
-                            JJ.block(3,0,3,JJ.cols()) = act_ee_R_origin[i]/*actorigin系*/.transpose() * JJ.block(3,0,3,JJ.cols());
-                            J.block(act_contact_idx*6,6+joint_num,6,jpe_v[i]->numJoints())=JJ;
-                            act_contact_idx++;
-                            joint_num +=jpe_v[i]->numJoints();
-                        }
-                    }
-                }
-                hrp::dmatrix M_all;//virtualjoint+全joint
-                m_robot->calcMassMatrix(M_all);
-                hrp::dmatrix M(6+act_contact_joint_num,6+act_contact_joint_num);//virtualjoint+act_contactで使うjointのみ //chestlinkを無視して大丈夫か? TODO
-                M.block(0,0,6,6) = M_all.block(0,0,6,6);
-                {
-                    size_t act_contact_idx =0;
-                    size_t joint_num=0;
-                    for(size_t i=0 ; i< eefnum;i++){
-                        if(act_contact_states[i]){
-                            for(size_t j=0;j<jpe_v[i]->numJoints();j++){
-                                M.block(0,6+joint_num,6,1) = M_all.block(0,6+jpe_v[i]->joint(j)->jointId,6,1);
-                                joint_num++;
-                            }
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                {
-                    size_t act_contact_idx =0;
-                    size_t joint_num=0;
-                    for(size_t i=0 ; i< eefnum;i++){
-                        if(act_contact_states[i]){
-                            for(size_t j=0;j<jpe_v[i]->numJoints();j++){
-                                M.block(6+joint_num,0,1,6) = M_all.block(6+jpe_v[i]->joint(j)->jointId,0,1,6);
-                                joint_num++;
-                            }
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                {
-                    size_t act_contact_idx_row = 0;
-                    size_t joint_num_row = 0;
-                    for(size_t i_row=0;i_row<eefnum;i_row++){
-                        if(act_contact_states[i_row]){
-                            for(size_t j_row=0;j_row<jpe_v[i_row]->numJoints();j_row++){
+                // //実際の値のangle-vectorにする
+                // m_robot->rootLink()->R/*actorigin系*/ = act_root_R_origin/*actorigin系*/;
+                // m_robot->rootLink()->p/*actorigin系*/ = act_root_p_origin/*actorigin系*/;
+                // m_robot->rootLink()->w/*actorigin系*/ = act_root_w_origin/*actorigin系*/;
+                // m_robot->rootLink()->v/*actorigin系*/ = act_root_v_origin/*actorigin系*/;
+                // for (size_t i = 0;i < m_robot->numJoints(); i++){
+                //     m_robot->joint(i)->q = qactv[i];
+                //     m_robot->joint(i)->dq = dqactv[i];
+                // }
+                // m_robot->calcForwardKinematics(true);
+                // for(size_t i =0 ; i< m_robot->numLinks();i++){//massmatrixの導出過程で使うようだがFKで自動で計算されない? 
+                //     m_robot->link(i)->vo/*actorigin系*/ = m_robot->link(i)->v/*actorigin系*/ - m_robot->link(i)->w/*actorigin系*/.cross(m_robot->link(i)->p/*actorigin系*/);
+                // }
+                // //jacobianやmassmatrixには，速度成分は影響しないのではないか TODO
+                
+                // hrp::dmatrix J/*eef系,eefまわり<->virtualjoint(actorigin系)+joint*/ = hrp::dmatrix::Zero(6*act_contact_eef_num,6+act_contact_joint_num);
+                // //calcjacobianで出てくるJはactorigin系,eefまわり<->joint であることに注意
+                // //calcmassmatrixで使用するvirtual jointが原点に付いているので、jacobianもそれに合わせる
+                // {
+                //     size_t act_contact_idx =0;
+                //     size_t joint_num =0;
+                //     for(size_t i=0;i<eefnum;i++){
+                //         if(act_contact_states[i]){
+                //             J.block(act_contact_idx*6,0,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose();
+                //             J.block(act_contact_idx*6,3,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose() *  - hrp::hat(act_ee_p_origin[i]/*actorigin系*/);
+                //             J.block(act_contact_idx*6+3,3,3,3)= act_ee_R_origin[i]/*actorigin系*/.transpose();
+                //             hrp::dmatrix JJ;
+                //             jpe_v[i]->calcJacobian(JJ,localps[i]);
+                //             JJ.block(0,0,3,JJ.cols()) = act_ee_R_origin[i]/*actorigin系*/.transpose() * JJ.block(0,0,3,JJ.cols());
+                //             JJ.block(3,0,3,JJ.cols()) = act_ee_R_origin[i]/*actorigin系*/.transpose() * JJ.block(3,0,3,JJ.cols());
+                //             J.block(act_contact_idx*6,6+joint_num,6,jpe_v[i]->numJoints())=JJ;
+                //             act_contact_idx++;
+                //             joint_num +=jpe_v[i]->numJoints();
+                //         }
+                //     }
+                // }
 
-                                {
-                                    size_t act_contact_idx_col = 0;
-                                    size_t joint_num_col = 0;
-                                    for(size_t i_col=0;i_col<eefnum;i_col++){
-                                        if(act_contact_states[i_col]){
-                                            for(size_t j_col=0;j_col<jpe_v[i_col]->numJoints();j_col++){
-                                                M(6+joint_num_row,6+joint_num_col) = M_all(6+jpe_v[i_row]->joint(j_row)->jointId,6+jpe_v[i_col]->joint(j_col)->jointId);
-                                                joint_num_col++;
-                                            }
-                                            act_contact_idx_col++;
-                                        }
-                                    }
-                                }
-                                joint_num_row++;
-                            }
-                            act_contact_idx_row++;
-                        }
-                    }
-                }
-                hrp::dmatrix K = hrp::dmatrix::Zero(6+act_contact_joint_num,6+act_contact_joint_num);
-                {
-                    size_t act_contact_idx=0;
-                    size_t joint_num =0;
-                    for(size_t i = 0; i<eefnum;i++){
-                        if(act_contact_states[i]){
-                            for(size_t j=0;j<jpe_v[i]->numJoints();j++){
-                                K(6+joint_num,6+joint_num)=hardware_gains[jpe_v[i]->joint(j)->jointId];
-                                joint_num++;
-                            }
-                            act_contact_idx++;
-                        }
-                    }
-                }
+                // hrp::dmatrix M_all;//virtualjoint+全joint
+                // m_robot->calcMassMatrix(M_all);
+                // hrp::dmatrix M(6+act_contact_joint_num,6+act_contact_joint_num);//virtualjoint+act_contactで使うjointのみ //chestlinkを無視して大丈夫か? TODO
+                // M.block(0,0,6,6) = M_all.block(0,0,6,6);
+                // {
+                //     size_t act_contact_idx =0;
+                //     size_t joint_num=0;
+                //     for(size_t i=0 ; i< eefnum;i++){
+                //         if(act_contact_states[i]){
+                //             for(size_t j=0;j<jpe_v[i]->numJoints();j++){
+                //                 M.block(0,6+joint_num,6,1) = M_all.block(0,6+jpe_v[i]->joint(j)->jointId,6,1);
+                //                 joint_num++;
+                //             }
+                //             act_contact_idx++;
+                //         }
+                //     }
+                // }
+                // {
+                //     size_t act_contact_idx =0;
+                //     size_t joint_num=0;
+                //     for(size_t i=0 ; i< eefnum;i++){
+                //         if(act_contact_states[i]){
+                //             for(size_t j=0;j<jpe_v[i]->numJoints();j++){
+                //                 M.block(6+joint_num,0,1,6) = M_all.block(6+jpe_v[i]->joint(j)->jointId,0,1,6);
+                //                 joint_num++;
+                //             }
+                //             act_contact_idx++;
+                //         }
+                //     }
+                // }
+                // {
+                //     size_t act_contact_idx_row = 0;
+                //     size_t joint_num_row = 0;
+                //     for(size_t i_row=0;i_row<eefnum;i_row++){
+                //         if(act_contact_states[i_row]){
+                //             for(size_t j_row=0;j_row<jpe_v[i_row]->numJoints();j_row++){
 
-                hrp::dmatrix M_inv = M.inverse();
-                hrp::dmatrix JMJJMK = (J * M_inv * J.transpose()).inverse() * J * M_inv * K;/*eef系,eefまわり<->関節角度*/
-                JMJJMK = JMJJMK.block(0,6,JMJJMK.rows(),JMJJMK.cols()-6);
-                hrp::dmatrix JMJJMK_inv(act_contact_joint_num,6*act_contact_eef_num);
-                hrp::dmatrix w = hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num);
-                {
-                    size_t act_contact_idx=0;
-                    size_t joint_num=0;
-                    for(size_t i=0;i<eefnum;i++){
-                        if(act_contact_states[i]){
-                            for(size_t j=0;j<jpe_v[i]->numJoints();j++){
-                                double jang = jpe_v[i]->joint(j)->q;
-                                double jmax = jpe_v[i]->joint(j)->ulimit;
-                                double jmin = jpe_v[i]->joint(j)->llimit;
-                                double e = 1*M_PI/180;
-                                if ( rats::eps_eq(jang, jmax,e) && rats::eps_eq(jang, jmin,e) ) {
-                                } else if ( rats::eps_eq(jang, jmax,e) ) {
-                                    jang = jmax - e;
-                                } else if ( rats::eps_eq(jang, jmin,e) ) {
-                                    jang = jmin + e;
-                                }
+                //                 {
+                //                     size_t act_contact_idx_col = 0;
+                //                     size_t joint_num_col = 0;
+                //                     for(size_t i_col=0;i_col<eefnum;i_col++){
+                //                         if(act_contact_states[i_col]){
+                //                             for(size_t j_col=0;j_col<jpe_v[i_col]->numJoints();j_col++){
+                //                                 M(6+joint_num_row,6+joint_num_col) = M_all(6+jpe_v[i_row]->joint(j_row)->jointId,6+jpe_v[i_col]->joint(j_col)->jointId);
+                //                                 joint_num_col++;
+                //                             }
+                //                             act_contact_idx_col++;
+                //                         }
+                //                     }
+                //                 }
+                //                 joint_num_row++;
+                //             }
+                //             act_contact_idx_row++;
+                //         }
+                //     }
+                // }
+                // hrp::dmatrix K = hrp::dmatrix::Zero(6+act_contact_joint_num,6+act_contact_joint_num);
+                // {
+                //     size_t act_contact_idx=0;
+                //     size_t joint_num =0;
+                //     for(size_t i = 0; i<eefnum;i++){
+                //         if(act_contact_states[i]){
+                //             for(size_t j=0;j<jpe_v[i]->numJoints();j++){
+                //                 K(6+joint_num,6+joint_num)=hardware_gains[jpe_v[i]->joint(j)->jointId];
+                //                 joint_num++;
+                //             }
+                //             act_contact_idx++;
+                //         }
+                //     }
+                // }
+
+                // hrp::dmatrix M_inv = M.inverse();
+                // hrp::dmatrix JMJJMK = (J * M_inv * J.transpose()).inverse() * J * M_inv * K;/*eef系,eefまわり<->関節角度*/
+                // JMJJMK = JMJJMK.block(0,6,JMJJMK.rows(),JMJJMK.cols()-6);
+                // hrp::dmatrix JMJJMK_inv(act_contact_joint_num,6*act_contact_eef_num);
+                // hrp::dmatrix w = hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num);
+                // {
+                //     size_t act_contact_idx=0;
+                //     size_t joint_num=0;
+                //     for(size_t i=0;i<eefnum;i++){
+                //         if(act_contact_states[i]){
+                //             for(size_t j=0;j<jpe_v[i]->numJoints();j++){
+                //                 double jang = jpe_v[i]->joint(j)->q;
+                //                 double jmax = jpe_v[i]->joint(j)->ulimit;
+                //                 double jmin = jpe_v[i]->joint(j)->llimit;
+                //                 double e = 1*M_PI/180;
+                //                 if ( rats::eps_eq(jang, jmax,e) && rats::eps_eq(jang, jmin,e) ) {
+                //                 } else if ( rats::eps_eq(jang, jmax,e) ) {
+                //                     jang = jmax - e;
+                //                 } else if ( rats::eps_eq(jang, jmin,e) ) {
+                //                     jang = jmin + e;
+                //                 }
                                 
-                                double r;
-                                if ( rats::eps_eq(jang, jmax,e) && rats::eps_eq(jang, jmin,e) ) {
-                                    r = std::numeric_limits<double>::max();
-                                } else {
-                                    r = fabs( (pow((jmax - jmin),2) * (( 2 * jang) - jmax - jmin)) /
-                                              (4 * pow((jmax - jang),2) * pow((jang - jmin),2)) );
-                                    if (std::isnan(r)) r = 0;
-                                }
-                                std::vector<double> ov(jpe_v[i]->numJoints());
-                                jpe_v[i]->getOptionalWeightVector(ov);
-                                w(joint_num,joint_num) = ov[j] * ( 1.0 / ( 1.0 + r) );
-                                joint_num++;
-                            }
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                double manipulability = std::sqrt((JMJJMK * JMJJMK.transpose()).determinant());
-                double k=0;
-                if(manipulability < 0.1){
-                    k = 0.001 * std::pow((1 - ( manipulability / 0.1 )),2);
-                }
-                hrp::calcSRInverse(JMJJMK,JMJJMK_inv,k,w);
+                //                 double r;
+                //                 if ( rats::eps_eq(jang, jmax,e) && rats::eps_eq(jang, jmin,e) ) {
+                //                     r = std::numeric_limits<double>::max();
+                //                 } else {
+                //                     r = fabs( (pow((jmax - jmin),2) * (( 2 * jang) - jmax - jmin)) /
+                //                               (4 * pow((jmax - jang),2) * pow((jang - jmin),2)) );
+                //                     if (std::isnan(r)) r = 0;
+                //                 }
+                //                 std::vector<double> ov(jpe_v[i]->numJoints());
+                //                 jpe_v[i]->getOptionalWeightVector(ov);
+                //                 w(joint_num,joint_num) = ov[j] * ( 1.0 / ( 1.0 + r) );
+                //                 joint_num++;
+                //             }
+                //             act_contact_idx++;
+                //         }
+                //     }
+                // }
+                // double manipulability = std::sqrt((JMJJMK * JMJJMK.transpose()).determinant());
+                // double k=0;
+                // if(manipulability < 0.1){
+                //     k = 0.001 * std::pow((1 - ( manipulability / 0.1 )),2);
+                // }
+                // hrp::calcSRInverse(JMJJMK,JMJJMK_inv,k,w);
 
-                //Fz, Nx, Nyのみ制御
-                hrp::dvector d_wrench_external/*eef系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
-                for(size_t i=0;i<act_contact_eef_num;i++){
-                    d_wrench_external/*eef系,eefまわり*/.block(i*6+2,0,3,1) = d_wrench_eef/*eef系,eefまわり*/.block(i*6+2,0,3,1);
-                }
-                std::cerr << "d_eef" << d_wrench_external <<std::endl;
-                delta_q = - JMJJMK_inv * d_wrench_external/*eef系,eefまわり*/;
-                std::cerr << "delta_q" << delta_q <<std::endl;
+                // //Fz, Nx, Nyのみ制御
+                // hrp::dvector d_wrench_external/*eef系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
+                // for(size_t i=0;i<act_contact_eef_num;i++){
+                //     d_wrench_external/*eef系,eefまわり*/.block(i*6+2,0,3,1) = d_wrench_eef/*eef系,eefまわり*/.block(i*6+2,0,3,1);
+                // }
+                // std::cerr << "d_eef" << d_wrench_external <<std::endl;
 
-                //Fx,Fy,NzはFz,Nx,NyやFg,Ngに影響を与えない範囲で
-                hrp::dmatrix JMJJMK_fznxny/*eef系,eefまわり<->関節角度*/ = JMJJMK.block(2,0,3,JMJJMK.cols());
-                hrp::dmatrix JMJJMK_fznxny_inv(JMJJMK_fznxny.cols(),JMJJMK_fznxny.rows());
-                hrp::calcPseudoInverse(JMJJMK_fznxny, JMJJMK_fznxny_inv);
-                hrp::dmatrix GJMJJMK/*actorigin系,cogまわり<->関節角度*/ = G/*actorigin系,cogまわり<->eef系,eefまわり*/ * JMJJMK/*eef系,eefまわり<->関節角度*/;
-                hrp::dmatrix GJMJJMK_inv(GJMJJMK.cols(),GJMJJMK.rows());
-                hrp::calcPseudoInverse(GJMJJMK,GJMJJMK_inv);
-                hrp::dvector d_wrench_internal/*eef系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
-                for(size_t i=0;i<act_contact_eef_num;i++){
-                    d_wrench_internal/*eef系,eefまわり*/[i*6+0] = d_wrench_eef/*eef系,eefまわり*/[i*6+0];
-                    d_wrench_internal/*eef系,eefまわり*/[i*6+1] = d_wrench_eef/*eef系,eefまわり*/[i*6+1];
-                    d_wrench_internal/*eef系,eefまわり*/[i*6+5] = d_wrench_eef/*eef系,eefまわり*/[i*6+5];
-                }
-                delta_q -= (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-JMJJMK_fznxny_inv*JMJJMK_fznxny) * (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-GJMJJMK_inv*GJMJJMK) * JMJJMK_inv * d_wrench_internal/*eef系,eefまわり*/;
-                if(looseqp_solved){
-                    delta_q *= 0.1;
-                }
+                // delta_q = - JMJJMK_inv * d_wrench_external/*eef系,eefまわり*/;
+
+                
+                // //Fx,Fy,NzはFz,Nx,NyやFg,Ngに影響を与えない範囲で
+                // hrp::dmatrix JMJJMK_fznxny/*eef系,eefまわり<->関節角度*/ = JMJJMK.block(2,0,3,JMJJMK.cols());
+                // hrp::dmatrix JMJJMK_fznxny_inv(JMJJMK_fznxny.cols(),JMJJMK_fznxny.rows());
+                // hrp::calcPseudoInverse(JMJJMK_fznxny, JMJJMK_fznxny_inv);
+                // hrp::dmatrix GJMJJMK/*actorigin系,cogまわり<->関節角度*/ = G/*actorigin系,cogまわり<->eef系,eefまわり*/ * JMJJMK/*eef系,eefまわり<->関節角度*/;
+                // hrp::dmatrix GJMJJMK_inv(GJMJJMK.cols(),GJMJJMK.rows());
+                // hrp::calcPseudoInverse(GJMJJMK,GJMJJMK_inv);
+                // hrp::dvector d_wrench_internal/*eef系,eefまわり*/ =hrp::dvector::Zero(act_contact_eef_num*6);
+                // for(size_t i=0;i<act_contact_eef_num;i++){
+                //     d_wrench_internal/*eef系,eefまわり*/[i*6+0] = d_wrench_eef/*eef系,eefまわり*/[i*6+0];
+                //     d_wrench_internal/*eef系,eefまわり*/[i*6+1] = d_wrench_eef/*eef系,eefまわり*/[i*6+1];
+                //     d_wrench_internal/*eef系,eefまわり*/[i*6+5] = d_wrench_eef/*eef系,eefまわり*/[i*6+5];
+                // }
+                // delta_q -= (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-JMJJMK_fznxny_inv*JMJJMK_fznxny) * (hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num)-GJMJJMK_inv*GJMJJMK) * JMJJMK_inv * d_wrench_internal/*eef系,eefまわり*/;
+                // std::cerr << "delta_qin" << delta_q <<std::endl;
+                // if(looseqp_solved){
+                //     delta_q *= 0.1;
+                // }
             }else{//if(qp_solved||looseqp_solved)
-                delta_q = hrp::dvector::Zero(act_contact_joint_num);
+                d_wrench_eef/*eef系,eefまわり*/ = hrp::dvector::Zero(act_contact_eef_num * 6);
+                //delta_q = hrp::dvector::Zero(act_contact_joint_num);
                 std::cerr << "QP fail" <<std::endl;
             }
-
-            //腰リンクの傾きについてbody_attitude_control yawは無視してよいか
-            delta_quaternion/*refworld系*/ = Eigen::Vector4d::Zero();//TODO
             
         }//if(product_contact)
-        
-        d_q += - d_q / d_q_time_const * dt;
+
+
+        //eef位置の修正量
+        for (size_t i=0;i<eefnum;i++){
+            d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(pos_time_const[i]) *dt;
+            d_foot_rpy[i] -= d_foot_pos[i].cwiseQuotient(rot_time_const[i]) *dt;
+        }
         if(product_contact){
-            size_t joint_num = 0;
+            size_t act_contact_idx=0;
             for(size_t i=0;i<eefnum;i++){
                 if(act_contact_states[i]){
-                    for(size_t j=0;j<jpe_v[i]->numJoints();j++){
-                        
-                        d_q[jpe_v[i]->joint(j)->jointId] += transition_smooth_gain * delta_q[joint_num] / d_q_damping_gain * dt;
-                        joint_num++;
-                    }
+                    d_foot_pos[i] += -transition_smooth_gain * d_wrench_eef.block(act_contact_idx*6,0,3,0).cwiseQuotient(pos_damping_gain[i]) * dt;
+                    d_foot_rpy[i] += -transition_smooth_gain * d_wrench_eef.block(act_contact_idx*6+3,0,3,0).cwiseQuotient(rot_damping_gain[i]) * dt;
+                    act_contact_idx++;
                 }
             }
         }
+        //swingEEcompensation TODO
 
-        d_quaternion/*refworld系*/ += - d_quaternion/*refworld系*/ / d_quaternion_time_const * dt;
-        if(product_contact){
-            d_quaternion/*refworld系*/ += transition_smooth_gain * delta_quaternion/*refworld系*/ / d_quaternion_damping_gain * dt;
+        for(size_t i=0;i<eefnum;i++){
+            for(size_t j=0;j<3;j++){
+                if(d_foot_pos[i][j] > pos_compensation_limit) d_foot_pos[i][j] = pos_compensation_limit;
+                if(d_foot_pos[i][j] < -pos_compensation_limit) d_foot_pos[i][j] = -pos_compensation_limit;
+
+                if(d_foot_rpy[i][j] > rot_compensation_limit) d_foot_rpy[i][j] = rot_compensation_limit;
+                if(d_foot_rpy[i][j] < -rot_compensation_limit) d_foot_rpy[i][j] = -rot_compensation_limit;
+            }
         }
 
-        //ここで，body_attitude_controlled_qrefvのm_robotをref_world系に配置し,d_quaternionだけrootを回してis_ik_enableのeefはもとの位置を維持するようにikを解いたものをbody_attitude_controlled_qrefvに入れる
-        body_attitude_controlled_qrefv = qrefv;//TODO
+        for(size_t i=0;i<2;i++){
+            std::cerr << "d_foot" <<std::endl;
+            std::cerr << d_foot_pos[i] << std::endl;
+            std::cerr << d_foot_rpy[i] << std::endl;
+        }
         
-        for (size_t i = 0;i < m_robot->numJoints(); i++){
+        // return to referencea //calcEEForceMomentControlと同じ
+        m_robot->rootLink()->R = ref_root_R/*refworld系*/;
+        m_robot->rootLink()->p = ref_root_p/**refworld系*/;
+        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
             m_robot->joint(i)->q = qrefv[i];
         }
         for (size_t i = 0; i < jpe_v.size(); i++) {
             if (is_ik_enable[i]) {
                 for ( int j = 0; j < jpe_v[i]->numJoints(); j++ ){
                     int idx = jpe_v[i]->joint(j)->jointId;
-                    m_robot->joint(idx)->q = body_attitude_controlled_qrefv[idx] + d_q[idx];
+                    m_robot->joint(idx)->q = qcurv[idx];
                 }
             }
         }
-        // Fix for toe joint //optional_weight_vectorを0にすれば，この処理は不要ではないかTODO
+        // Fix for toe joint //optional_weight_vectorを0にし、toeのgainを十分上げれば，この処理は不要ではないかTODO
         for (size_t i = 0; i < jpe_v.size(); i++) {
             if (is_ik_enable[i]) {
                 if (ee_names[i].find("leg") != std::string::npos && jpe_v[i]->numJoints() == 7) {
@@ -909,29 +934,57 @@ public:
                 }
             }
         }
+        
+        //body_attitude_controll //moveBasePosRotForBodyQuaternionControlと同じ
+        hrp::Vector3 world_zaxis_act_base_local = act_root_R/*actworld系*/.transpose() * hrp::Vector3::UnitZ();
+        hrp::Vector3 world_zaxis_target_root_local = ref_root_R/*refworld系*/.transpose() * hrp::Vector3::UnitZ();
+        hrp::Vector3 d_zaxis = world_zaxis_act_base_local - world_zaxis_target_root_local;
+
+        Eigen::Quaternion<double> target_q(ref_root_R/*refworld系*/)/*refworld系*/;
+        if (target_q.w() * prev_target_root_q.w() + target_q.x() * prev_target_root_q.x() + target_q.y() * prev_target_root_q.y() + target_q.z() * prev_target_root_q.z() < 0.0){
+            target_q.w() *= -1;
+            target_q.x() *= -1;
+            target_q.y() *= -1;
+            target_q.z() *= -1;
+        }
+        prev_target_root_q = target_q;
+        hrp::dmatrix H(3,4);
+        H <<
+            -target_q.y(), target_q.z(), -target_q.w(), target_q.x(),
+            target_q.x(), target_q.w(), target_q.z(), target_q.y(),
+            target_q.w(), -target_q.x(), -target_q.y(), target_q.z();
+        hrp::dmatrix Hinv = H.transpose() * (H * H.transpose()).inverse();
+        Eigen::Vector4d d_q = Hinv * d_zaxis;
+
+        bool is_root_rot_limit = false;
+        for (size_t i=0; i<4; i++){
+            d_quaternion[i] = transition_smooth_gain * (body_attitude_control_gain * (-d_q[i]) - 1/body_attitude_control_time_const * d_quaternion[i]) * dt + d_quaternion[i];
+
+            if(d_quaternion[i] > root_rot_compensation_limit) d_quaternion[i] = root_rot_compensation_limit;
+            if(d_quaternion[i] < -root_rot_compensation_limit) d_quaternion[i] = -root_rot_compensation_limit;
+        }
+
+        Eigen::Vector4d current_q_raw(target_q.w()+d_quaternion[0], target_q.x()+d_quaternion[1], target_q.y()+d_quaternion[2], target_q.z()+d_quaternion[3]);
+        current_q_raw = current_q_raw.normalized();
+        Eigen::Quaternion<double> current_q(current_q_raw[0], current_q_raw[1], current_q_raw[2], current_q_raw[3]);
+
+        m_robot->rootLink()->R = current_q.toRotationMatrix();
+        m_robot->rootLink()->p = ref_root_p/*refworld系*/ + (ref_cog/*refworld系*/ - ref_root_p/*refworld系*/) - m_robot->rootLink()->R/*refworld系*/ * ref_root_R/*refworld系*/.transpose() * (ref_cog/*refworld系*/ - ref_root_p/*refworld系*/);
         m_robot->calcForwardKinematics();
 
-
-        //遊脚の位置制御は必要 TODO
         
-        // //IKを解く
-        // std::vector<hrp::Vector3> tmpp(eefnum);
-        // std::vector<hrp::Matrix33> tmpR(eefnum);
-        // for(size_t i = 0; i < eefnum;i++){
-        //     if(is_ik_enable[i]){
-        //         tmpp[i]/*refworld系*/ = ref_ee_p[i]/*refworld系*/ + ref_ee_R[i]/*refworld系*/ * d_cureefpos[i]/*eef系*/;
-        //         tmpR[i]/*refworld系*/ = ref_ee_R[i]/*refworld系*/ * hrp::rotFromRpy(d_cureefrpy[i])/*eef系*/;
-        //     }
-        // }
-        // for (size_t i = 0; i < eefnum; i++) {
-        //     if (is_ik_enable[i]) {
-        //         for (size_t jj = 0; jj < ik_loop_count[i]; jj++) {
-        //             jpe_v[i]->calcInverseKinematics2Loop(tmpp[i]/*refworld系*/, tmpR[i]/*refworld系*/, 1.0, 0.001, 0.01, &qrefv, transition_smooth_gain,
-        //                                                  localps[i]/*eef系*/,
-        //                                                  localRs[i]/*eef系*/);
-        //         }
-        //     }
-        // }
+        //solve IK
+        for(size_t i = 0; i < eefnum;i++){
+            if(is_ik_enable[i]){
+                hrp::Vector3 tmpp/*refworld系*/ = ref_ee_p[i]/*refworld系*/ + ref_ee_R[i]/*refworld系*/ * d_foot_pos[i]/*eef系*/;
+                hrp::Matrix33 tmpR/*refworld系*/ = ref_ee_R[i]/*refworld系*/ * hrp::rotFromRpy(d_foot_rpy[i])/*eef系*/;
+                for (size_t jj = 0; jj < ik_loop_count[i]; jj++) {
+                    jpe_v[i]->calcInverseKinematics2Loop(tmpp/*refworld系*/, tmpR/*refworld系*/, 1.0, 0.001, 0.01, &qrefv, transition_smooth_gain,
+                                                         localps[i]/*eef系*/,
+                                                         localRs[i]/*eef系*/);
+                }
+            }
+        }
 
         //TODO
         //m_qRef <- m_robot OK
@@ -947,19 +1000,24 @@ public:
     void sync_2_st(){//初期化
         std::cerr << "[MCS] sync_2_st"<< std::endl;
 
-        d_q = hrp::dvector::Zero(d_q.rows());
-        body_attitude_controlled_qrefv = qrefv;
         d_quaternion = Eigen::Vector4d::Zero();
+        for(size_t i=0; i< eefnum;i++){
+            d_foot_pos[i]=hrp::Vector3::Zero();
+            d_foot_rpy[i]=hrp::Vector3::Zero();
+        }
     }
 
     double force_k1, force_k2, force_k3;
     std::vector<double> limb_gains;//6*eef,各eefの各次元にどの比重で力を割り振るか. 0-1
-    std::vector<double> hardware_gains;//[Nm/rad]
-    double d_q_time_const;
-    double d_q_damping_gain;
-    double d_quaternion_time_const;
-    double d_quaternion_damping_gain;
-    
+    double body_attitude_control_time_const;
+    double body_attitude_control_gain;
+    double root_rot_compensation_limit;
+    std::vector<hrp::Vector3> pos_damping_gain;
+    std::vector<hrp::Vector3> pos_time_const;
+    double pos_compensation_limit;
+    std::vector<hrp::Vector3> rot_damping_gain;
+    std::vector<hrp::Vector3> rot_time_const;
+    double rot_compensation_limit;
     std::vector<double> contacteeforiginweight;//滑りにくいeefほど大きい. ContactEEFOriginCoordsを導出するのに用いる.act_root_pを推定するのにも用いる
     std::vector<ContactConstraint> contactconstraints;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > act_cogvel_filter/*actworld系*/;
@@ -1059,9 +1117,10 @@ private:
     hrp::Vector3 act_total_force/*actworld系*/;
     hrp::Vector3 act_total_moment/*actworld系,cogまわり*/;
 
-    hrp::dvector d_q;
-    hrp::dvector body_attitude_controlled_qrefv;
     Eigen::Vector4d d_quaternion/*refworld系*/;
+    Eigen::Quaternion<double> prev_target_root_q/*refworld系*/;
+    std::vector <hrp::Vector3> d_foot_pos/*eef系*/;
+    std::vector <hrp::Vector3> d_foot_rpy/*eef系*/;
 };
 
 
