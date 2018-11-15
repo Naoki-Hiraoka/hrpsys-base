@@ -104,12 +104,9 @@ public:
         d_foot_pos.resize(eefnum,hrp::Vector3::Zero());
         d_foot_rpy.resize(eefnum,hrp::Vector3::Zero());
         
-        //force_k1 = -1357.2;
-        //force_k2 = -1687.8;
-        //force_k3 = 0.14;
-        force_k1 = -1.272861 * 580/0.72;
-        force_k2 = -0.363673799 * 580/0.72;
-        force_k3 = -0.1620;
+        force_k1 = -445.08;
+        force_k2 = -266.15;
+        force_k3 = 0.17242;
         limb_gains.resize(eefnum*6);
         for(size_t i= 0;i<eefnum;i++){
             limb_gains[i*6+0]=1.0;
