@@ -504,7 +504,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       std::cerr << "[" << m_profile.instance_name << "] WARNING! This robot model has no GyroSensor named 'gyrometer'! " << std::endl;
   }
 
-  multicontactstabilizer.initialize(m_robot, dt, stikp.size());
+  multicontactstabilizer.initialize(std::string(m_profile.instance_name), m_robot, dt, stikp.size());
 
   return RTC::RTC_OK;
 }
@@ -855,9 +855,9 @@ void Stabilizer::getActualParameters ()
           act_force_world[i] = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[0], m_wrenches[i].data[1], m_wrenches[i].data[2]);
           hrp::Vector3 sensor_moment/*センサまわり*/ = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[3], m_wrenches[i].data[4], m_wrenches[i].data[5]);
           act_moment_world[i]/*eefまわり*/ = ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * stikp[i].localp + target->p)).cross(act_force_world[i]) + sensor_moment;
-          act_contact_states[i] = multicontactstabilizer.contactconstraints[i].isContact(act_ee_R_world[i].transpose()*act_force_world[i],act_ee_R_world[i].transpose()*act_moment_world[i]);
       }
-      
+
+      multicontactstabilizer.isContact(act_contact_states, act_ee_R_world, act_force_world, act_moment_world);
       on_ground = multicontactstabilizer.getActualParameters(m_robot, qactv,m_robot->rootLink()->p/*Zero*/,m_robot->rootLink()->R/*actworld系*/,act_ee_p_world/*原点不明,actworld系*/,act_ee_R_world/*actworld系*/,act_force_world/*actworld系*/,act_moment_world/*actworld系,eefまわり*/,act_contact_states, contact_decision_threshold);
 
       for ( int i = 0; i < m_robot->numJoints(); i++ ){
@@ -2230,6 +2230,7 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
       ilp.manipulability_limit = jpe_v[i]->getManipulabilityLimit();
       ilp.ik_loop_count = stikp[i].ik_loop_count; // size_t -> unsigned short, value may change, but ik_loop_count is small value and value not change
   }
+  multicontactstabilizer.getParameter(i_stp);
 };
 
 void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
@@ -2544,6 +2545,8 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
       }
       std::cerr << "]" << std::endl;
   }
+
+  multicontactstabilizer.setParameter(i_stp);
 }
 
 std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService::STAlgorithm _st_algorithm)

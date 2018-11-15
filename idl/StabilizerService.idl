@@ -85,6 +85,20 @@ module OpenHRP
     };
 
     /**
+     * @enum ContactConstraint
+     * @brief ContactConstraint
+     */
+    struct ContactConstraintParam {
+        double friction_coefficient;
+        double rotation_friction_coefficient;
+        double upper_cop_x_margin;
+        double lower_cop_x_margin;
+        double upper_cop_y_margin;
+        double lower_cop_y_margin;
+        double contact_decision_threshold;
+    };
+      
+    /**
      * @struct stParam
      * @brief Stabilizer Parameters.
      */
@@ -198,6 +212,41 @@ module OpenHRP
       DblArray3 eefm_swing_pos_damping_gain;
       /// Sequence of all end-effector force/moment distribution weight
       sequence<sequence<double, 6> > eefm_ee_forcemoment_distribution_weight;
+      // for MCS
+      /// Feedback gain for COG position tracking error (x,y,z)
+      double mcs_k1;
+      /// Feedback gain for COG velocity tracking error (x,y,z)
+      double mcs_k2;
+      /// Feedback gain for Force tracking error (x,y,z)
+      double mcs_k3;
+      /// Sequence of all end-effector force/moment distribution weight
+      sequence<sequence<double, 6> > mcs_ee_forcemoment_distribution_weight;
+      /// Body attitude control gain [/s] (quaternion) for MCS.
+      double mcs_body_attitude_control_gain;
+      /// Time constant for body attitude control [s] (quaternion) for MCS.
+      double mcs_body_attitude_control_time_const;
+      /// body attitude compensation limit (quaternion)
+      double mcs_body_attitude_compensation_limit;
+      /// Sequence of all end-effector rotation damping gain [Nm/(rad/s)] (r,p,y).
+      sequence<sequence<double, 3> > mcs_rot_damping_gain;
+      /// Sequence of all end-effector rotation damping time constant [s] (r,p,y).
+      sequence<sequence<double, 3> > mcs_rot_time_const;
+      /// Sequence of all end-effector position damping gain [N/(m/s)] (x,y,z).
+      sequence<sequence<double, 3> > mcs_pos_damping_gain;
+      /// Sequence of all end-effector position damping time constant [s] (x,y,z).
+      sequence<sequence<double, 3> > mcs_pos_time_const;
+      /// all end-effector position compensation limit [m]
+      double mcs_pos_compensation_limit;
+      ///  all end-effector rot compensation limit [rad]
+      double mcs_rot_compensation_limit;
+      /// Cutoff frequency of LPF in calculation of COG velocity [Hz]
+      double mcs_cogvel_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of COG angular velocity [Hz]
+      double mcs_L_cutoff_freq;
+      /// Sequence of all end-effector Origincoords weight
+      sequence<double> mcs_contacteeforiginweight;
+      /// Sequence of all end-effector contact constraints
+      sequence<ContactConstraintParam> mcs_ccparams;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;
