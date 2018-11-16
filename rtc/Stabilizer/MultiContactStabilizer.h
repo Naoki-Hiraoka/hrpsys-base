@@ -403,9 +403,9 @@ public:
                 size_t act_contact_idx = 0;
                 for(size_t i = 0; i <eefnum;i++){
                     if(act_contact_states[i]){
-                        G.block(0,6*act_contact_idx,3,3) = act_ee_R_origin[i]/*actorigin系*/;
-                        G.block(3,6*act_contact_idx,3,3) = hrp::hat(act_ee_p_origin[i]/*actorigin系*/ - act_cog_origin/*actorigin系*/) * act_ee_R_origin[i]/*actorigin系*/;
-                        G.block(3,6*act_contact_idx+3,3,3) = act_ee_R_origin[i]/*actorigin系*/;
+                        G.block<3,3>(0,6*act_contact_idx) = act_ee_R_origin[i]/*actorigin系*/;
+                        G.block<3,3>(3,6*act_contact_idx) = hrp::hat(act_ee_p_origin[i]/*actorigin系*/ - act_cog_origin/*actorigin系*/) * act_ee_R_origin[i]/*actorigin系*/;
+                        G.block<3,3>(3,6*act_contact_idx+3) = act_ee_R_origin[i]/*actorigin系*/;
                         act_contact_idx++;
                     }
                 }
@@ -417,15 +417,15 @@ public:
                 size_t act_contact_idx = 0;
                 for(size_t i = 0; i <eefnum;i++){
                     if(act_contact_states[i]){
-                        wrench_ref_eef.block(6*act_contact_idx,0,3,1)= ref_force_eef[i]/*acteef系*/;
-                        wrench_ref_eef.block(6*act_contact_idx+3,0,3,1)= ref_moment_eef[i]/*acteef系,eefまわり*/;
+                        wrench_ref_eef.block<3,1>(6*act_contact_idx,0)= ref_force_eef[i]/*acteef系*/;
+                        wrench_ref_eef.block<3,1>(6*act_contact_idx+3,0)= ref_moment_eef[i]/*acteef系,eefまわり*/;
                         act_contact_idx++;
                     }
                 }
             }
             hrp::dvector6 cogwrench_cur_origin/*curorigin系,cogまわり*/ = hrp::dvector6::Zero();
-            cogwrench_cur_origin.block(0,0,3,1) = cur_total_force_origin/*curorigin系,cogまわり*/;
-            cogwrench_cur_origin.block(3,0,3,1) = ref_total_moment_origin/*reforigin系,cogまわり*/;
+            cogwrench_cur_origin.block<3,1>(0,0) = cur_total_force_origin/*curorigin系,cogまわり*/;
+            cogwrench_cur_origin.block<3,1>(3,0) = ref_total_moment_origin/*reforigin系,cogまわり*/;
             
             hrp::dvector6 d_FgNg/*curorigin系,cogまわり*/ = cogwrench_cur_origin/*curorigin系,cogまわり*/ - G/*actorigin系,cogまわり<->eef系,eefまわり*/ * wrench_ref_eef/*eef系,eefまわり*/;
             std::cerr << "d_fgmg" << d_FgNg  << std::endl;
@@ -691,8 +691,8 @@ public:
                     size_t act_contact_idx = 0;
                     for(size_t i = 0; i <eefnum;i++){
                         if(act_contact_states[i]){
-                            wrench_act_eef.block(6*act_contact_idx,0,3,1)= act_force_eef[i]/*eef系*/;
-                            wrench_act_eef.block(6*act_contact_idx+3,0,3,1)= act_moment_eef[i]/*eef系,eefまわり*/;
+                            wrench_act_eef.block<3,1>(6*act_contact_idx,0)= act_force_eef[i]/*eef系*/;
+                            wrench_act_eef.block<3,1>(6*act_contact_idx+3,0)= act_moment_eef[i]/*eef系,eefまわり*/;
                             act_contact_idx++;
                         }
                     }
@@ -901,12 +901,15 @@ public:
             size_t act_contact_idx=0;
             for(size_t i=0;i<eefnum;i++){
                 if(act_contact_states[i]){
-                    d_foot_pos[i] += -transition_smooth_gain * d_wrench_eef.block(act_contact_idx*6,0,3,0).cwiseQuotient(mcs_pos_damping_gain[i]) * dt;
-                    d_foot_rpy[i] += -transition_smooth_gain * d_wrench_eef.block(act_contact_idx*6+3,0,3,0).cwiseQuotient(mcs_rot_damping_gain[i]) * dt;
+                    d_foot_pos[i] += -transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6,0).cwiseQuotient(mcs_pos_damping_gain[i]) * dt;
+                    d_foot_rpy[i] += -transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6+3,0).cwiseQuotient(mcs_rot_damping_gain[i]) * dt;
                     act_contact_idx++;
                 }
             }
         }
+
+        //refcontactしていてactcontactしてないeefはz方向に伸ばすべきかTODO
+        
         //swingEEcompensation TODO
 
         for(size_t i=0;i<eefnum;i++){
