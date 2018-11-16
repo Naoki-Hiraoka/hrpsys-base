@@ -922,7 +922,7 @@ public:
             }
         }
 
-        for(size_t i=0;i<2;i++){
+        for(size_t i=0;i<eefnum;i++){
             std::cerr << "d_foot" <<std::endl;
             std::cerr << d_foot_pos[i] << std::endl;
             std::cerr << d_foot_rpy[i] << std::endl;
