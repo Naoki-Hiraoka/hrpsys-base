@@ -11,19 +11,25 @@
 #define VIRTUAL_FORCE_SENSOR_H
 
 #include <rtm/idl/BasicDataType.hh>
+#include <rtm/idl/ExtendedDataTypes.hh>
 #include <rtm/Manager.h>
 #include <rtm/DataFlowComponentBase.h>
 #include <rtm/CorbaPort.h>
 #include <rtm/DataInPort.h>
 #include <rtm/DataOutPort.h>
 #include <rtm/idl/BasicDataTypeSkel.h>
+#include <rtm/idl/ExtendedDataTypesSkel.h>
 
 #include <hrpModel/Body.h>
 #include <hrpModel/Link.h>
+#include <hrpModel/Sensor.h>
 #include <hrpModel/JointPath.h>
 #include <hrpUtil/EigenTypes.h>
 
 #include "VirtualForceSensorService_impl.h"
+#include "../ImpedanceController/JointPathEx.h"
+#include "../TorqueFilter/IIRFilter.h"
+#include "../ImpedanceController/RatsMatrix.h"
 
 // Service implementation headers
 // <rtc-template block="service_impl_h">
@@ -111,13 +117,19 @@ class VirtualForceSensor
   // </rtc-template>
   // TimedDoubleSeq m_qRef;
   TimedDoubleSeq m_qCurrent;
+  TimedDoubleSeq m_dqCurrent;
   TimedDoubleSeq m_tauIn;
-  
+  TimedOrientation3D m_baseRpy;
+  std::vector<TimedDoubleSeq> m_wrenches;  
+    
   // DataInPort declaration
   // <rtc-template block="inport_declare">
   InPort<TimedDoubleSeq> m_qCurrentIn;
+  InPort<TimedDoubleSeq> m_dqCurrentIn;
   InPort<TimedDoubleSeq> m_tauInIn;
-  
+  InPort<TimedOrientation3D> m_baseRpyIn;
+  std::vector<RTC::InPort<TimedDoubleSeq> *> m_wrenchesIn; 
+    
   // </rtc-template>
 
   // DataOutPort declaration
@@ -151,18 +163,31 @@ class VirtualForceSensor
 
  private:
   struct VirtualForceSensorParam {
-    std::string base_name, target_name;
+    std::string target_name;
     hrp::Vector3 p;
     hrp::Matrix33 R;
     hrp::Vector3 forceOffset;
     hrp::Vector3 momentOffset;
-    hrp::JointPathPtr path;
+    hrp::JointPathExPtr path;
+    double friction_coefficient;
+    double rotation_friction_coefficient;
+    double upper_cop_x_margin;
+    double lower_cop_x_margin;
+    double upper_cop_y_margin;
+    double lower_cop_y_margin;
   };
   std::map<std::string, VirtualForceSensorParam> m_sensors;
   double m_dt;
   hrp::BodyPtr m_robot;
   unsigned int m_debugLevel;
 
+  boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > dqCurrentFilter;
+  hrp::dvector dqprev;
+  hrp::Matrix33 baseRprev;
+  hrp::Vector3 basewprev;
+
+  std::vector<hrp::JointPathExPtr> jpe_v; 
+    
   bool calcRawVirtualForce(std::string sensorName, hrp::dvector &outputForce);
   
 };
