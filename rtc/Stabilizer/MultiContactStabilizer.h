@@ -895,7 +895,7 @@ public:
         //eef位置の修正量
         for (size_t i=0;i<eefnum;i++){
             d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(mcs_pos_time_const[i]) *dt;
-            d_foot_rpy[i] -= d_foot_pos[i].cwiseQuotient(mcs_rot_time_const[i]) *dt;
+            d_foot_rpy[i] -= d_foot_rpy[i].cwiseQuotient(mcs_rot_time_const[i]) *dt;
         }
         if(product_contact){
             size_t act_contact_idx=0;
@@ -980,7 +980,7 @@ public:
             if(d_quaternion[i] > mcs_body_attitude_compensation_limit) d_quaternion[i] = mcs_body_attitude_compensation_limit;
             if(d_quaternion[i] < -mcs_body_attitude_compensation_limit) d_quaternion[i] = -mcs_body_attitude_compensation_limit;
         }
-
+        std::cerr << "d_quaternion " << d_quaternion <<std::endl;
         Eigen::Vector4d current_q_raw(target_q.w()+d_quaternion[0], target_q.x()+d_quaternion[1], target_q.y()+d_quaternion[2], target_q.z()+d_quaternion[3]);
         current_q_raw = current_q_raw.normalized();
         Eigen::Quaternion<double> current_q(current_q_raw[0], current_q_raw[1], current_q_raw[2], current_q_raw[3]);
