@@ -279,8 +279,7 @@ public:
     }
 
     void calcMultiContactControl(const std::vector<bool>& is_ik_enable, std::vector<hrp::JointPathExPtr>& jpe_v, hrp::BodyPtr& m_robot/*refworld系*/, const std::vector<std::string>& ee_names, std::vector<int> ik_loop_count, const std::vector<hrp::Vector3>& localps/*eef系*/, const std::vector<hrp::Matrix33>& localRs/*eef系*/) {
-        std::cerr << "[MCS] calcMultiContactControl"<< std::endl;
-        
+       
         hrp::Vector3 ref_root_p_origin/*reforigin系*/;
         hrp::Matrix33 ref_root_R_origin/*reforigin系*/;
         std::vector <hrp::Vector3> ref_ee_p_origin(eefnum)/*reforigin系*/;
@@ -390,9 +389,6 @@ public:
             hrp::Vector3 dcog/*curorigin系*/ = act_cog_origin/*actorigin系*/ - ref_cog_origin/*reforigin系*/;
             hrp::Vector3 dcogvel/*curorigin系*/ = act_cogvel_origin/*actorigin系*/ - ref_cogvel_origin/*reforigin系*/;
             hrp::Vector3 dforce/*curorigin系*/ = act_total_force_origin/*actorigin系*/ - ref_total_force_origin/*reforigin系*/;
-            std::cerr << "dcog" << dcog <<std::endl;
-            std::cerr << "dcogvel" << dcogvel <<std::endl;
-            std::cerr << "dforce" << dforce <<std::endl;
             hrp::Vector3 cur_total_force_origin/*curorigin系*/ = ref_total_force_origin/*reforigin系*/ + mcs_k1 * transition_smooth_gain * dcog/*curorigin系*/ + mcs_k2 * transition_smooth_gain * dcogvel/*curorigin系*/ + mcs_k3 * transition_smooth_gain * dforce/*curorigin系*/;
             
             //Fg,Ngを分配する
@@ -428,8 +424,7 @@ public:
             cogwrench_cur_origin.block<3,1>(3,0) = ref_total_moment_origin/*reforigin系,cogまわり*/;
             
             hrp::dvector6 d_FgNg/*curorigin系,cogまわり*/ = cogwrench_cur_origin/*curorigin系,cogまわり*/ - G/*actorigin系,cogまわり<->eef系,eefまわり*/ * wrench_ref_eef/*eef系,eefまわり*/;
-            std::cerr << "d_fgmg" << d_FgNg  << std::endl;
-
+            
             //d_FgNgを分配する.QP
             //USE_QPOASES を ON にすること
             bool qp_solved=false;bool looseqp_solved=false;
@@ -697,9 +692,7 @@ public:
                         }
                     }
                 }
-
                 d_wrench_eef/*eef系,eefまわり*/ = wrench_cur_eef/*eef系,eefまわり*/ - wrench_act_eef/*eef系,eefまわり*/;
-                std::cerr << "d_wrench_eef" << d_wrench_eef <<std::endl;
                 
                 // //実際の値のangle-vectorにする
                 // m_robot->rootLink()->R/*actorigin系*/ = act_root_R_origin/*actorigin系*/;
@@ -921,12 +914,6 @@ public:
                 if(d_foot_rpy[i][j] < -mcs_rot_compensation_limit) d_foot_rpy[i][j] = -mcs_rot_compensation_limit;
             }
         }
-
-        for(size_t i=0;i<eefnum;i++){
-            std::cerr << "d_foot" <<std::endl;
-            std::cerr << d_foot_pos[i] << std::endl;
-            std::cerr << d_foot_rpy[i] << std::endl;
-        }
         
         // return to referencea //calcEEForceMomentControlと同じ
         m_robot->rootLink()->R = ref_root_R/*refworld系*/;
@@ -980,7 +967,7 @@ public:
             if(d_quaternion[i] > mcs_body_attitude_compensation_limit) d_quaternion[i] = mcs_body_attitude_compensation_limit;
             if(d_quaternion[i] < -mcs_body_attitude_compensation_limit) d_quaternion[i] = -mcs_body_attitude_compensation_limit;
         }
-        std::cerr << "d_quaternion " << d_quaternion <<std::endl;
+
         Eigen::Vector4d current_q_raw(target_q.w()+d_quaternion[0], target_q.x()+d_quaternion[1], target_q.y()+d_quaternion[2], target_q.z()+d_quaternion[3]);
         current_q_raw = current_q_raw.normalized();
         Eigen::Quaternion<double> current_q(current_q_raw[0], current_q_raw[1], current_q_raw[2], current_q_raw[3]);
@@ -1025,7 +1012,6 @@ public:
     }
 
     void setParameter(const OpenHRP::StabilizerService::stParam& i_stp){
-        std::cerr <<"0"<<std::endl;
         mcs_k1 = i_stp.mcs_k1;
         mcs_k2 = i_stp.mcs_k2;
         mcs_k3 = i_stp.mcs_k3;
