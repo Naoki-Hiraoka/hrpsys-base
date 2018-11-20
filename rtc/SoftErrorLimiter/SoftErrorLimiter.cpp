@@ -283,9 +283,9 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
         servo_state[i] = (m_servoState.data[i][0] & OpenHRP::RobotHardwareService::SERVO_STATE_MASK) >> OpenHRP::RobotHardwareService::SERVO_STATE_SHIFT; // enum SwitchStatus {SWITCH_ON, SWITCH_OFF};
     }
 
-    static std::vector<bool> taumax_over;
-    if ( taumax_over.size() != m_tau.data.length() ) { // initialize taumax_over
-        taumax_over.resize(m_tau.data.length(), false);
+    static std::vector<int> taumax_over_count;
+    if ( taumax_over_count.size() != m_tau.data.length() ) { // initialize taumax_over
+        taumax_over_count.resize(m_tau.data.length(), 0);
     }
 
       /*
@@ -361,11 +361,11 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                       taumax = std::min(taumax, std::abs(m_tauMax.data[i]));
                   }
 
-                  if(m_tau.data[i]<taumax*0.9)taumax_over[i] = false;
-                  else if(m_tau.data[i]>taumax)taumax_over[i] = true;
+                  if(m_tau.data[i]<taumax*0.9 && taumax_over_count[i] > 0)taumax_over_count[i]--;
+                  else if(m_tau.data[i]>taumax)taumax_over_count[i] = 1 / dt;
 
                   double gain = m_pgain.data[i] * hardware_pgains[i];
-                  if (taumax_over[i] && gain != 0.0){
+                  if (taumax_over_count[i] > 0 && gain != 0.0){
                       limit = std::min(limit, std::abs(taumax / gain));
                   }
               }
