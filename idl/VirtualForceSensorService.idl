@@ -11,12 +11,19 @@ module OpenHRP
   
   interface VirtualForceSensorService
   {
+    typedef sequence<string> StrSequence;
     /**
      * @brief set virtual force sensor offset.
      * @param sensroName is target virtual force sensor name
      * @return true if set successfully, false otherwise
      */
-    boolean removeVirtualForceSensorOffset(in string sensorName);
+    boolean removeVirtualForceSensorOffset(in StrSequence sensorNames, in double tm);
+
+    /**
+     * @brief set external force offset.
+     * @return true if set successfully, false otherwise
+     */
+    boolean removeExternalForceOffset(in double tm);
   };
 };
 

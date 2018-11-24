@@ -13,6 +13,8 @@
 #include <hrpUtil/MatrixSolvers.h>
 #include <qpOASES.hpp>
 
+typedef coil::Guard<coil::Mutex> Guard;
+
 // Module specification
 // <rtc-template block="module_spec">
 static const char* virtualforcesensor_spec[] =
@@ -37,9 +39,9 @@ VirtualForceSensor::VirtualForceSensor(RTC::Manager* manager)
   : RTC::DataFlowComponentBase(manager),
     // <rtc-template block="initializer">
     m_qCurrentIn("qCurrent", m_qCurrent),
-    m_dqCurrentIn("dqCurrent", m_dqCurrent),
     m_tauInIn("tauIn", m_tauIn),
-    m_baseRpyIn("baseRpyIn", m_baseRpy),
+    m_baseRpyIn("baseRpy", m_baseRpy),
+    m_extforceOut("extforce", m_extforce),
     m_VirtualForceSensorServicePort("VirtualForceSensorService"),
     // </rtc-template>
     m_debugLevel(0)
@@ -66,10 +68,12 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   // <rtc-template block="registration">
   // Set InPort buffers
   addInPort("qCurrent", m_qCurrentIn);
-  addInPort("dqCurrent", m_qCurrentIn);
   addInPort("tauIn", m_tauInIn);
+  addInPort("baseRpy", m_baseRpyIn);
 
   // Set OutPort buffer
+  addOutPort("extforce", m_extforceOut);
+  m_extforce.data.length(6);
   
   // Set service provider to Ports
   m_VirtualForceSensorServicePort.registerProvider("service0", "VirtualForceSensorService", m_service0);
@@ -101,6 +105,7 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
               << m_profile.instance_name << std::endl;
     return RTC::RTC_ERROR;
   }
+  m_robot->calcTotalMass();
 
   // Setting for wrench data ports (real)
   std::vector<std::string> force_sensor_names;
@@ -164,11 +169,23 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     registerOutPort((*it).first.c_str(), *m_forceOut[i]);
     it++; i++;
   }
-
+  
+  qCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   dqCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  ddqCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  basewFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
+  basedwFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
+  tauFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  qprev = hrp::dvector::Zero(m_robot->numJoints());
   dqprev = hrp::dvector::Zero(m_robot->numJoints());
   baseRprev = hrp::Matrix33::Identity();
   basewprev = hrp::Vector3::Zero();
+  cog_Pprev = hrp::Vector3::Zero();
+  cog_Lprev = hrp::Vector3::Zero();
+  extforceOffset = hrp::Vector3::Zero();
+  extmomentOffset = hrp::Vector3::Zero();
+  extforce_offset_calib_counter = 0;
+  sem_init(&extforce_wait_sem, 0, 0);
   for (size_t i = 0; i < m_robot->numSensors(hrp::Sensor::FORCE); i++){
       jpe_v.push_back(hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->sensor(hrp::Sensor::FORCE, i)->link, m_dt, false, std::string(m_profile.instance_name))));
   }
@@ -226,9 +243,6 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
   if (m_qCurrentIn.isNew()) {
     m_qCurrentIn.read();
   }
-  if (m_dqCurrentIn.isNew()) {
-    m_dqCurrentIn.read();
-  }
   if (m_tauInIn.isNew()) {
     m_tauInIn.read();
   }
@@ -242,28 +256,36 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
   }
   
   if ( m_qCurrent.data.length() ==  m_robot->numJoints() &&
-       m_dqCurrent.data.length() ==  m_robot->numJoints() &&
        m_tauIn.data.length() ==  m_robot->numJoints()) {
     // robotの状態の更新
+    hrp::dvector qCurrent = hrp::dvector::Zero(m_robot->numJoints());
     for ( unsigned int i = 0; i < m_robot->numJoints(); i++ ){
-      m_robot->joint(i)->q = m_qCurrent.data[i];
+      qCurrent[i] = m_qCurrent.data[i];
+    }
+    qCurrent = qCurrentFilter->passFilter(qCurrent);
+    for ( unsigned int i = 0; i < m_robot->numJoints(); i++ ){
+      m_robot->joint(i)->q = qCurrent[i];
     }
     hrp::dvector dqCurrent(m_robot->numJoints());
     for ( unsigned int i = 0; i < m_robot->numJoints(); i++ ){
-      dqCurrent[i] = m_dqCurrent.data[i];
+        dqCurrent[i] = 0.0;
     }
+    qprev = qCurrent;
     dqCurrent = dqCurrentFilter->passFilter(dqCurrent);
     for ( unsigned int i = 0; i < m_robot->numJoints(); i++ ){
       m_robot->joint(i)->dq = dqCurrent[i];
     }
     hrp::dvector ddqCurrent = (dqCurrent - dqprev) / m_dt;
     dqprev = dqCurrent;
+    ddqCurrent = ddqCurrentFilter->passFilter(ddqCurrent);
     for ( unsigned int i = 0; i < m_robot->numJoints(); i++ ){
-      m_robot->joint(i)->ddq = dqCurrent[i];
+      m_robot->joint(i)->ddq = ddqCurrent[i];
     }
     hrp::Matrix33 baseR = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
     hrp::Vector3 basew = rats::matrix_log( baseR * baseRprev.transpose() ) / m_dt;
+    basew = basewFilter->passFilter(basew);
     hrp::Vector3 basedw = (basew - basewprev) /m_dt;
+    basedw = basedwFilter->passFilter(basedw);
     baseRprev = baseR;
     basewprev = basew;
     m_robot->rootLink()->R = baseR;
@@ -278,7 +300,14 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
     hrp::Vector3 basedv = hrp::Vector3::Zero();//TODO
     m_robot->rootLink()->dv = basedv;
     m_robot->calcForwardKinematics(true,true);
-
+    hrp::Vector3 cog_P;
+    hrp::Vector3 cog_L;
+    m_robot->calcTotalMomentum(cog_P,cog_L);
+    hrp::Vector3 d_cog_P = (cog_P - cog_Pprev) / m_dt;
+    hrp::Vector3 d_cog_L = (cog_L - cog_Lprev) / m_dt;
+    cog_Pprev = cog_P;
+    cog_Lprev = cog_L;
+    
     for(size_t i =0 ; i< m_robot->numLinks();i++){//voはFKで自動で計算されない
         m_robot->link(i)->vo = m_robot->link(i)->v - m_robot->link(i)->w.cross(m_robot->link(i)->p);
     }
@@ -301,9 +330,12 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
     
     //実際のトルク
     hrp::dvector T = hrp::dvector::Zero(6+m_robot->numJoints());
+    hrp::dvector tau = hrp::dvector::Zero(m_robot->numJoints());
     for (size_t i = 0; i < m_robot->numJoints() ; i++){
-        T[6+i] = m_tauIn.data[i];
+        tau[i] = m_tauIn.data[i];
     }
+    tau = tauFilter->passFilter(tau);
+    T.block(6,0,m_robot->numJoints(),1) = tau;
     Tvirtual -= T;
 
     //各反力に相当するトルク
@@ -330,7 +362,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
     //USE_QPOASES を ON にすること
     bool qp_solved=false;
     hrp::dvector virtual_wrench(6 * m_sensors.size());
-    {
+    if(m_sensors.size()!=0){
         size_t state_len = 6 * m_sensors.size();
         size_t inequality_len = 11 * m_sensors.size();
         qpOASES::real_t* H = new qpOASES::real_t[state_len * state_len];
@@ -338,7 +370,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         qpOASES::real_t* g = new qpOASES::real_t[state_len];
         qpOASES::real_t* ub = NULL;
         qpOASES::real_t* lb = NULL;
-        qpOASES::real_t* ubA = NULL;
+        qpOASES::real_t* ubA = new qpOASES::real_t[inequality_len];
         qpOASES::real_t* lbA = new qpOASES::real_t[inequality_len];
 
         hrp::dmatrix J = hrp::dmatrix::Zero(state_len,m_robot->numJoints());
@@ -400,6 +432,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
 
         for (size_t i = 0; i < inequality_len; i++){
             lbA[i] = 0.0;
+            ubA[i] = 1e10;
         }
         
         qpOASES::QProblem example( state_len ,inequality_len);
@@ -431,104 +464,88 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         delete[] lb;
         delete[] ubA;
         delete[] lbA;
+    }else{
+        qp_solved=true;
     }
 
     if(qp_solved){
-        std::cerr << "[VF]QP solved" <<std::endl;
-        for ( size_t i = 0; i < m_force.size(); i ++ ) {
-            for (size_t j = 0; j < 3; j++){
-                m_force[i].data[j+0] = virtual_wrench[i*6+j+0];
-                m_force[i].data[j+3] = virtual_wrench[i*6+j+3];
-                m_force[i].tm = tm; // put timestamp
-                m_forceOut[i]->write();
+        hrp::dvector6 ext_wrench/*actworld系,cogまわり*/ = hrp::dvector6::Zero();
+        hrp::Vector3 CM = m_robot->calcCM();
+        //実際の運動
+        ext_wrench.block<3,1>(0,0) = d_cog_P;
+        ext_wrench.block<3,1>(3,0) = d_cog_L;
+        //重力
+        ext_wrench.block<3,1>(0,0) += m_robot->totalMass() * g;
+        //force sensor
+        for (size_t i = 0; i < jpe_v.size() ; i++){
+            hrp::Sensor* sensor = m_robot->sensor(hrp::Sensor::FORCE, i);
+            hrp::Matrix33 sen_R = sensor->link->R * sensor->localR;
+            ext_wrench.block<3,1>(0,0) -= sen_R * hrp::Vector3(m_wrenches[i].data[0],m_wrenches[i].data[1],m_wrenches[i].data[2]);
+            ext_wrench.block<3,1>(3,0) -= sen_R * hrp::Vector3(m_wrenches[i].data[3],m_wrenches[i].data[4],m_wrenches[i].data[5]);
+            ext_wrench.block<3,1>(3,0) -= ((sensor->link->p + sensor->link->R * sensor->localPos) - CM).cross(sen_R * hrp::Vector3(m_wrenches[i].data[0],m_wrenches[i].data[1],m_wrenches[i].data[2]));
+        }
+        //virtual force sensor
+        {
+            std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
+            for (size_t i = 0 ; i < m_sensors.size(); i++){
+                hrp::Matrix33 sen_R = m_robot->link((*it).second.target_name)->R * (*it).second.R;
+                ext_wrench.block<3,1>(0,0) -= sen_R * virtual_wrench.block<3,1>(i*6,0);
+                ext_wrench.block<3,1>(3,0) -= sen_R * virtual_wrench.block<3,1>(i*6+3,0);
+                ext_wrench.block<3,1>(3,0) -= ((m_robot->link((*it).second.target_name)->p + m_robot->link((*it).second.target_name)->R * (*it).second.p) - CM).cross(sen_R * virtual_wrench.block<3,1>(i*6,0));
+                it++;
             }
         }
+
+        Guard guard(m_mutex);
+        {
+            std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
+            for ( size_t i = 0; i < m_force.size(); i ++ ) {
+                if((*it).second.offset_calib_counter > 0){// while calibrating
+                    (*it).second.forceOffset_sum += virtual_wrench.block<3,1>(i*6,0);
+                    (*it).second.momentOffset_sum += virtual_wrench.block<3,1>(i*6+3,0);
+                    (*it).second.offset_calib_counter--;
+                    if ((*it).second.offset_calib_counter == 0){
+                        (*it).second.forceOffset = (*it).second.forceOffset_sum / (*it).second.max_offset_calib_counter;
+                        (*it).second.momentOffset = (*it).second.momentOffset_sum / (*it).second.max_offset_calib_counter;
+                        sem_post(&((*it).second.wait_sem));
+                    }
+                }
+                virtual_wrench.block<3,1>(i*6,0) -= (*it).second.forceOffset;
+                virtual_wrench.block<3,1>(i*6+3,0) -= (*it).second.momentOffset;
+                for (size_t j = 0; j < 3; j++){
+                    m_force[i].data[j+0] = virtual_wrench[i*6+j+0];
+                    m_force[i].data[j+3] = virtual_wrench[i*6+j+3];
+                    m_force[i].tm = tm; // put timestamp
+                    m_forceOut[i]->write();
+                }
+                it++;
+            }
+        }
+        if(extforce_offset_calib_counter > 0){// while calibrating
+            extforceOffset_sum += ext_wrench.block<3,1>(0,0);
+            extmomentOffset_sum += ext_wrench.block<3,1>(3,0);
+            extforce_offset_calib_counter--;
+            if (extforce_offset_calib_counter == 0){
+                extforceOffset = extforceOffset_sum / max_extforce_offset_calib_counter;
+                extmomentOffset = extmomentOffset_sum / max_extforce_offset_calib_counter;
+                sem_post(&extforce_wait_sem);
+            }
+        }
+        ext_wrench.block<3,1>(0,0) -= extforceOffset;
+        ext_wrench.block<3,1>(3,0) -= extmomentOffset;
+        for (size_t i = 0; i < 6; i++){
+            m_extforce.data[i] = ext_wrench[i];
+        }
+        m_extforce.tm = tm;
+        m_extforceOut.write();
     }else{
-        std::cerr << "[VF]QP not solved" <<std::endl;
+        std::cerr << "[" << m_profile.instance_name << "] QP not solved" <<std::endl;
     }
-    return RTC::RTC_OK;
-
-
-
     
-    std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
-    int i = 0;
-    while ( it != m_sensors.end() ) {
-
-      hrp::JointPathPtr path = (*it).second.path;
-      int n = path->numJoints();
-      
-      if ( DEBUGP ) {
-        std::cerr << "  sensor name  : " << (*it).first << std::endl;
-        std::cerr << "sensor torque  : ";
-        for (int j = 0; j < n; j++) {
-          std::cerr << " " << m_tauIn.data[path->joint(j)->jointId] ;
-        }
-        std::cerr << std::endl;
-      }
-
-      hrp::dvector force(6);
-      calcRawVirtualForce((*it).first, force);
-
-      if ( DEBUGP ) {
-        std::cerr << "    raw force  : ";
-        for ( int j = 0; j < 6; j ++ ) {
-          std::cerr << " " << force[j] ;
-        }
-        std::cerr << std::endl;
-      }
-      
-      hrp::dvector force_p(3), force_r(3);
-      for ( int j = 0; j < 3; j ++ ) {
-        force_p[j] = force[j];
-        force_r[j] = force[j+3];
-      }
-      force_p = force_p - (*it).second.forceOffset;
-      force_r = force_r - (*it).second.momentOffset;
-      for ( int j = 0; j < 3; j ++ ) {
-        m_force[i].data[j+0] = force_p[j];
-        m_force[i].data[j+3] = force_r[j];
-      }
-
-      if ( DEBUGP ) {
-        std::cerr << "  output force  : ";
-        for (int j = 0; j < 6; j++) {
-          std::cerr << " " << m_force[i].data[j];
-        }
-        std::cerr << std::endl;
-      }
-
-      m_force[i].tm = tm; // put timestamp
-      m_forceOut[i]->write();
-
-      it++; i++;
-    }
-    //
-#if 0
-  (:calc-force-from-joint-torque
-   (limb all-torque &key (move-target (send self limb :end-coords)) (use-torso))
-   (let* ((link-list
-	   (send self :link-list
-		 (send move-target :parent)
-		 (unless use-torso (car (send self limb :links)))))
-	  (jacobian
-	   (send self :calc-jacobian-from-link-list
-		 link-list
-		 :move-target move-target
-		 :rotation-axis (list t)
-		 :translation-axis (list t)))
-	  (torque (instantiate float-vector (length link-list))))
-     (dotimes (i (length link-list))
-       (setf (elt torque i)
-	     (elt all-torque (position (send (elt link-list i) :joint) (send self :joint-list)))))
-     (transform (send self :calc-inverse-jacobian (transpose jacobian))
-		torque)))
-#endif
-
   }
-  return RTC::RTC_OK;
+  return RTC::RTC_OK;  
 }
-
+  
 /*
 RTC::ReturnCode_t VirtualForceSensor::onAborting(RTC::UniqueId ec_id)
 {
@@ -564,30 +581,107 @@ RTC::ReturnCode_t VirtualForceSensor::onRateChanged(RTC::UniqueId ec_id)
 }
 */
 
-bool VirtualForceSensor::removeVirtualForceSensorOffset(std::string sensorName)
+bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& sensorNames, const double tm)
 {
-  std::map<std::string, VirtualForceSensorParam>::iterator it;
-  for (it = m_sensors.begin(); it != m_sensors.end(); it++) {
-    if ((*it).first != sensorName){
-      continue;
-    } else {
-      hrp::JointPathPtr path = (*it).second.path;
-      hrp::dvector force(6);
-      if(!calcRawVirtualForce(sensorName, force)){
-        return false;
+  std::cerr << "[" << m_profile.instance_name << "] removeVirtualForceSensorOffset..." << std::endl;
+
+  // Check argument validity
+  std::vector<std::string> valid_names, invalid_names, calibrating_names;
+  bool is_valid_argument = true;
+  {
+      Guard guard(m_mutex);
+      if ( sensorNames.length() == 0 ) { // If no sensor names are specified, calibrate all sensors.
+          std::cerr << "[" << m_profile.instance_name << "]   No sensor names are specified, calibrate all sensors = [";
+          for ( std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin(); it != m_sensors.end(); it++ ) {
+              valid_names.push_back(it->first);
+              std::cerr << it->first << " ";
+          }
+          std::cerr << "]" << std::endl;
+      } else {
+          for (size_t i = 0; i < sensorNames.length(); i++) {
+              std::string name(sensorNames[i]);
+              if ( m_sensors.find(name) != m_sensors.end() ) {
+                  if ( m_sensors[name].offset_calib_counter == 0 ) {
+                      valid_names.push_back(name);
+                  } else {
+                      calibrating_names.push_back(name);
+                      is_valid_argument = false;
+                  }
+              } else{
+                  invalid_names.push_back(name);
+                  is_valid_argument = false;
+              }
+          }
       }
-      hrp::Vector3 force_p, force_r;
-      for ( int i = 0; i < 3; i ++ ) {
-        force_p[i] = force[i];
-        force_r[i] = force[i+3];
-      }
-      (*it).second.forceOffset = force_p;
-      (*it).second.momentOffset = force_r;
-      return true;
-    }
   }
-  std::cerr << "removeVirtualForceSensorOffset: No sensor " << sensorName << std::endl;
-  return false;
+  // Return if invalid or calibrating
+  if ( !is_valid_argument ) {
+      std::cerr << "[" << m_profile.instance_name << "]   Cannot start removeVirtualForceSensorOffset, invalid = [";
+      for (size_t i = 0; i < invalid_names.size(); i++) std::cerr << invalid_names[i] << " ";
+      std::cerr << "], calibrating = [";
+      for (size_t i = 0; i < calibrating_names.size(); i++) std::cerr << calibrating_names[i] << " ";
+        std::cerr << "]" << std::endl;
+        return false;
+  }
+  // Start calibration
+  //   Print output force before calib
+  std::cerr << "[" << m_profile.instance_name << "]   Calibrate sensor names = [";
+  for (size_t i = 0; i < valid_names.size(); i++) std::cerr << valid_names[i] << " ";
+  std::cerr << "]" << std::endl;
+  {
+      Guard guard(m_mutex);
+      for (size_t i = 0; i < valid_names.size(); i++) {
+          m_sensors[valid_names[i]].max_offset_calib_counter = static_cast<int>(tm/m_dt);
+          m_sensors[valid_names[i]].forceOffset_sum = hrp::Vector3::Zero();
+          m_sensors[valid_names[i]].momentOffset_sum = hrp::Vector3::Zero();
+          m_sensors[valid_names[i]].offset_calib_counter = m_sensors[valid_names[i]].max_offset_calib_counter;
+      }
+  }
+  //   Wait
+  for (size_t i = 0; i < valid_names.size(); i++) {
+      sem_wait(&(m_sensors[valid_names[i]].wait_sem));
+  }
+  //   Print output force and offset after calib
+  {
+      Guard guard(m_mutex);
+      std::cerr << "[" << m_profile.instance_name << "]   Calibrate done (calib time = " << tm << "[s])" << std::endl;
+      for (size_t i = 0; i < valid_names.size(); i++) {
+          std::cerr << "[" << m_profile.instance_name << "]     Calibrated offset [" << valid_names[i] << "], ";
+          std::cerr << "force_offset = " << m_sensors[valid_names[i]].forceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][N]")) << ", ";
+          std::cerr << "moment_offset = " << m_sensors[valid_names[i]].momentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][Nm]")) << std::endl;
+      }
+  }
+  std::cerr << "[" << m_profile.instance_name << "] removeVirtualForceSensorOffset...done" << std::endl;
+  return true;
+}
+
+bool VirtualForceSensor::removeExternalForceOffset(const double tm)
+{
+  std::cerr << "[" << m_profile.instance_name << "] removeExternalForceOffset..." << std::endl;
+  {
+      Guard guard(m_mutex);
+      if (extforce_offset_calib_counter!=0){
+          std::cerr << "[" << m_profile.instance_name << "]   Cannot start removeExternalForceOffset" <<std::endl;
+          return false;
+      }
+      max_extforce_offset_calib_counter = static_cast<size_t>(tm/m_dt);
+      extforceOffset_sum = hrp::Vector3::Zero();
+      extmomentOffset_sum = hrp::Vector3::Zero();
+      extforce_offset_calib_counter = max_extforce_offset_calib_counter;
+  }
+
+  sem_wait(&extforce_wait_sem);
+
+  {
+      Guard guard(m_mutex);
+      std::cerr << "[" << m_profile.instance_name << "]   Calibrate done (calib time = " << tm << "[s])" << std::endl;
+      std::cerr << "force_offset = " << extforceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][N]")) << ", ";
+      std::cerr << "moment_offset = " << extmomentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][Nm]")) << std::endl;
+  }
+
+  std::cerr << "[" << m_profile.instance_name << "] removeExternalForceOffset...done" << std::endl;
+  
+  return true;
 }
 
 bool VirtualForceSensor::calcRawVirtualForce(std::string sensorName, hrp::dvector &outputForce)

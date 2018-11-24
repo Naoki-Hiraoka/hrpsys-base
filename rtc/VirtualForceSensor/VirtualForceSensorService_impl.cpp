@@ -11,9 +11,14 @@ VirtualForceSensorService_impl::~VirtualForceSensorService_impl()
 {
 }
 
-CORBA::Boolean VirtualForceSensorService_impl::removeVirtualForceSensorOffset(const char *sensorName)
+CORBA::Boolean VirtualForceSensorService_impl::removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& sensorNames, CORBA::Double tm)
 {
-	return m_vfsensor->removeVirtualForceSensorOffset(std::string(sensorName));
+	return m_vfsensor->removeVirtualForceSensorOffset(sensorNames, tm);
+}
+
+CORBA::Boolean VirtualForceSensorService_impl::removeExternalForceOffset(CORBA::Double tm)
+{
+	return m_vfsensor->removeExternalForceOffset(tm);
 }
 
 void VirtualForceSensorService_impl::vfsensor(VirtualForceSensor *i_vfsensor)

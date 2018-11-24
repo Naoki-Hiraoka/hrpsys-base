@@ -16,7 +16,8 @@ public:
   VirtualForceSensorService_impl();
   virtual ~VirtualForceSensorService_impl();
   //
-  CORBA::Boolean removeVirtualForceSensorOffset(const char *sensorName);
+  CORBA::Boolean removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& names, CORBA::Double tm);
+  CORBA::Boolean removeExternalForceOffset(CORBA::Double tm);
   //
   void vfsensor(VirtualForceSensor *i_vfsensor);
 private:
