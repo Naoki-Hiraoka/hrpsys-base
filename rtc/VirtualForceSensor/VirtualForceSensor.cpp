@@ -684,6 +684,38 @@ bool VirtualForceSensor::removeExternalForceOffset(const double tm)
   return true;
 }
 
+bool VirtualForceSensor::loadForceMomentOffsetParams(const std::string& filename)
+{
+  std::cerr << "[" << m_profile.instance_name << "] loadForceMomentOffsetParams" << std::endl;
+  std::ifstream ifs(filename.c_str());
+  if (ifs.is_open()){
+    while(ifs.eof()==0){
+      std::string tmps;
+      if ( ifs >> tmps ) {
+          if ( tmps == "external"){
+              for (size_t i = 0; i < 3; i++) ifs >> extforceOffset(i);
+              for (size_t i = 0; i < 3; i++) ifs >> extmomentOffset(i);
+              std::cerr << "[" << m_profile.instance_name << "]   " << tmps << "" << std::endl;
+          } else if ( m_sensors.find(tmps) != m_sensors.end()) {
+              for (size_t i = 0; i < 3; i++) ifs >> m_sensors[tmps].forceOffset(i);
+              for (size_t i = 0; i < 3; i++) ifs >> m_sensors[tmps].momentOffset(i);
+              std::cerr << "[" << m_profile.instance_name << "]   " << tmps << "" << std::endl;
+              std::cerr << "[" << m_profile.instance_name << "]   force_offset = " << m_sensors[tmps].forceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "]")) << "[N]" << std::endl;
+              std::cerr << "[" << m_profile.instance_name << "]   moment_offset = " << m_sensors[tmps].momentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "]")) << "[Nm]" << std::endl;
+          } else {
+              std::cerr << "[" << m_profile.instance_name << "] no such (" << tmps << ")" << std::endl;
+              return false;
+          }
+      }
+    }
+  } else {
+    std::cerr << "[" << m_profile.instance_name << "] failed to open(" << filename << ")" << std::endl;
+    return false;
+  }
+  return true;
+};
+
+
 bool VirtualForceSensor::calcRawVirtualForce(std::string sensorName, hrp::dvector &outputForce)
 {
   std::map<std::string, VirtualForceSensorParam>::iterator it;

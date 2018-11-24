@@ -114,6 +114,8 @@ class VirtualForceSensor
 
   bool removeExternalForceOffset(const double tm);
 
+  bool loadForceMomentOffsetParams(const std::string& filename);
+    
  protected:
   // Configuration variable declaration
   // <rtc-template block="config_declare">

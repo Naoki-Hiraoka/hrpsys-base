@@ -21,6 +21,11 @@ CORBA::Boolean VirtualForceSensorService_impl::removeExternalForceOffset(CORBA::
 	return m_vfsensor->removeExternalForceOffset(tm);
 }
 
+CORBA::Boolean VirtualForceSensorService_impl::loadForceMomentOffsetParams(const char *filename)
+{
+	return m_vfsensor->loadForceMomentOffsetParams(std::string(filename));
+}
+
 void VirtualForceSensorService_impl::vfsensor(VirtualForceSensor *i_vfsensor)
 {
 	m_vfsensor = i_vfsensor;

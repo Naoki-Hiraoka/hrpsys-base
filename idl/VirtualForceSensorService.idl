@@ -24,6 +24,8 @@ module OpenHRP
      * @return true if set successfully, false otherwise
      */
     boolean removeExternalForceOffset(in double tm);
+
+    boolean loadForceMomentOffsetParams(in string filename);
   };
 };
 
