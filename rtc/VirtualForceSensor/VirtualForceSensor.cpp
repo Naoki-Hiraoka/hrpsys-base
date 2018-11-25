@@ -358,6 +358,11 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         Tvirtual -= J.transpose() * wrench;
     }
 
+    hrp::Vector3 CM = m_robot->calcCM();
+    //外力のオフセット
+    Tvirtual.block<3,1>(0,0) -= extforceOffset;
+    Tvirtual.block<3,1>(3,0) -= extmomentOffset + CM.cross(extforceOffset);
+    
     //virtual sensor入力を推定する
     //USE_QPOASES を ON にすること
     bool qp_solved=false;
@@ -470,7 +475,6 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
 
     if(qp_solved){
         hrp::dvector6 ext_wrench/*actworld系,cogまわり*/ = hrp::dvector6::Zero();
-        hrp::Vector3 CM = m_robot->calcCM();
         //実際の運動
         ext_wrench.block<3,1>(0,0) = d_cog_P;
         ext_wrench.block<3,1>(3,0) = d_cog_L;
