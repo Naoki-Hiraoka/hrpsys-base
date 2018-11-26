@@ -408,6 +408,9 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         }
 
         {
+            for (size_t i =0; i < state_len * inequality_len; i++){
+                A[i] = 0.0;
+            }
             std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
             for (size_t i = 0 ; i < m_sensors.size(); i++ ){
                 A[(i*11+0)*state_len + (i*6+2)] = 1;
@@ -431,8 +434,8 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
                 A[(i*11+9)*state_len + (i*6+2)] = (*it).second.rotation_friction_coefficient;
                 A[(i*11+10)*state_len + (i*6+5)] = 1;
                 A[(i*11+10)*state_len + (i*6+2)] = (*it).second.rotation_friction_coefficient;
+                it++;
             }
-            it++;
         }
 
         for (size_t i = 0; i < inequality_len; i++){
@@ -451,8 +454,8 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         example.setOptions( options );
         /* Solve first QP. */
         //高速化のためSQPしたいTODO
-        int nWSR = 1000;
-        qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0);
+        int nWSR = 1000;qpOASES::real_t* tmp = NULL;
+        qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,/*ubA*/tmp, nWSR,0);
         if(qpOASES::getSimpleStatus(status)==0){
             qp_solved=true;
             qpOASES::real_t* xOpt = new qpOASES::real_t[state_len];
@@ -460,6 +463,8 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             for(size_t i=0; i<state_len;i++){
                 virtual_wrench[i]=xOpt[i];
             }
+            std::cerr << "QP solved" <<std::endl;
+            std::cerr << virtual_wrench <<std::endl;
             delete[] xOpt;
         }
         delete[] H;
