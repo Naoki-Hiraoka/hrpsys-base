@@ -1725,7 +1725,26 @@ void Stabilizer::calcEEForceMomentControl() {
             localps[i] = stikp[i].localp;
             localRs[i] = stikp[i].localR;
         }
-        multicontactstabilizer.calcMultiContactControl(is_ik_enable,jpe_v,m_robot,ee_names,ik_loop_count,localps,localRs);
+        multicontactstabilizer.calcMultiContactControl(is_ik_enable,
+                                                       jpe_v,
+                                                       m_robot,
+                                                       ee_names,
+                                                       ik_loop_count,
+                                                       localps,
+                                                       localRs,
+                                                       ref_cog,
+                                                       ref_cogvel,
+                                                       act_cog,
+                                                       act_cogvel,
+                                                       act_base_rpy,
+                                                       ref_base_rpy,
+                                                       current_base_rpy,
+                                                       act_force_eef,
+                                                       act_moment_eef,
+                                                       ref_force_eef,
+                                                       ref_moment_eef,
+                                                       current_force_eef,
+                                                       current_moment_eef);
         return;
     }
     

@@ -278,7 +278,26 @@ public:
         return false;
     }
 
-    void calcMultiContactControl(const std::vector<bool>& is_ik_enable, std::vector<hrp::JointPathExPtr>& jpe_v, hrp::BodyPtr& m_robot/*refworld系*/, const std::vector<std::string>& ee_names, std::vector<int> ik_loop_count, const std::vector<hrp::Vector3>& localps/*eef系*/, const std::vector<hrp::Matrix33>& localRs/*eef系*/) {
+    void calcMultiContactControl(const std::vector<bool>& is_ik_enable,
+                                 std::vector<hrp::JointPathExPtr>& jpe_v,
+                                 hrp::BodyPtr& m_robot/*refworld系*/,
+                                 const std::vector<std::string>& ee_names,
+                                 std::vector<int> ik_loop_count,
+                                 const std::vector<hrp::Vector3>& localps/*eef系*/,
+                                 const std::vector<hrp::Matrix33>& localRs/*eef系*/,
+                                 hrp::Vector3& log_ref_cog,/*origin系*/
+                                 hrp::Vector3& log_ref_cogvel,/*origin系*/
+                                 hrp::Vector3& log_act_cog,/*origin系*/
+                                 hrp::Vector3& log_act_cogvel,/*origin系*/
+                                 hrp::Vector3& log_act_base_rpy,/*world系*/
+                                 hrp::Vector3& log_ref_base_rpy,/*world系*/
+                                 hrp::Vector3& log_current_base_rpy,/*world系*/
+                                 std::vector<hrp::Vector3>& log_act_force_eef,/*eef系,eefまわり*/
+                                 std::vector<hrp::Vector3>& log_act_moment_eef,/*eef系,eefまわり*/
+                                 std::vector<hrp::Vector3>& log_ref_force_eef,/*eef系,eefまわり*/
+                                 std::vector<hrp::Vector3>& log_ref_moment_eef,/*eef系,eefまわり*/
+                                 std::vector<hrp::Vector3>& log_current_force_eef,/*eef系,eefまわり*/
+                                 std::vector<hrp::Vector3>& log_current_moment_eef/*eef系,eefまわり*/) {
        
         hrp::Vector3 ref_root_p_origin/*reforigin系*/;
         hrp::Matrix33 ref_root_R_origin/*reforigin系*/;
@@ -316,6 +335,8 @@ public:
         hrp::Matrix33 act_origin_R/*actworld系*/;
 
         hrp::dvector d_wrench_eef/*eef系,eefまわり*/;
+        std::vector<hrp::Vector3> current_force_eef/*eef系*/ = ref_force_eef/*refeef系*/;
+        std::vector<hrp::Vector3> current_moment_eef/*eef系,eefまわり*/ = ref_moment_eef/*refeef系,refeefまわり*/;
        
         //ContactEEFOriginCoords系における値に変換
         //referenceとactualとでともにContactしているEEF
@@ -679,6 +700,17 @@ public:
             if(qp_solved||looseqp_solved){
                 hrp::dvector wrench_cur_eef/*eef系,eefまわり*/ = wrench_ref_eef/*eef系,eefまわり*/ + wrench_d_eef/*eef系,eefまわり*/; //目標反力
 
+                {
+                    size_t act_contact_idx = 0;
+                    for(size_t i = 0; i <eefnum;i++){
+                        if(act_contact_states[i]){
+                            current_force_eef[i]/*eef系*/ = wrench_cur_eef.block<3,1>(6*act_contact_idx,0);
+                            current_moment_eef[i]/*eef系,eefまわり*/ = wrench_cur_eef.block<3,1>(6*act_contact_idx+3,0);
+                            act_contact_idx++;
+                        }
+                    }
+                }
+                
                 //目標反力と実際の反力を比べる
             
                 hrp::dvector wrench_act_eef/*eef系,eefまわり*/ = hrp::dvector(6*act_contact_eef_num);
@@ -990,6 +1022,24 @@ public:
             }
         }
 
+
+        //m_qRef <- m_robotより
+        log_ref_cog = ref_cog_origin/*reforigin系*/;
+        log_ref_cogvel = ref_cogvel_origin/*reforigin系*/;
+        log_act_cog = act_cog_origin/*reforigin系*/;
+        log_act_cogvel = act_cogvel_origin/*reforigin系*/;
+        log_act_base_rpy = hrp::rpyFromRot(act_root_R/*actworld系*/);
+        log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
+        log_current_base_rpy = hrp::rpyFromRot(current_q.toRotationMatrix()/*refworld系*/);
+        for(size_t i = 0; i < eefnum; i++){
+            log_act_force_eef[i] = act_force_eef[i]/*acteef系*/;
+            log_act_moment_eef[i] = act_moment_eef[i]/*acteef系*/;
+            log_ref_force_eef[i] = ref_force_eef[i]/*refeef系*/;
+            log_ref_moment_eef[i] = ref_moment_eef[i]/*refeef系*/;
+            log_current_force_eef[i] = current_force_eef[i]/*eef系*/;
+            log_current_moment_eef[i] = current_moment_eef[i]/*eef系*/;
+        }
+        
         //TODO
         //m_qRef <- m_robot OK
         //m_actContactStates <- stのgetactualparametersで，eef系z方向の力を参照している
