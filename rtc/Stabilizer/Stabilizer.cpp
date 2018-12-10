@@ -54,7 +54,7 @@ static std::ostream& operator<<(std::ostream& os, const struct RTC::Time &tm)
        << std::setprecision(pre);
     os.unsetf(std::ios::fixed);
     return os;
-<}
+}
 
 static double switching_inpact_absorber(double force, double lower_th, double upper_th);
 
@@ -319,6 +319,12 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       act_force.push_back(hrp::Vector3::Zero());
       ref_force.push_back(hrp::Vector3::Zero());
       ref_moment.push_back(hrp::Vector3::Zero());
+      ref_force_eef.push_back(hrp::Vector3::Zero());
+      ref_moment_eef.push_back(hrp::Vector3::Zero());
+      act_force_eef.push_back(hrp::Vector3::Zero());
+      act_moment_eef.push_back(hrp::Vector3::Zero());
+      current_force_eef.push_back(hrp::Vector3::Zero());
+      current_moment_eef.push_back(hrp::Vector3::Zero());
       contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
       is_ik_enable.push_back( (ee_name.find("leg") != std::string::npos ? true : false) ); // Hands ik => disabled, feet ik => enabled, by default
       is_feedback_control_enable.push_back( (ee_name.find("leg") != std::string::npos ? true : false) ); // Hands feedback control => disabled, feet feedback control => enabled, by default
@@ -728,17 +734,13 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_originActCogVel.tm = m_qRef.tm;
       m_originActCogVelOut.write();
       for (size_t i = 0; i < stikp.size(); i++) {
-          hrp::Vector3 ref_force_eef = target_ee_R.transpose()/*refworld系*/ * hrp::Vector3(m_ref_wrenches[i].data[0], m_ref_wrenches[i].data[1], m_ref_wrenches[i].data[2])/*refworld系*/;
-          hrp::Vector3 ref_moment_eef = target_ee_R.transpose()/*refworld系*/ * hrp::Vector3(m_ref_wrenches[i].data[3], m_ref_wrenches[i].data[4], m_ref_wrenches[i].data[5])/*refworld系,eefまわり*/;
-          hrp::Vector3 act_force_eef;
-          hrp::Vector3 ref_force_eef;
           for (size_t j = 0; j < 3; j++) {
-              m_allRefWrench.data[6*i+j] = ref_force_eef(j);
-              m_allRefWrench.data[6*i+j+3] = ref_moment_eef(j);
-              m_allActWrench.data[6*i+j] = stikp[i].ref_force(j);//origin系になってる(sensor_force)
-              m_allActWrench.data[6*i+j+3] = stikp[i].ref_moment(j);
-              m_allCurrentWrench.data[6*i+j] = stikp[i].ref_force(j);//origin系になってる
-              m_allCurrentWrench.data[6*i+j+3] = stikp[i].ref_moment(j);
+              m_allRefWrench.data[6*i+j] = ref_force_eef[i](j);
+              m_allRefWrench.data[6*i+j+3] = ref_moment_eef[i](j);
+              m_allActWrench.data[6*i+j] = act_force_eef[i](j);
+              m_allActWrench.data[6*i+j+3] = act_moment_eef[i](j);
+              m_allCurrentWrench.data[6*i+j] = current_force_eef[i](j);
+              m_allCurrentWrench.data[6*i+j+3] = current_moment_eef[i](j);
               
               m_allEEComp.data[6*i+j] = stikp[i].d_foot_pos(j);
               m_allEEComp.data[6*i+j+3] = stikp[i].d_foot_rpy(j);
@@ -1097,6 +1099,8 @@ void Stabilizer::getActualParameters ()
         hrp::Vector3 sensor_moment = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[3], m_wrenches[i].data[4], m_wrenches[i].data[5]);
         //hrp::Vector3 ee_moment = ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * ikp.localCOPPos + target->p)).cross(sensor_force) + sensor_moment;
         hrp::Vector3 ee_moment = ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * ikp.localp + target->p)).cross(sensor_force) + sensor_moment;
+        act_force_eef[i] = (foot_origin_rot * act_ee_R[i]).transpose() * sensor_force;
+        act_moment_eef[i] = (foot_origin_rot * act_ee_R[i]).transpose() * ee_moment;
         // <= Actual world frame
         // Convert force & moment as foot origin coords relative
         ikp.ref_moment = foot_origin_rot.transpose() * ikp.ref_moment;
@@ -1314,6 +1318,8 @@ void Stabilizer::getTargetParameters ()
     target_ee_R[i] = target->R * stikp[i].localR;
     ref_force[i] = hrp::Vector3(m_ref_wrenches[i].data[0], m_ref_wrenches[i].data[1], m_ref_wrenches[i].data[2]);
     ref_moment[i] = hrp::Vector3(m_ref_wrenches[i].data[3], m_ref_wrenches[i].data[4], m_ref_wrenches[i].data[5]);
+    ref_force_eef[i] = target_ee_R[i].transpose() * ref_force[i];
+    ref_moment_eef[i] = target_ee_R[i].transpose() * ref_moment[i];
     ref_total_force += ref_force[i];
     // Force/moment diff control
     ref_total_moment += (target_ee_p[i]-ref_zmp).cross(ref_force[i]);
@@ -1820,6 +1826,11 @@ void Stabilizer::calcEEForceMomentControl() {
 
       limbStretchAvoidanceControl(tmpp ,tmpR);
 
+      for (size_t i = 0; i < stikp.size(); i++) {
+          current_force_eef[i] = tmpR[i].transpose() * foot_origin_rot * stikp[i].ref_force;
+          current_moment_eef[i] = tmpR[i].transpose() * foot_origin_rot * stikp[i].ref_moment;
+      }
+      
       // IK
       for (size_t i = 0; i < stikp.size(); i++) {
         if (is_ik_enable[i]) {
