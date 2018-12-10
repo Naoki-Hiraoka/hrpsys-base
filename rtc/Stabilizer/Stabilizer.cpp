@@ -54,7 +54,7 @@ static std::ostream& operator<<(std::ostream& os, const struct RTC::Time &tm)
        << std::setprecision(pre);
     os.unsetf(std::ios::fixed);
     return os;
-}
+<}
 
 static double switching_inpact_absorber(double force, double lower_th, double upper_th);
 
@@ -92,10 +92,13 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_originActZmpOut("originActZmp", m_originActZmp),
     m_originActCogOut("originActCog", m_originActCog),
     m_originActCogVelOut("originActCogVel", m_originActCogVel),
+    m_refBaseRpyOut("refBaseRpy", m_refBaseRpy),
     m_actBaseRpyOut("actBaseRpy", m_actBaseRpy),
     m_currentBasePosOut("currentBasePos", m_currentBasePos),
     m_currentBaseRpyOut("currentBaseRpy", m_currentBaseRpy),
     m_allRefWrenchOut("allRefWrench", m_allRefWrench),
+    m_allActWrenchOut("allActWrench", m_allActWrench),
+    m_allCurrentWrenchOut("allCurrentWrench", m_allCurrentWrench),
     m_allEECompOut("allEEComp", m_allEEComp),
     m_debugDataOut("debugData", m_debugData),
     control_mode(MODE_IDLE),
@@ -156,10 +159,13 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addOutPort("originActZmp", m_originActZmpOut);
   addOutPort("originActCog", m_originActCogOut);
   addOutPort("originActCogVel", m_originActCogVelOut);
+  addOutPort("refBaseRpy", m_refBaseRpyOut);
   addOutPort("actBaseRpy", m_actBaseRpyOut);
   addOutPort("currentBasePos", m_currentBasePosOut);
   addOutPort("currentBaseRpy", m_currentBaseRpyOut);
   addOutPort("allRefWrench", m_allRefWrenchOut);
+  addOutPort("allActWrench", m_allActWrenchOut);
+  addOutPort("allCurrentWrench", m_allCurrentWrenchOut);
   addOutPort("allEEComp", m_allEECompOut);
   addOutPort("debugData", m_debugDataOut);
   
@@ -484,6 +490,8 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   m_originActCog.data.x = m_originActCog.data.y = m_originActCog.data.z = 0.0;
   m_originActCogVel.data.x = m_originActCogVel.data.y = m_originActCogVel.data.z = 0.0;
   m_allRefWrench.data.length(stikp.size() * 6); // 6 is wrench dim
+  m_allActWrench.data.length(stikp.size() * 6); // 6 is wrench dim
+  m_allCurrentWrench.data.length(stikp.size() * 6); // 6 is wrench dim
   m_allEEComp.data.length(stikp.size() * 6); // 6 is pos+rot dim
   m_debugData.data.length(1); m_debugData.data[0] = 0.0;
 
@@ -720,21 +728,38 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_originActCogVel.tm = m_qRef.tm;
       m_originActCogVelOut.write();
       for (size_t i = 0; i < stikp.size(); i++) {
+          hrp::Vector3 ref_force_eef = target_ee_R.transpose()/*refworld系*/ * hrp::Vector3(m_ref_wrenches[i].data[0], m_ref_wrenches[i].data[1], m_ref_wrenches[i].data[2])/*refworld系*/;
+          hrp::Vector3 ref_moment_eef = target_ee_R.transpose()/*refworld系*/ * hrp::Vector3(m_ref_wrenches[i].data[3], m_ref_wrenches[i].data[4], m_ref_wrenches[i].data[5])/*refworld系,eefまわり*/;
+          hrp::Vector3 act_force_eef;
+          hrp::Vector3 ref_force_eef;
           for (size_t j = 0; j < 3; j++) {
-              m_allRefWrench.data[6*i+j] = stikp[i].ref_force(j);
-              m_allRefWrench.data[6*i+j+3] = stikp[i].ref_moment(j);
+              m_allRefWrench.data[6*i+j] = ref_force_eef(j);
+              m_allRefWrench.data[6*i+j+3] = ref_moment_eef(j);
+              m_allActWrench.data[6*i+j] = stikp[i].ref_force(j);//origin系になってる(sensor_force)
+              m_allActWrench.data[6*i+j+3] = stikp[i].ref_moment(j);
+              m_allCurrentWrench.data[6*i+j] = stikp[i].ref_force(j);//origin系になってる
+              m_allCurrentWrench.data[6*i+j+3] = stikp[i].ref_moment(j);
+              
               m_allEEComp.data[6*i+j] = stikp[i].d_foot_pos(j);
               m_allEEComp.data[6*i+j+3] = stikp[i].d_foot_rpy(j);
           }
       }
       m_allRefWrench.tm = m_qRef.tm;
       m_allRefWrenchOut.write();
+      m_allActWrench.tm = m_qRef.tm;
+      m_allActWrenchOut.write();
+      m_allCurrentWrench.tm = m_qRef.tm;
+      m_allCurrentWrenchOut.write();
       m_allEEComp.tm = m_qRef.tm;
       m_allEECompOut.write();
       m_actBaseRpy.data.r = act_base_rpy(0);
       m_actBaseRpy.data.p = act_base_rpy(1);
       m_actBaseRpy.data.y = act_base_rpy(2);
       m_actBaseRpy.tm = m_qRef.tm;
+      m_refBaseRpy.data.r = ref_base_rpy(0);
+      m_refBaseRpy.data.p = ref_base_rpy(1);
+      m_refBaseRpy.data.y = ref_base_rpy(2);
+      m_refBaseRpy.tm = m_qRef.tm;
       m_currentBaseRpy.data.r = current_base_rpy(0);
       m_currentBaseRpy.data.p = current_base_rpy(1);
       m_currentBaseRpy.data.y = current_base_rpy(2);
@@ -744,6 +769,7 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_currentBasePos.data.z = current_base_pos(2);
       m_currentBasePos.tm = m_qRef.tm;
       m_actBaseRpyOut.write();
+      m_refBaseRpyOut.write();
       m_currentBaseRpyOut.write();
       m_currentBasePosOut.write();
       m_debugData.tm = m_qRef.tm;
@@ -1241,6 +1267,7 @@ void Stabilizer::getTargetParameters ()
   target_root_p = m_robot->rootLink()->p;
   target_root_R = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
   m_robot->rootLink()->R = target_root_R;
+  ref_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R);
   m_robot->calcForwardKinematics();
 
   if(st_algorithm == OpenHRP::StabilizerService::MCS){

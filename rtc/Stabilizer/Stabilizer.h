@@ -184,10 +184,11 @@ class Stabilizer
   // for debug ouput
   RTC::TimedPoint3D m_originRefZmp, m_originRefCog, m_originRefCogVel, m_originNewZmp;
   RTC::TimedPoint3D m_originActZmp, m_originActCog, m_originActCogVel;
+  RTC::TimedOrientation3D m_refBaseRpy;  
   RTC::TimedOrientation3D m_actBaseRpy;
   RTC::TimedPoint3D m_currentBasePos;
   RTC::TimedOrientation3D m_currentBaseRpy;
-  RTC::TimedDoubleSeq m_allRefWrench;
+  RTC::TimedDoubleSeq m_allRefWrench, m_allActWrench, m_allCurrentWrench;
   RTC::TimedDoubleSeq m_allEEComp;
   RTC::TimedDoubleSeq m_debugData;
   
@@ -229,10 +230,11 @@ class Stabilizer
   // for debug output
   RTC::OutPort<RTC::TimedPoint3D> m_originRefZmpOut, m_originRefCogOut, m_originRefCogVelOut, m_originNewZmpOut;
   RTC::OutPort<RTC::TimedPoint3D> m_originActZmpOut, m_originActCogOut, m_originActCogVelOut;
+  RTC::OutPort<RTC::TimedOrientation3D> m_refBaseRpyOut;  
   RTC::OutPort<RTC::TimedOrientation3D> m_actBaseRpyOut;
   RTC::OutPort<RTC::TimedPoint3D> m_currentBasePosOut;
   RTC::OutPort<RTC::TimedOrientation3D> m_currentBaseRpyOut;
-  RTC::OutPort<RTC::TimedDoubleSeq> m_allRefWrenchOut;
+  RTC::OutPort<RTC::TimedDoubleSeq> m_allRefWrenchOut, m_allActWrenchOut, m_allCurrentWrenchOut;
   RTC::OutPort<RTC::TimedDoubleSeq> m_allEECompOut;
   RTC::OutPort<RTC::TimedDoubleSeq> m_debugDataOut;
   
@@ -305,7 +307,7 @@ class Stabilizer
   std::vector <hrp::Matrix33> target_ee_R, rel_ee_rot, act_ee_R;
   std::vector<std::string> rel_ee_name;
   rats::coordinates target_foot_midcoords;
-  hrp::Vector3 ref_zmp, ref_cog, ref_cp, ref_cogvel, rel_ref_cp, prev_ref_cog, prev_ref_zmp;
+  hrp::Vector3 ref_zmp, ref_cog, ref_cp, ref_cogvel, rel_ref_cp, prev_ref_cog, prev_ref_zmp, ref_base_rpy;
   hrp::Vector3 act_zmp, act_cog, act_cogvel, act_cp, rel_act_zmp, rel_act_cp, prev_act_cog, act_base_rpy, current_base_rpy, current_base_pos, sbp_cog_offset, cp_offset, diff_cp;
   hrp::Vector3 foot_origin_offset[2];
   std::vector<double> prev_act_force_z;
