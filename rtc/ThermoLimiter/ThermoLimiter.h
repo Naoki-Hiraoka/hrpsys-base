@@ -155,6 +155,7 @@ class ThermoLimiter
   hrp::dvector m_motorTemperatureLimit;
   hrp::BodyPtr m_robot;
   std::vector<MotorHeatParam> m_motorHeatParams;
+  std::vector<bool> tempmax_over;
   coil::Mutex m_mutex;
   BeepClient bc;
   bool care_surface;

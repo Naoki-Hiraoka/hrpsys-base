@@ -185,6 +185,9 @@ RTC::ReturnCode_t ThermoLimiter::onInitialize()
   m_tauMaxOut.data.length(m_robot->numJoints());
   m_debug_print_freq = static_cast<int>(0.1/m_dt); // once per 0.1 [s]
   m_beepCommandOut.data.length(bc.get_num_beep_info());
+
+
+  tempmax_over.resize(m_robot->numJoints(),false);
   
   return RTC::RTC_OK;
 }
@@ -346,13 +349,27 @@ void ThermoLimiter::calcMaxTorqueFromTemperature(hrp::dvector &tauMax)
       double term = 120;
       squareTauMax[i] = (((tempLimit - temp) / term) + m_motorHeatParams[i].thermoCoeffs * (temp - m_motorHeatParams[i].temperature)) / m_motorHeatParams[i].currentCoeffs;
       } else {
-          if (m_surfacetempIn.data.length() != m_robot->numJoints() || temp < tempLimit) {
-              squareTauMax[i] = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2); // default torque limit from model
+          double defaultsquareTauMax = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
+          if (m_surfacetempIn.data.length() != m_robot->numJoints()) {              
+              squareTauMax[i] = defaultsquareTauMax; // default torque limit from model
           } else {
-              //Qin = Qmid
               double term = 0.9;
-              surfacetemp = m_surfacetempIn.data[i];
-              squareTauMax[i] = term * (temp - surfacetemp) / m_motorHeatParams[i].R1 / m_motorHeatParams[i].currentCoeffs;
+              if(temp>=tempLimit) tempmax_over[i]=true;
+              else if(temp < tempLimit * term) tempmax_over[i]=false;
+              
+              if(tempmax_over[i]){
+                  surfacetemp = m_surfacetempIn.data[i];
+                  //Qin = Qmid
+                  double targetsqureTauMax = term * (temp - surfacetemp) / m_motorHeatParams[i].R1 / m_motorHeatParams[i].currentCoeffs;
+                  if(defaultsquareTauMax < targetsqureTauMax){
+                      squareTauMax[i] = defaultsquareTauMax;
+                  }else{
+                      double ratio = std::max(0.0, std::min(1.0, (tempLimit - temp) / ((1 - term) * tempLimit)));
+                      squareTauMax[i] = defaultsquareTauMax*ratio + (1-ratio)*targetsqureTauMax;
+                  }
+              }else{
+                  squareTauMax[i] = defaultsquareTauMax; // default torque limit from model
+              }
           }
       }
       

@@ -361,12 +361,16 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
                       taumax = std::min(taumax, std::abs(m_tauMax.data[i]));
                   }
 
-                  if(m_tau.data[i]<taumax*0.9 && taumax_over_count[i] > 0)taumax_over_count[i]--;
-                  else if(m_tau.data[i]>taumax)taumax_over_count[i] = 1 / dt;
+                  if(std::abs(m_tau.data[i])<taumax*0.9 && taumax_over_count[i] > 0)taumax_over_count[i]--;
+                  else if(std::abs(m_tau.data[i])>taumax)taumax_over_count[i] = 1 / dt;
 
                   double gain = m_pgain.data[i] * hardware_pgains[i];
                   if (taumax_over_count[i] > 0 && gain != 0.0){
-                      limit = std::min(limit, std::abs(taumax / gain));
+                      double limit_by_taumax = taumax / gain;
+                      if (limit_by_taumax < limit){
+                          limit_by_taumax = limit - (limit - limit_by_taumax)*taumax_over_count[i]/(1/dt);
+                      }
+                      limit = std::min(limit, limit_by_taumax);
                   }
               }
 
