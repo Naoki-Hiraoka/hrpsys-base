@@ -316,13 +316,15 @@ RTC::ReturnCode_t ThermoEstimator::onExecute(RTC::UniqueId ec_id)
       && m_servoStateIn.data.length() ==  m_robot->numJoints()) {
     for (unsigned int i = 0; i < m_servoStateIn.data.length(); i++) {
       size_t len = m_servoStateIn.data[i].length();
-      m_servoStateOut.data[i].length(len + 1); // expand extra_data for temperature
+      m_servoStateOut.data[i].length(len + 2); // expand extra_data for temperature
       for (unsigned int j = 0; j < len; j++) {
         m_servoStateOut.data[i][j] = m_servoStateIn.data[i][j];
       }
       // servoStateOut is int, but extra data will be casted to float in HrpsysSeqStateROSBridge
       float tmp_temperature = static_cast<float>(m_motorHeatParams[i].temperature);
       std::memcpy(&(m_servoStateOut.data[i][len]), &tmp_temperature, sizeof(float));
+      float tmp_surface_temperature = static_cast<float>(m_motorHeatParams[i].surface_temperature);
+      std::memcpy(&(m_servoStateOut.data[i][len+1]), &tmp_surface_temperature, sizeof(float));
     }
   } else { // pass servoStateIn to servoStateOut
     m_servoStateOut.data.length(m_servoStateIn.data.length());
