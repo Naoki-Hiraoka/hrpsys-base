@@ -98,6 +98,7 @@ public:
         ref_L = hrp::Vector3::Zero();
         ref_total_force = hrp::Vector3::Zero();
         ref_total_moment = hrp::Vector3::Zero();
+        ref_eeC_cog.resize(eefnum,Eigen::Vector4d::Zero());
 
         qactv = hrp::dvector::Zero(m_robot->numJoints());
         dqactv = hrp::dvector::Zero(m_robot->numJoints());
@@ -120,6 +121,12 @@ public:
         act_L = hrp::Vector3::Zero();
         act_total_force = hrp::Vector3::Zero();
         act_total_moment = hrp::Vector3::Zero();
+        act_cogorigin_p = hrp::Vector3::Zero();
+        act_cogorigin_R = hrp::Matrix33::Identity();
+        act_cog_origin = hrp::Vector3::Zero();
+        act_cogvel_origin = hrp::Vector3::Zero();
+        act_ee_p_origin.resize(eefnum,hrp::Vector3::Zero());
+        act_ee_R_origin.resize(eefnum,hrp::Matrix33::Identity());
 
         d_quaternion = Eigen::Vector4d::Zero();
         d_foot_pos.resize(eefnum,hrp::Vector3::Zero());
@@ -195,6 +202,15 @@ public:
             ref_total_moment/*refworld系,cogまわり*/ += (ref_ee_p[i]/*refworld系*/-ref_cog/*refworld系*/).cross(ref_force[i]/*refworld系*/) + ref_moment[i]/*refworld系,eefまわり*/;
         }
         //目標cogをちょっと進める処理は必要か TODO
+
+        for (size_t i = 0; i < eefnum; i++){
+            //refcog系は，refworldにおける重心位置原点，傾きはrefworldと同じ
+            ref_eeC_cog[i].block<3,1>(0,0)/*refcog系*/ = ref_ee_p[i]/*refworld系*/ - ref_cog/*refworld系*/;
+            hrp::Vector3 xv/*refworld系*/(ref_ee_R[i] * hrp::Vector3::UnitX()/*eef系*/);
+            hrp::Vector3 yv/*refworld系*/(ref_ee_R[i] * hrp::Vector3::UnitY()/*eef系*/);
+            // atan2(y,x) = atan(y/x)
+            ref_eeC_cog[i][3]/*refcog系*/ = atan2(xv[1]-yv[0],xv[0]+yv[1]);
+        }
     }
 
     //on_groundかを返す
@@ -266,8 +282,57 @@ public:
         for (size_t i = 0; i < eefnum;i++){
             act_total_force/*actworld系*/ += act_force[i]/*actworld系*/;
             act_total_moment/*actworld系,cogまわり*/ += (act_ee_p[i]/*actworld系*/-act_cog/*actworld系*/).cross(act_force[i]/*actworld系*/) + act_moment[i]/*actworld系,eefまわり*/;
-        }        
+        }
 
+
+        size_t act_contact_eef_num = 0;
+        for(size_t i = 0; i < eefnum ; i++){
+            if(act_contact_states[i])act_contact_eef_num++;
+        }
+        //act_cogorigin: actworldに映したrefcog原点，actworldに映したrefworldの傾き, 微分するとゼロ
+        for (size_t loop = 0; loop < 3; loop++){
+            std::vector<Eigen::Vector4d> act_eeC_cog/*actcog系*/(eefnum);
+            hrp::Vector3 act_cogorigin_rpy = hrp::rpyFromRot(act_cogorigin_R/*actworld系*/);
+            double act_cogorigin_yaw = act_cogorigin_rpy[2];
+            for (size_t i = 0; i < eefnum; i++){
+                //refcog系は，refworldにおける重心位置原点，傾きはrefworldと同じ
+                act_eeC_cog[i].block<3,1>(0,0)/*actcog系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_ee_p[i]/*actworld系*/ - act_cogorigin_p/*actworld系*/);
+                hrp::Vector3 xv/*actworld系*/(act_ee_R[i] * hrp::Vector3::UnitX()/*eef系*/);
+                hrp::Vector3 yv/*actworld系*/(act_ee_R[i] * hrp::Vector3::UnitY()/*eef系*/);
+                // atan2(y,x) = atan(y/x)
+                act_eeC_cog[i][3]/*actcog系*/ = atan2(xv[1]-yv[0],xv[0]+yv[1]) - act_cogorigin_yaw;
+            }
+            
+            hrp::dvector error/*x,y,z,yaw,...*/ = hrp::dvector::Zero(act_contact_eef_num*4);
+            hrp::dmatrix J/*xyzyaw... <-> cogorigin xyzyaw*/ = hrp::dmatrix::Zero(act_contact_eef_num*4,4);
+            {
+                size_t act_contact_idx=0;
+                for (size_t i = 0; i< eefnum; i++){
+                    if(act_contact_states[i]){
+                        error.block<4,1>(4*act_contact_idx,0) = ref_eeC_cog[i] - act_eeC_cog[i];
+                        J.block<3,3>(4*act_contact_idx,0) = - act_cogorigin_R.transpose();
+                        J(4*act_contact_idx+0,3) = - (act_eeC_cog[i][0]-act_cogorigin_p[0]) * sin(act_cogorigin_yaw) - (act_eeC_cog[i][1]-act_cogorigin_p[1]) * cos(act_cogorigin_yaw);
+                        J(4*act_contact_idx+1,3) = + (act_eeC_cog[i][0]-act_cogorigin_p[0]) * cos(act_cogorigin_yaw) - (act_eeC_cog[i][1]-act_cogorigin_p[1]) * sin(act_cogorigin_yaw);
+                        J(4*act_contact_idx+3,3) = -1;
+                        act_contact_idx++;
+                    }
+                }
+            }
+            hrp::dmatrix Jinv(4,act_contact_eef_num*4)/*cogorigin xyzyaw <-> xyzyaw...*/;
+            hrp::calcPseudoInverse(J,Jinv);
+            hrp::dvector d_act_cogorigin/*dx,dy,dz,dyaw*/ = Jinv * error;
+            act_cogorigin_p += d_act_cogorigin.block<3,1>(0,0);
+            act_cogorigin_yaw += d_act_cogorigin[3];
+            act_cogorigin_R = hrp::rotFromRpy(hrp::Vector3(0.0,0.0,act_cogorigin_yaw));
+        }
+
+        act_cog_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_cog/*actworld系*/ - act_cogorigin_p/*actworld系*/);
+        act_cogvel_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * act_cogvel/*actworld系*/;
+        for (size_t i = 0; i< eefnum; i++){
+            act_ee_p_origin[i]/*actorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_ee_p[i]/*actworld系*/ - act_cogorigin_p/*actworld系*/);
+            act_ee_R_origin[i]/*actorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * act_ee_R[i]/*actworld系*/;
+        }
+        
         return act_total_force[2] > contact_decision_threshold;
     }
 
@@ -1239,6 +1304,8 @@ private:
     hrp::Vector3 ref_total_force/*refworld系*/;
     hrp::Vector3 ref_total_moment/*refworld系,cogまわり*/;
 
+    std::vector<Eigen::Vector4d> ref_eeC_cog/*refcog系,x,y,z,yaw*/;
+
     hrp::dvector qactv;
     hrp::dvector dqactv;
     hrp::Vector3 act_root_p/*actworld系*/;
@@ -1260,6 +1327,14 @@ private:
     hrp::Vector3 act_L/*actworld系,cogまわり*/;
     hrp::Vector3 act_total_force/*actworld系*/;
     hrp::Vector3 act_total_moment/*actworld系,cogまわり*/;
+
+    hrp::Vector3 act_cogorigin_p/*actworld系*/;
+    hrp::Matrix33 act_cogorigin_R/*actworld系*/;
+    hrp::Vector3 act_cog_origin/*act_cogorigin系*/;
+    hrp::Vector3 act_cogvel_origin/*act_cogorigin系*/;
+    std::vector <hrp::Vector3> act_ee_p_origin/*act_cogorigin系*/;
+    std::vector <hrp::Matrix33> act_ee_R_origin/*act_cogorigin系*/;
+    
 
     Eigen::Vector4d d_quaternion/*refworld系*/;
     Eigen::Quaternion<double> prev_target_root_q/*refworld系*/;
