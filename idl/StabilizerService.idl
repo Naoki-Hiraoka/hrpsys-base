@@ -247,6 +247,8 @@ module OpenHRP
       sequence<double> mcs_contacteeforiginweight;
       /// Sequence of all end-effector contact constraints
       sequence<ContactConstraintParam> mcs_ccparams;
+      /// Joint weight for Inverse Kinematics calculation.
+      sequence<double> mcs_ik_optional_weight_vector;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;

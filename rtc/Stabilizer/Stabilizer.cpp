@@ -518,7 +518,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       std::cerr << "[" << m_profile.instance_name << "] WARNING! This robot model has no GyroSensor named 'gyrometer'! " << std::endl;
   }
 
-  multicontactstabilizer.initialize(std::string(m_profile.instance_name), m_robot, dt, stikp.size());
+  multicontactstabilizer.initialize(std::string(m_profile.instance_name), m_robot, dt, stikp.size(), jpe_v);
 
   return RTC::RTC_OK;
 }
@@ -799,7 +799,7 @@ void Stabilizer::getCurrentParameters ()
   for ( int i = 0; i < m_robot->numJoints(); i++ ){
     qorg[i] = m_robot->joint(i)->q;
   }
-  multicontactstabilizer.getCurrentParameters(qorg);
+  multicontactstabilizer.getCurrentParameters(m_robot, qorg);
 }
 
 void Stabilizer::calcFootOriginCoords (hrp::Vector3& foot_origin_pos, hrp::Matrix33& foot_origin_rot)
@@ -1726,7 +1726,6 @@ void Stabilizer::calcEEForceMomentControl() {
             localRs[i] = stikp[i].localR;
         }
         multicontactstabilizer.calcMultiContactControl(is_ik_enable,
-                                                       jpe_v,
                                                        m_robot,
                                                        ee_names,
                                                        ik_loop_count,
@@ -2287,7 +2286,7 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
       ilp.manipulability_limit = jpe_v[i]->getManipulabilityLimit();
       ilp.ik_loop_count = stikp[i].ik_loop_count; // size_t -> unsigned short, value may change, but ik_loop_count is small value and value not change
   }
-  multicontactstabilizer.getParameter(i_stp);
+  multicontactstabilizer.getParameter(i_stp,m_robot);
 };
 
 void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
@@ -2603,7 +2602,7 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
       std::cerr << "]" << std::endl;
   }
 
-  multicontactstabilizer.setParameter(i_stp);
+  multicontactstabilizer.setParameter(i_stp,m_robot);
 }
 
 std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService::STAlgorithm _st_algorithm)
