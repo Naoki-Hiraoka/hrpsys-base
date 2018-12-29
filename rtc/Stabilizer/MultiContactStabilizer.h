@@ -143,7 +143,6 @@ public:
         act_ee_p_origin.resize(eefnum,hrp::Vector3::Zero());
         act_ee_R_origin.resize(eefnum,hrp::Matrix33::Identity());
 
-        d_quaternion = Eigen::Vector4d::Zero();
         d_foot_pos.resize(eefnum,hrp::Vector3::Zero());
         d_foot_rpy.resize(eefnum,hrp::Vector3::Zero());
         d_cog = hrp::Vector3::Zero();
@@ -173,9 +172,6 @@ public:
         }
         mcs_equality_weight = hrp::dvector6();
         mcs_equality_weight << 1e10, 1e10, 1e10, 1e10, 1e10, 1e10; 
-        mcs_body_attitude_control_time_const = 10000;
-        mcs_body_attitude_control_gain = 1.5;
-        mcs_body_attitude_compensation_limit = 10.0/180.0*M_PI;
         mcs_cogpos_compensation_limit = 0.1;
         mcs_cogvel_compensation_limit = 0.1;
         mcs_cogacc_compensation_limit = 0.1;
@@ -1058,7 +1054,9 @@ public:
             
         }
         //実際に解いた結果を記録
+        hrp::Vector3 original_d_cog/*refworld系*/ = d_cog/*refworld系*/;
         d_cog/*refworld系*/ = m_robot->calcCM() - ref_cog/*refworld系*/;
+        d_cogvel/*refworld系*/ -= (original_d_cog/*refworld系*/ - d_cog/*refworld系*/) / dt;
         for (size_t i = 0; i < eefnum; i++){
             hrp::Link* target = jpe_v[i]->endLink();
             d_foot_pos[i]/*eef系*/ = ref_ee_R[i].transpose()/*refworld系*/ * ( (target->p/*refworld系*/ + target->R/*refworld系*/ * localps[i]) - ref_ee_p[i]/*refworld系*/);
@@ -1096,7 +1094,6 @@ public:
     void sync_2_st(){//初期化
         std::cerr << "[MCS] sync_2_st"<< std::endl;
 
-        d_quaternion = Eigen::Vector4d::Zero();
         for(size_t i=0; i< eefnum;i++){
             d_foot_pos[i]=hrp::Vector3::Zero();
             d_foot_rpy[i]=hrp::Vector3::Zero();
@@ -1107,9 +1104,6 @@ public:
         mcs_k1 = i_stp.mcs_k1;
         mcs_k2 = i_stp.mcs_k2;
         mcs_k3 = i_stp.mcs_k3;
-        mcs_body_attitude_control_gain = i_stp.mcs_body_attitude_control_gain;
-        mcs_body_attitude_control_time_const = i_stp.mcs_body_attitude_control_time_const;
-        mcs_body_attitude_compensation_limit = i_stp.mcs_body_attitude_compensation_limit;
         mcs_pos_compensation_limit = i_stp.mcs_pos_compensation_limit;
         mcs_rot_compensation_limit = i_stp.mcs_rot_compensation_limit;
         act_cogvel_filter->setCutOffFreq(i_stp.mcs_cogvel_cutoff_freq);
@@ -1152,7 +1146,6 @@ public:
         }
         
         std::cerr << "[" << instance_name << "]   mcs_k1 = " << mcs_k1 << ", mcs_k2 = " << mcs_k2 << ", mcs_k3 = " << mcs_k3 <<std::endl;
-        std::cerr << "[" << instance_name << "]   mcs_body_attitude_contrtol_gain = " << mcs_body_attitude_control_gain << ", mcs_body_attitude_control_time_const = " << mcs_body_attitude_control_time_const << ", mcs_body_attitude_compensation_limit = " << mcs_body_attitude_compensation_limit << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_cogvel_cutoff_freq = " << act_cogvel_filter->getCutOffFreq() << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_pos_compensation_limit = " << mcs_pos_compensation_limit << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_rot_compensation_limit = " << mcs_rot_compensation_limit << std::endl;
@@ -1171,9 +1164,6 @@ public:
         i_stp.mcs_k1 = mcs_k1;
         i_stp.mcs_k2 = mcs_k2;
         i_stp.mcs_k3 = mcs_k3;
-        i_stp.mcs_body_attitude_control_gain = mcs_body_attitude_control_gain;
-        i_stp.mcs_body_attitude_control_time_const = mcs_body_attitude_control_time_const;
-        i_stp.mcs_body_attitude_compensation_limit = mcs_body_attitude_compensation_limit;
         i_stp.mcs_pos_compensation_limit = mcs_pos_compensation_limit;
         i_stp.mcs_rot_compensation_limit = mcs_rot_compensation_limit;
         i_stp.mcs_cogvel_cutoff_freq = act_cogvel_filter->getCutOffFreq();
@@ -1317,9 +1307,6 @@ private:
     std::vector <hrp::Vector3> act_ee_p_origin/*act_cogorigin系*/;
     std::vector <hrp::Matrix33> act_ee_R_origin/*act_cogorigin系*/;
     
-
-    Eigen::Vector4d d_quaternion/*refworld系*/;
-    Eigen::Quaternion<double> prev_target_root_q/*refworld系*/;
     std::vector <hrp::Vector3> d_foot_pos/*eef系*/;
     std::vector <hrp::Vector3> d_foot_rpy/*eef系*/;
     hrp::Vector3 d_cog/*refworld系*/;
@@ -1332,9 +1319,6 @@ private:
     hrp::dvector mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
     std::vector<hrp::dvector6> mcs_ee_forcemoment_distribution_weight;//6*eef,反力に対する重み
     hrp::dvector6 mcs_equality_weight;//等式制約に対する重み
-    double mcs_body_attitude_control_time_const;
-    double mcs_body_attitude_control_gain;
-    double mcs_body_attitude_compensation_limit;
     std::vector<hrp::Vector3> mcs_pos_damping_gain;
     std::vector<hrp::Vector3> mcs_pos_time_const;
     std::vector<hrp::Vector3> mcs_rot_damping_gain;
@@ -1348,7 +1332,7 @@ private:
     double mcs_pos_compensation_limit;
     double mcs_rot_compensation_limit;
     std::vector<double> mcs_ik_optional_weight_vector;
-    std::vector<double> mcs_contacteeforiginweight;//滑りにくいeefほど大きい. ContactEEFOriginCoordsを導出するのに用いる.act_root_pを推定するのにも用いる
+    std::vector<double> mcs_contacteeforiginweight;//滑りにくいeefほど大きい. act_root_pを推定するのに用いる
 };
 
 

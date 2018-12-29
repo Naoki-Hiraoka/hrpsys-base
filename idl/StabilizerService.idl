@@ -221,12 +221,6 @@ module OpenHRP
       double mcs_k3;
       /// Sequence of all end-effector force/moment distribution weight
       sequence<sequence<double, 6> > mcs_ee_forcemoment_distribution_weight;
-      /// Body attitude control gain [/s] (quaternion) for MCS.
-      double mcs_body_attitude_control_gain;
-      /// Time constant for body attitude control [s] (quaternion) for MCS.
-      double mcs_body_attitude_control_time_const;
-      /// body attitude compensation limit (quaternion)
-      double mcs_body_attitude_compensation_limit;
       /// Sequence of all end-effector rotation damping gain [Nm/(rad/s)] (r,p,y).
       sequence<sequence<double, 3> > mcs_rot_damping_gain;
       /// Sequence of all end-effector rotation damping time constant [s] (r,p,y).
