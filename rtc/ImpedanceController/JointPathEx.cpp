@@ -485,9 +485,9 @@ hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         if ((q0 > 1.0e-10) || (q0 < -1.0e-10)) {
             th = 2 * std::atan(norm / q0);
         } else if (q0 > 0) {
-            th = M_PI / 2;
+            th = M_PI;
         } else {
-            th = -M_PI / 2;
+            th = -M_PI;
         }
         mlog = (th / norm) * q ;
     } else {
