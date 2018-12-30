@@ -147,17 +147,14 @@ public:
         d_foot_rpy.resize(eefnum,hrp::Vector3::Zero());
         d_cog = hrp::Vector3::Zero();
         d_cogvel = hrp::Vector3::Zero();
-        
-        //mcs_k1 = -445.08;
-        //mcs_k2 = -266.15;
-        //mcs_k3 = 0.17242;
+
+        //14.76230184   7.69057546
+        //7.67639696  4.58959131 -0.17237698
         mcs_k1 = 0.0;
         mcs_k2 = 0.0;
         mcs_k3 = 0.0;
 
         mcs_ik_optional_weight_vector.resize(m_robot->numJoints(),1.0);
-        mcs_ik_optional_weight_vector[6] = 0.0;//TODO temporary
-        mcs_ik_optional_weight_vector[13] = 0.0;//TODO temporary
         
         mcs_joint_torque_distribution_weight.resize(m_robot->numJoints());
         for(size_t i = 0; i < m_robot->numJoints(); i++){
@@ -188,7 +185,7 @@ public:
         mcs_rot_damping_gain.resize(eefnum,hrp::Vector3(100000,100000,100000));
         mcs_rot_time_const.resize(eefnum,hrp::Vector3(1.5,1.5,1.5));
         mcs_rot_compensation_limit = 10.0/180.0*M_PI;
-        mcs_contact_vel = 0.025;
+        mcs_contact_vel = 0.01;
         mcs_contacteeforiginweight.resize(eefnum, 1.0);
         contactconstraints.resize(eefnum,ContactConstraint());
 
@@ -1339,6 +1336,14 @@ public:
         mcs_rot_compensation_limit = i_stp.mcs_rot_compensation_limit;
         act_cogvel_filter->setCutOffFreq(i_stp.mcs_cogvel_cutoff_freq);
         act_L_filter->setCutOffFreq(i_stp.mcs_L_cutoff_freq);
+        dqactv_Filter->setCutOffFreq(i_stp.mcs_dqactv_cutoff_freq);
+        act_root_v_Filter->setCutOffFreq(i_stp.mcs_act_root_v_cutoff_freq);
+        mcs_cogpos_compensation_limit = i_stp.mcs_cogpos_compensation_limit;
+        mcs_cogvel_compensation_limit = i_stp.mcs_cogvel_compensation_limit;
+        mcs_cogacc_compensation_limit = i_stp.mcs_cogacc_compensation_limit;
+        mcs_cogpos_time_const = i_stp.mcs_cogpos_time_const;
+        mcs_cogvel_time_const = i_stp.mcs_cogvel_time_const;
+        mcs_contact_vel = i_stp.mcs_contact_vel;
         if (i_stp.mcs_ee_forcemoment_distribution_weight.length() == eefnum &&
             i_stp.mcs_rot_damping_gain.length() == eefnum &&
             i_stp.mcs_pos_damping_gain.length() == eefnum &&
@@ -1368,6 +1373,14 @@ public:
             }
         }
 
+        if(i_stp.mcs_joint_torque_distribution_weight.length()!=mcs_joint_torque_distribution_weight.size()){
+            std::cerr << "[" << instance_name << "] failed. mcs_joint_torque_distribution_weight size: " << i_stp.mcs_joint_torque_distribution_weight.length() << ", joints: " << mcs_joint_torque_distribution_weight.size() <<std::endl;
+        }else{
+            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+                mcs_joint_torque_distribution_weight[i] = i_stp.mcs_joint_torque_distribution_weight[i];
+            }
+        }
+        
         if(i_stp.mcs_ik_optional_weight_vector.length()!=mcs_ik_optional_weight_vector.size()){
             std::cerr << "[" << instance_name << "] set_optional_weight_vector failed. mcs_ik_optional_weight_vector size: " << i_stp.mcs_ik_optional_weight_vector.length() << ", joints: " << mcs_ik_optional_weight_vector.size() <<std::endl;
         }else{
@@ -1375,11 +1388,28 @@ public:
                 mcs_ik_optional_weight_vector[i] = i_stp.mcs_ik_optional_weight_vector[i];
             }
         }
+
+        if(i_stp.mcs_equality_weight.length() == 6){
+            for(size_t j = 0; j < 6; j++){
+                mcs_equality_weight[j] = i_stp.mcs_equality_weight[j];
+            }
+        }
+        
         
         std::cerr << "[" << instance_name << "]   mcs_k1 = " << mcs_k1 << ", mcs_k2 = " << mcs_k2 << ", mcs_k3 = " << mcs_k3 <<std::endl;
         std::cerr << "[" << instance_name << "]  mcs_cogvel_cutoff_freq = " << act_cogvel_filter->getCutOffFreq() << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_dqactv_cutoff_freq = " << dqactv_Filter->getCutOffFreq() << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_act_root_v_cutoff_freq = " << act_root_v_Filter->getCutOffFreq() << std::endl;
+
         std::cerr << "[" << instance_name << "]  mcs_pos_compensation_limit = " << mcs_pos_compensation_limit << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_rot_compensation_limit = " << mcs_rot_compensation_limit << std::endl;
+
+        std::cerr << "[" << instance_name << "]  mcs_cogpos_compensation_limit = " << mcs_cogpos_compensation_limit << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_cogvel_compensation_limit = " << mcs_cogvel_compensation_limit << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_cogacc_compensation_limit = " << mcs_cogacc_compensation_limit << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_cogpos_time_const = " << mcs_cogpos_time_const << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_cogvel_time_const = " << mcs_cogvel_time_const << std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_contact_vel = " << mcs_contact_vel << std::endl;
 
         for(size_t i=0;i<eefnum;i++){
             std::cerr << "[" << instance_name << "]  mcs_ee_forcemoment_distribution_weight = " << mcs_ee_forcemoment_distribution_weight[i] << std::endl;
@@ -1390,12 +1420,24 @@ public:
             std::cerr << "[" << instance_name << "]  mcs_contacteeforiginweight = " << mcs_contacteeforiginweight[i] << std::endl;
         }
 
+        std::cerr << "[" << instance_name << "]  mcs_joint_torque_distribution_weight = [" ;
+        for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+            std::cerr<< mcs_joint_torque_distribution_weight[i] << ", ";
+        }
+        std::cerr << "]" <<std::endl;
+
         std::cerr << "[" << instance_name << "]  mcs_ik_optional_weight_vector = [" ;
         for(size_t i = 0 ; i < m_robot->numJoints(); i++){
             std::cerr<< mcs_ik_optional_weight_vector[i] << ", ";
         }
         std::cerr << "]" <<std::endl;
-        
+
+        std::cerr << "[" << instance_name << "]  mcs_equality_weight = [" ;
+        for(size_t i = 0 ; i < 6; i++){
+            std::cerr<< mcs_equality_weight[i] << ", ";
+        }
+        std::cerr << "]" <<std::endl;
+
     }
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
@@ -1406,6 +1448,14 @@ public:
         i_stp.mcs_rot_compensation_limit = mcs_rot_compensation_limit;
         i_stp.mcs_cogvel_cutoff_freq = act_cogvel_filter->getCutOffFreq();
         i_stp.mcs_L_cutoff_freq = act_L_filter->getCutOffFreq();
+        i_stp.mcs_dqactv_cutoff_freq = dqactv_Filter->getCutOffFreq();
+        i_stp.mcs_act_root_v_cutoff_freq = act_root_v_Filter->getCutOffFreq();
+        i_stp.mcs_cogpos_compensation_limit = mcs_cogpos_compensation_limit;
+        i_stp.mcs_cogvel_compensation_limit = mcs_cogvel_compensation_limit;
+        i_stp.mcs_cogacc_compensation_limit = mcs_cogacc_compensation_limit;
+        i_stp.mcs_cogpos_time_const = mcs_cogpos_time_const;
+        i_stp.mcs_cogvel_time_const = mcs_cogvel_time_const;
+        i_stp.mcs_contact_vel = mcs_contact_vel;
         
         i_stp.mcs_ee_forcemoment_distribution_weight.length(eefnum);
         i_stp.mcs_pos_damping_gain.length(eefnum);
@@ -1435,9 +1485,16 @@ public:
                     
         }
 
+        i_stp.mcs_joint_torque_distribution_weight.length(m_robot->numJoints());
         i_stp.mcs_ik_optional_weight_vector.length(m_robot->numJoints());
+
         for (size_t i = 0; i < m_robot->numJoints(); i++) {
+            i_stp.mcs_joint_torque_distribution_weight[i] = mcs_joint_torque_distribution_weight[i];
             i_stp.mcs_ik_optional_weight_vector[i] = mcs_ik_optional_weight_vector[i];
+        }
+        i_stp.mcs_equality_weight.length(6);
+        for (size_t i = 0 ; i < 6; i++){
+            i_stp.mcs_equality_weight[i] = mcs_equality_weight[i];
         }
     }
 
@@ -1554,7 +1611,7 @@ private:
     std::vector<ContactConstraint> contactconstraints;
     
     double mcs_k1, mcs_k2, mcs_k3;
-    hrp::dvector mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
+    std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
     std::vector<hrp::dvector6> mcs_ee_forcemoment_distribution_weight;//6*eef,反力に対する重み
     hrp::dvector6 mcs_equality_weight;//等式制約に対する重み
     std::vector<hrp::Vector3> mcs_pos_damping_gain;

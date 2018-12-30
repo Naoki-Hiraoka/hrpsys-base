@@ -219,8 +219,12 @@ module OpenHRP
       double mcs_k2;
       /// Feedback gain for Force tracking error (x,y,z)
       double mcs_k3;
+      /// Sequence of all joint torque distribution weight
+      sequence<double> mcs_joint_torque_distribution_weight;
       /// Sequence of all end-effector force/moment distribution weight
       sequence<sequence<double, 6> > mcs_ee_forcemoment_distribution_weight;
+      /// Sequence of equality constraint weight
+      sequence<double, 6> mcs_equality_weight;
       /// Sequence of all end-effector rotation damping gain [Nm/(rad/s)] (r,p,y).
       sequence<sequence<double, 3> > mcs_rot_damping_gain;
       /// Sequence of all end-effector rotation damping time constant [s] (r,p,y).
@@ -237,12 +241,28 @@ module OpenHRP
       double mcs_cogvel_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of COG angular velocity [Hz]
       double mcs_L_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of actual joint angle velocity [Hz]
+      double mcs_dqactv_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of actual rootLink velocity [Hz]
+      double mcs_act_root_v_cutoff_freq;
       /// Sequence of all end-effector Origincoords weight
       sequence<double> mcs_contacteeforiginweight;
       /// Sequence of all end-effector contact constraints
       sequence<ContactConstraintParam> mcs_ccparams;
       /// Joint weight for Inverse Kinematics calculation.
       sequence<double> mcs_ik_optional_weight_vector;
+      /// COG position position compensation limit [m]
+      double mcs_cogpos_compensation_limit;
+      /// COG velocity position compensation limit [m/s]
+      double mcs_cogvel_compensation_limit;
+      /// COG acceleration position compensation limit [m/s^2]
+      double mcs_cogacc_compensation_limit;
+      /// COG position damping time constant[s]
+      double mcs_cogpos_time_const;
+      /// COG velocity damping time constant[s]
+      double mcs_cogvel_time_const;
+      /// end-effector reaching velocity [m/s]
+      double mcs_contact_vel;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;
