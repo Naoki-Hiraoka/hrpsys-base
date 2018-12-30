@@ -1072,7 +1072,7 @@ public:
                         if(is_ik_enable[i]){
                             curJ.block<3,3>(3+ik_enable_idx*6,0)= hrp::Matrix33::Identity();
                             curJ.block<3,3>(3+ik_enable_idx*6,3)= - hrp::hat(temp_p[ik_enable_idx]/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
-                            curJ.block<3,3>(3+ik_enable_idx*6,3)= hrp::Matrix33::Identity();
+                            curJ.block<3,3>(3+ik_enable_idx*6+3,3)= hrp::Matrix33::Identity();
                             hrp::dmatrix JJ;
                             jpe_v[i]->calcJacobian(JJ);
                             for(size_t j = 0; j < jpe_v[i]->numJoints(); j++){
@@ -1261,29 +1261,31 @@ public:
             }
             
         }
-        //実際に解いた結果を記録
-        hrp::Vector3 original_d_cog/*refworld系*/ = d_cog/*refworld系*/;
-        d_cog/*refworld系*/ = m_robot->calcCM() - ref_cog/*refworld系*/;
-        d_cogvel/*refworld系*/ -= (original_d_cog/*refworld系*/ - d_cog/*refworld系*/) / dt;
 
-        //debug
-        std::cerr << "d_cog" <<std::endl;
-        std::cerr << d_cog <<std::endl;
-        std::cerr << "d_cogvel" <<std::endl;
-        std::cerr << d_cogvel <<std::endl;
+        // IKが解けず実際には動いていない場合には，compensation limit によって指令値の発散を防ぐ
+        // //実際に解いた結果を記録
+        // hrp::Vector3 original_d_cog/*refworld系*/ = d_cog/*refworld系*/;
+        // d_cog/*refworld系*/ = m_robot->calcCM() - ref_cog/*refworld系*/;
+        // d_cogvel/*refworld系*/ -= (original_d_cog/*refworld系*/ - d_cog/*refworld系*/) / dt;
 
-        for (size_t i = 0; i < eefnum; i++){
-            hrp::Link* target = jpe_v[i]->endLink();
-            d_foot_pos[i]/*eef系*/ = ref_ee_R[i].transpose()/*refworld系*/ * ( (target->p/*refworld系*/ + target->R/*refworld系*/ * localps[i]) - ref_ee_p[i]/*refworld系*/);
-            d_foot_rpy[i]/*eef系*/ = hrp::rpyFromRot(ref_ee_R[i].transpose()/*refworld系*/ * (target->R/*refworld系*/ * localRs[i]));
+        // //debug
+        // std::cerr << "d_cog" <<std::endl;
+        // std::cerr << d_cog <<std::endl;
+        // std::cerr << "d_cogvel" <<std::endl;
+        // std::cerr << d_cogvel <<std::endl;
 
-            //debug
-            std::cerr << "d_foot_pos" <<std::endl;
-            std::cerr << d_foot_pos[i] <<std::endl;
-            std::cerr << "d_foot_rpy" <<std::endl;
-            std::cerr << d_foot_rpy[i] <<std::endl;
+        // for (size_t i = 0; i < eefnum; i++){
+        //     hrp::Link* target = jpe_v[i]->endLink();
+        //     d_foot_pos[i]/*eef系*/ = ref_ee_R[i].transpose()/*refworld系*/ * ( (target->p/*refworld系*/ + target->R/*refworld系*/ * localps[i]) - ref_ee_p[i]/*refworld系*/);
+        //     d_foot_rpy[i]/*eef系*/ = hrp::rpyFromRot(ref_ee_R[i].transpose()/*refworld系*/ * (target->R/*refworld系*/ * localRs[i]));
 
-        }
+        //     //debug
+        //     std::cerr << "d_foot_pos" <<std::endl;
+        //     std::cerr << d_foot_pos[i] <<std::endl;
+        //     std::cerr << "d_foot_rpy" <<std::endl;
+        //     std::cerr << d_foot_rpy[i] <<std::endl;
+
+        // }
 
         
         
@@ -1318,6 +1320,9 @@ public:
     void sync_2_st(){//初期化
         std::cerr << "[MCS] sync_2_st"<< std::endl;
 
+        d_cog = hrp::Vector3::Zero();
+        d_cogvel = hrp::Vector3::Zero();
+
         for(size_t i=0; i< eefnum;i++){
             d_foot_pos[i]=hrp::Vector3::Zero();
             d_foot_rpy[i]=hrp::Vector3::Zero();
@@ -1325,6 +1330,8 @@ public:
     }
 
     void setParameter(const OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
+        //is_ik_enableは変えてはいけない
+        
         mcs_k1 = i_stp.mcs_k1;
         mcs_k2 = i_stp.mcs_k2;
         mcs_k3 = i_stp.mcs_k3;
