@@ -147,7 +147,8 @@ public:
         d_foot_rpy.resize(eefnum,hrp::Vector3::Zero());
         d_cog = hrp::Vector3::Zero();
         d_cogvel = hrp::Vector3::Zero();
-
+        cog_error_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())); // [Hz]
+        
         //14.76230184   7.69057546
         //7.67639696  4.58959131 -0.17237698
         mcs_k1 = 0.0;
@@ -174,7 +175,7 @@ public:
         mcs_equality_weight << 100, 100, 100, 100, 100, 100; 
         mcs_cogpos_compensation_limit = 0.1;
         mcs_cogvel_compensation_limit = 0.1;
-        mcs_cogacc_compensation_limit = 0.1;
+        mcs_cogacc_compensation_limit = 1.0;
         mcs_cogpos_time_const = 1.5;
         mcs_cogvel_time_const = 1.5;
         //mcs_pos_damping_gain.resize(eefnum,hrp::Vector3(3500*50,3500*50,9240));
@@ -494,9 +495,10 @@ public:
         
         if(act_contact){
             //制御モデルから，必要な入力Fg, Ngを求める
-            hrp::Vector3 cog_error/*act_cogorigin系,act-ref*/ = act_cog_origin/*act_cogorigin系*/;
-            hrp::Vector3 cogvel_error/*act_cogorigin系,act-ref*/ = act_cogvel_origin/*act_cogorigin系*/ - ref_cogvel/*refworld系*/;
-            hrp::Vector3 d_cogacc/*act_cogorigin系*/ = mcs_k1 * transition_smooth_gain * cog_error/*curorigin系*/ + mcs_k2 * transition_smooth_gain * cogvel_error/*curorigin系*/ ;
+            hrp::Vector3 cog_error/*act_cogorigin系,act-ref*/ = cog_error_filter->passFilter(act_cog_origin/*act_cogorigin系*/);
+            hrp::Vector3 new_d_cogvel/*act_cogorigin系*/ = - mcs_k1 * transition_smooth_gain * cog_error/*act_cogorigin系*/;
+            
+            hrp::Vector3 d_cogacc/*act_cogorigin系*/ = (new_d_cogvel/*act_cogorigin系*/ - d_cogvel/*refworld系*/) / dt;
             for(size_t i=0; i < 3 ; i++){
                 if(d_cogacc[i] > mcs_cogacc_compensation_limit) d_cogacc[i] = mcs_cogacc_compensation_limit;
                 if(d_cogacc[i] < -mcs_cogacc_compensation_limit) d_cogacc[i] = -mcs_cogacc_compensation_limit;
@@ -509,8 +511,8 @@ public:
             //debug
             std::cerr << "cog_error" << std::endl;
             std::cerr << cog_error << std::endl;
-            std::cerr << "cogvel_error" << std::endl;
-            std::cerr << cogvel_error << std::endl;
+            std::cerr << "new_d_cogvel" << std::endl;
+            std::cerr << new_d_cogvel << std::endl;
             std::cerr << "d_cogacc" << std::endl;
             std::cerr << d_cogacc << std::endl;
             std::cerr << "ref_cogacc" << std::endl;
@@ -1338,6 +1340,7 @@ public:
         act_L_filter->setCutOffFreq(i_stp.mcs_L_cutoff_freq);
         dqactv_Filter->setCutOffFreq(i_stp.mcs_dqactv_cutoff_freq);
         act_root_v_Filter->setCutOffFreq(i_stp.mcs_act_root_v_cutoff_freq);
+        cog_error_filter->setCutOffFreq(i_stp.mcs_cog_error_cutoff_freq);
         mcs_cogpos_compensation_limit = i_stp.mcs_cogpos_compensation_limit;
         mcs_cogvel_compensation_limit = i_stp.mcs_cogvel_compensation_limit;
         mcs_cogacc_compensation_limit = i_stp.mcs_cogacc_compensation_limit;
@@ -1400,7 +1403,8 @@ public:
         std::cerr << "[" << instance_name << "]  mcs_cogvel_cutoff_freq = " << act_cogvel_filter->getCutOffFreq() << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_dqactv_cutoff_freq = " << dqactv_Filter->getCutOffFreq() << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_act_root_v_cutoff_freq = " << act_root_v_Filter->getCutOffFreq() << std::endl;
-
+        std::cerr << "[" << instance_name << "]  mcs_cog_error_cutoff_freq = " << cog_error_filter->getCutOffFreq() << std::endl;
+        
         std::cerr << "[" << instance_name << "]  mcs_pos_compensation_limit = " << mcs_pos_compensation_limit << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_rot_compensation_limit = " << mcs_rot_compensation_limit << std::endl;
 
@@ -1450,6 +1454,7 @@ public:
         i_stp.mcs_L_cutoff_freq = act_L_filter->getCutOffFreq();
         i_stp.mcs_dqactv_cutoff_freq = dqactv_Filter->getCutOffFreq();
         i_stp.mcs_act_root_v_cutoff_freq = act_root_v_Filter->getCutOffFreq();
+        i_stp.mcs_cog_error_cutoff_freq = cog_error_filter->getCutOffFreq();
         i_stp.mcs_cogpos_compensation_limit = mcs_cogpos_compensation_limit;
         i_stp.mcs_cogvel_compensation_limit = mcs_cogvel_compensation_limit;
         i_stp.mcs_cogacc_compensation_limit = mcs_cogacc_compensation_limit;
@@ -1606,7 +1611,7 @@ private:
     std::vector <hrp::Vector3> d_foot_rpy/*eef系*/;
     hrp::Vector3 d_cog/*refworld系*/;
     hrp::Vector3 d_cogvel/*refworld系*/;
-
+    boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > cog_error_filter/*refworld系*/;
 
     std::vector<ContactConstraint> contactconstraints;
     

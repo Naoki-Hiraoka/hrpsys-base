@@ -245,6 +245,8 @@ module OpenHRP
       double mcs_dqactv_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of actual rootLink velocity [Hz]
       double mcs_act_root_v_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of COG position error [Hz]
+      double mcs_cog_error_cutoff_freq;
       /// Sequence of all end-effector Origincoords weight
       sequence<double> mcs_contacteeforiginweight;
       /// Sequence of all end-effector contact constraints
