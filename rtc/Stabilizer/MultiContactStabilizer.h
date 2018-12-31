@@ -149,6 +149,10 @@ public:
 
         d_foot_pos.resize(eefnum,hrp::Vector3::Zero());
         d_foot_rpy.resize(eefnum,hrp::Vector3::Zero());
+        d_foot_pos1.resize(eefnum,hrp::Vector3::Zero());
+        d_foot_rpy1.resize(eefnum,hrp::Vector3::Zero());
+        d_foot_pos2.resize(eefnum,hrp::Vector3::Zero());
+        d_foot_rpy2.resize(eefnum,hrp::Vector3::Zero());
         d_cog = hrp::Vector3::Zero();
         d_cogvel = hrp::Vector3::Zero();
         cog_error_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())); // [Hz]
@@ -193,7 +197,15 @@ public:
         mcs_contact_vel = 0.01;
         mcs_contacteeforiginweight.resize(eefnum, 1.0);
         contactconstraints.resize(eefnum,ContactConstraint());
-
+        M_p.resize(eefnum,0);
+        D_p.resize(eefnum,174533);
+        K_p.resize(eefnum,116667);
+        M_r.resize(eefnum,0);
+        D_r.resize(eefnum,99733);
+        K_r.resize(eefnum,66667);
+        force_gain.resize(eefnum,hrp::Matrix33::Identity());
+        moment_gain.resize(eefnum,hrp::Matrix33::Identity());
+        
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
         
@@ -938,6 +950,10 @@ public:
         {
             size_t act_contact_idx = 0;
             for (size_t i = 0; i < eefnum; i++){
+                d_foot_pos2[i] = d_foot_pos1[i];
+                d_foot_rpy2[i] = d_foot_rpy1[i];
+                d_foot_pos1[i] = d_foot_pos[i];
+                d_foot_rpy1[i] = d_foot_rpy[i];
                 if(act_contact_states[i]){
                     //目標反力実現damping control
                     d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(mcs_pos_time_const[i]) *dt;
@@ -962,15 +978,21 @@ public:
                     }
                     
                 }else{//即ち!ref_contact_states[i]
-                    //擬似的なインピーダンス制御
-                    d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(mcs_pos_time_const[i]) *dt;
-                    d_foot_rpy[i] -= d_foot_rpy[i].cwiseQuotient(mcs_rot_time_const[i]) *dt;
-                    d_foot_pos[i] += - transition_smooth_gain * (ref_force_eef[i]-act_force_eef[i]).cwiseQuotient(mcs_pos_damping_gain[i]) * dt;
-                    d_foot_rpy[i] += - transition_smooth_gain * (ref_moment_eef[i]-act_moment_eef[i]).cwiseQuotient(mcs_rot_damping_gain[i]) * dt;
+                    //インピーダンス制御
+                    d_foot_pos[i] =
+                        (transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
+                         + (2 * M_p[i] + D_p[i] * dt) * d_foot_pos1[i]
+                         - M_p[i] * d_foot_pos2[i]) /
+                        (M_p[i] + D_p[i] * dt + K_p[i] * dt * dt);
+                    d_foot_rpy[i] =
+                        (transition_smooth_gain * moment_gain[i] * (act_moment_eef[i]-ref_moment_eef[i]) * dt * dt
+                         + (2 * M_r[i] + D_r[i] * dt) * d_foot_rpy1[i]
+                         - M_r[i] * d_foot_rpy2[i]) /
+                        (M_r[i] + D_r[i] * dt + K_r[i] * dt * dt);
                     //swingEEcompensation TODO
 
                     if(debug){
-                        std::cerr << i << ": 擬似的なインピーダンス制御" <<std::endl;
+                        std::cerr << i << ": インピーダンス制御" <<std::endl;
                     }
                 }
                 for(size_t j=0;j<3;j++){
@@ -1385,6 +1407,10 @@ public:
         for(size_t i=0; i< eefnum;i++){
             d_foot_pos[i]=hrp::Vector3::Zero();
             d_foot_rpy[i]=hrp::Vector3::Zero();
+            d_foot_pos1[i]=hrp::Vector3::Zero();
+            d_foot_rpy1[i]=hrp::Vector3::Zero();
+            d_foot_pos2[i]=hrp::Vector3::Zero();
+            d_foot_rpy2[i]=hrp::Vector3::Zero();
         }
     }
 
@@ -1413,7 +1439,8 @@ public:
             i_stp.mcs_rot_time_const.length() == eefnum &&
             i_stp.mcs_pos_time_const.length() == eefnum &&
             i_stp.mcs_contacteeforiginweight.length() == eefnum &&
-            i_stp.mcs_ccparams.length() == eefnum){
+            i_stp.mcs_ccparams.length() == eefnum &&
+            i_stp.mcs_impedance_params.length() == eefnum){
             for(size_t i = 0; i < eefnum; i++){
                 mcs_contacteeforiginweight[i] = i_stp.mcs_contacteeforiginweight[i];
                 contactconstraints[i].setParameter(i_stp.mcs_ccparams[i]);
@@ -1432,6 +1459,18 @@ public:
                         mcs_rot_time_const[i][j] = i_stp.mcs_rot_time_const[i][j];
                         mcs_pos_time_const[i][j] = i_stp.mcs_pos_time_const[i][j];
                     }
+                }
+                M_p[i] = i_stp.mcs_impedance_params[i].M_p;
+                D_p[i] = i_stp.mcs_impedance_params[i].D_p;
+                K_p[i] = i_stp.mcs_impedance_params[i].K_p;
+                M_r[i] = i_stp.mcs_impedance_params[i].M_r;
+                D_r[i] = i_stp.mcs_impedance_params[i].D_r;
+                K_r[i] = i_stp.mcs_impedance_params[i].K_r;
+                if(i_stp.mcs_impedance_params[i].force_gain.length() == 3){
+                    force_gain[i] = hrp::Vector3(i_stp.mcs_impedance_params[i].force_gain[0], i_stp.mcs_impedance_params[i].force_gain[1], i_stp.mcs_impedance_params[i].force_gain[2]).asDiagonal();
+                }
+                if(i_stp.mcs_impedance_params[i].moment_gain.length() == 3){
+                    moment_gain[i] = hrp::Vector3(i_stp.mcs_impedance_params[i].moment_gain[0], i_stp.mcs_impedance_params[i].moment_gain[1], i_stp.mcs_impedance_params[i].moment_gain[2]).asDiagonal();
                 }
             }
         }
@@ -1482,6 +1521,10 @@ public:
             std::cerr << "[" << instance_name << "]  mcs_rot_damping_gain = " << mcs_rot_damping_gain[i] << std::endl;
             std::cerr << "[" << instance_name << "]  mcs_rot_time_const = " << mcs_rot_time_const[i] << std::endl;        
             std::cerr << "[" << instance_name << "]  mcs_contacteeforiginweight = " << mcs_contacteeforiginweight[i] << std::endl;
+            std::cerr << "[" << instance_name << "]    M, D, K (pos) : " << M_p[i] << " " << D_p[i] << " " << K_p[i] << std::endl;
+            std::cerr << "[" << instance_name << "]    M, D, K (rot) : " << M_r[i] << " " << D_r[i] << " " << K_r[i] << std::endl;
+            std::cerr << "[" << instance_name << "]       force_gain : " << force_gain[i].format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "\n", "    [", "]")) << std::endl;
+            std::cerr << "[" << instance_name << "]      moment_gain : " << moment_gain[i].format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "\n", "    [", "]")) << std::endl;
         }
 
         std::cerr << "[" << instance_name << "]  mcs_joint_torque_distribution_weight = [" ;
@@ -1529,6 +1572,7 @@ public:
         i_stp.mcs_rot_time_const.length(eefnum);
         i_stp.mcs_contacteeforiginweight.length(eefnum);
         i_stp.mcs_ccparams.length(eefnum);
+        i_stp.mcs_impedance_params.length(eefnum);
         for(size_t i = 0; i < eefnum; i++){
             i_stp.mcs_contacteeforiginweight[i]  = mcs_contacteeforiginweight[i];
             contactconstraints[i].getParameter(i_stp.mcs_ccparams[i]);
@@ -1538,6 +1582,8 @@ public:
             i_stp.mcs_rot_damping_gain[i].length(3);
             i_stp.mcs_pos_time_const[i].length(3);
             i_stp.mcs_rot_time_const[i].length(3);
+            i_stp.mcs_impedance_params[i].force_gain.length(3);
+            i_stp.mcs_impedance_params[i].moment_gain.length(3);
             for(size_t j = 0; j < 6; j++){
                 i_stp.mcs_ee_forcemoment_distribution_weight[i][j] = mcs_ee_forcemoment_distribution_weight[i][j];
             }
@@ -1547,9 +1593,18 @@ public:
                 i_stp.mcs_pos_time_const[i][j] = mcs_pos_time_const[i][j];
                 i_stp.mcs_rot_time_const[i][j] = mcs_rot_time_const[i][j];
             }
-                    
+            i_stp.mcs_impedance_params[i].M_p = M_p[i];
+            i_stp.mcs_impedance_params[i].D_p = D_p[i];
+            i_stp.mcs_impedance_params[i].K_p = K_p[i];
+            i_stp.mcs_impedance_params[i].M_r = M_r[i];
+            i_stp.mcs_impedance_params[i].D_r = D_r[i];
+            i_stp.mcs_impedance_params[i].K_r = K_r[i];
+            for(size_t j = 0; i < eefnum; i++){
+                i_stp.mcs_impedance_params[i].force_gain[j] = force_gain[i](j,j);
+                i_stp.mcs_impedance_params[i].moment_gain[j] = moment_gain[i](j,j);
+            }
         }
-
+        
         i_stp.mcs_joint_torque_distribution_weight.length(m_robot->numJoints());
         i_stp.mcs_ik_optional_weight_vector.length(m_robot->numJoints());
 
@@ -1669,6 +1724,11 @@ private:
     
     std::vector <hrp::Vector3> d_foot_pos/*eef系*/;
     std::vector <hrp::Vector3> d_foot_rpy/*eef系*/;
+    std::vector <hrp::Vector3> d_foot_pos1/*eef系*/;
+    std::vector <hrp::Vector3> d_foot_rpy1/*eef系*/;
+    std::vector <hrp::Vector3> d_foot_pos2/*eef系*/;
+    std::vector <hrp::Vector3> d_foot_rpy2/*eef系*/;
+    
     hrp::Vector3 d_cog/*refworld系*/;
     hrp::Vector3 d_cogvel/*refworld系*/;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > cog_error_filter/*refworld系*/;
@@ -1691,6 +1751,14 @@ private:
     double mcs_cogvel_time_const;
     double mcs_pos_compensation_limit;
     double mcs_rot_compensation_limit;
+    std::vector<double> M_p;
+    std::vector<double> D_p;
+    std::vector<double> K_p;
+    std::vector<double> M_r;
+    std::vector<double> D_r;
+    std::vector<double> K_r;
+    std::vector<hrp::Matrix33> force_gain;
+    std::vector<hrp::Matrix33> moment_gain;
     std::vector<double> mcs_ik_optional_weight_vector;
     std::vector<double> mcs_contacteeforiginweight;//滑りにくいeefほど大きい. act_root_pを推定するのに用いる
 };

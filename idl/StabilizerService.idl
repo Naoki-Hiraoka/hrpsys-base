@@ -97,6 +97,29 @@ module OpenHRP
         double lower_cop_y_margin;
         double contact_decision_threshold;
     };
+
+    /**
+     * @struct impedanceParam
+     * @brief Impedance controller parameters for one end-effector.
+     */
+    struct impedanceParam {
+      /// Position mass [N/(m/s^2)]
+      double M_p;
+      /// Position damper [N/(m/s)]
+      double D_p;
+      /// Position spring [N/m]
+      double K_p;
+      /// Rotation mass [Nm/(rad/s^2)]
+      double M_r;
+      /// Rotation damper [N/(rad/s)]
+      double D_r;
+      /// Rotation spring [N/rad]
+      double K_r;
+      /// Force gain (x,y,z).
+      sequence<double, 3> force_gain;
+      /// Moment gain (x,y,z).
+      sequence<double, 3> moment_gain;
+    };
       
     /**
      * @struct stParam
@@ -233,6 +256,8 @@ module OpenHRP
       sequence<sequence<double, 3> > mcs_pos_damping_gain;
       /// Sequence of all end-effector position damping time constant [s] (x,y,z).
       sequence<sequence<double, 3> > mcs_pos_time_const;
+      /// Sequence of all emd-effector Impedance parameters
+      sequence<impedanceParam> mcs_impedance_params;
       /// all end-effector position compensation limit [m]
       double mcs_pos_compensation_limit;
       ///  all end-effector rot compensation limit [rad]
