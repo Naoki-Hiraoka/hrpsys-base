@@ -13,6 +13,9 @@
 #include <limits>
 #include <qpOASES.hpp>
 
+//debug
+#include <sys/time.h>
+
 struct STIKParam;
 
 class ContactConstraint {
@@ -384,7 +387,9 @@ public:
                     w(i*4 + 3,i*4 + 3) = 0.01;//yawの寄与を小さく
                 }
                 hrp::dmatrix Jt = J.transpose();
-                hrp::dmatrix Jinv = (Jt * w * J).inverse() * Jt * w;
+
+                hrp::dmatrix Jinv = (Jt * w * J).partialPivLu().inverse() * Jt * w;                            
+
                 hrp::dvector d_act_cogorigin/*dx,dy,dz,dyaw*/ = Jinv * error;
                 act_cogorigin_p/*actworld系*/ += d_act_cogorigin.block<3,1>(0,0);
                 act_cogorigin_yaw += d_act_cogorigin[3];
@@ -549,6 +554,7 @@ public:
                     }
                 }
             }
+            hrp::dmatrix Gt = G.transpose();
             //debug
             std::cerr << "G" <<std::endl;
             std::cerr << G <<std::endl;
@@ -660,7 +666,7 @@ public:
                 
                 {
                     //H = JW1Jt + W2 + GtW3G
-                    hrp::dmatrix tmpH = actJ * W1 * actJt + W2 + G.transpose() * W3 * G;
+                    hrp::dmatrix tmpH = actJ * W1 * actJt + W2 + Gt * W3 * G;
                     for (size_t i = 0; i < state_len; i++) {
                         for(size_t j = 0; j < state_len; j++){ 
                             H[i*state_len + j] = tmpH(i,j);
@@ -766,7 +772,17 @@ public:
                 /* Solve first QP. */
                 //高速化のためSQPしたいTODO
                 int nWSR = 1000;
+
+                //debug
+                struct timeval s, e;
+                gettimeofday(&s, NULL);
+
                 qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0);
+                
+                gettimeofday(&e, NULL);
+                std::cerr << "QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+
+               
                 if(qpOASES::getSimpleStatus(status)==0){
                     qp_solved=true;
                     real_t* xOpt = new real_t[state_len];
@@ -846,9 +862,9 @@ public:
                 std::cerr << act_wrench_eef <<std::endl;
                 std::cerr << "d_wrench_eef" <<std::endl;
                 std::cerr << d_wrench_eef <<std::endl;
+
+                hrp::dmatrix Ginv/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = Gt * (G*Gt).partialPivLu().inverse(); 
                 
-                hrp::dmatrix Ginv(6*act_contact_eef_num,6)/*act_cogorigin系,cogまわり<->eef系,eefまわり*/;
-                hrp::calcPseudoInverse(G,Ginv);
                 d_wrench_eef/*eef系,eefまわり*/ = (hrp::dmatrix::Identity(6*act_contact_eef_num,6*act_contact_eef_num) - Ginv * G) * d_wrench_eef/*eef系,eefまわり*/;
 
                 //debug
@@ -1081,7 +1097,8 @@ public:
                         }
                     }
                 }
-                
+
+                hrp::dmatrix curJt = curJ.transpose();
                 hrp::dmatrix curJinv(6+ik_enable_joint_num, 3+6*ik_enable_eef_num);
                 {
                     hrp::dmatrix w = hrp::dmatrix::Identity(6+ik_enable_joint_num,6+ik_enable_joint_num);
@@ -1115,12 +1132,16 @@ public:
                             w(6+ik_enable_joint_map[j], 6+ik_enable_joint_map[j]) = mcs_ik_optional_weight_vector[j] * ( 1.0 / ( 1.0 + r) );
                         }
                     }
-                    double manipulability = sqrt((curJ*curJ.transpose()).determinant());
+
+                    double manipulability = sqrt((curJ*curJt).fullPivLu().determinant());
+                                        
                     double k = 0;
                     if ( manipulability < 0.1 ) {
                         k = 0.001 * pow((1 - ( manipulability / 0.1 )), 2);
-                    }                    
-                    hrp::calcSRInverse(curJ, curJinv, 1.0 * k, w);
+                    }
+
+                    //sr inverse
+                    curJinv = w * curJt * (curJ * w * curJt + 1.0 * k * hrp::dmatrix::Identity(3+6*ik_enable_eef_num,3+6*ik_enable_eef_num)).partialPivLu().inverse();
                 }
                 hrp::dmatrix curJnull = hrp::dmatrix::Identity(6+ik_enable_joint_num, 6+ik_enable_joint_num) - curJinv * curJ;
 
