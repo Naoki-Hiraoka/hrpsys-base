@@ -93,6 +93,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_originActCogOut("originActCog", m_originActCog),
     m_originActCogVelOut("originActCogVel", m_originActCogVel),
     m_refBaseRpyOut("refBaseRpy", m_refBaseRpy),
+    m_refBasePosOut("refBasePos", m_refBasePos),
     m_actBaseRpyOut("actBaseRpy", m_actBaseRpy),
     m_currentBasePosOut("currentBasePos", m_currentBasePos),
     m_currentBaseRpyOut("currentBaseRpy", m_currentBaseRpy),
@@ -100,6 +101,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_allActWrenchOut("allActWrench", m_allActWrench),
     m_allCurrentWrenchOut("allCurrentWrench", m_allCurrentWrench),
     m_allEECompOut("allEEComp", m_allEEComp),
+    m_cogCompOut("cogComp", m_cogComp),
     m_debugDataOut("debugData", m_debugData),
     control_mode(MODE_IDLE),
     st_algorithm(OpenHRP::StabilizerService::TPCC),
@@ -160,6 +162,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addOutPort("originActCog", m_originActCogOut);
   addOutPort("originActCogVel", m_originActCogVelOut);
   addOutPort("refBaseRpy", m_refBaseRpyOut);
+  addOutPort("refBasePos", m_refBasePosOut);
   addOutPort("actBaseRpy", m_actBaseRpyOut);
   addOutPort("currentBasePos", m_currentBasePosOut);
   addOutPort("currentBaseRpy", m_currentBaseRpyOut);
@@ -167,6 +170,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addOutPort("allActWrench", m_allActWrenchOut);
   addOutPort("allCurrentWrench", m_allCurrentWrenchOut);
   addOutPort("allEEComp", m_allEECompOut);
+  addOutPort("cogComp", m_cogCompOut);
   addOutPort("debugData", m_debugDataOut);
   
   // Set service provider to Ports
@@ -299,6 +303,8 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       ikp.prev_d_rpy_swing = hrp::Vector3::Zero();
       ikp.ref_force = hrp::Vector3::Zero();
       ikp.ref_moment = hrp::Vector3::Zero();
+      ikp.d_foot_pos = hrp::Vector3::Zero();
+      ikp.d_foot_rpy = hrp::Vector3::Zero();
       //
       stikp.push_back(ikp);
       jpe_v.push_back(hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->link(ee_base), m_robot->link(ee_target), dt, false, std::string(m_profile.instance_name))));
@@ -500,7 +506,10 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   m_allCurrentWrench.data.length(stikp.size() * 6); // 6 is wrench dim
   m_allEEComp.data.length(stikp.size() * 6); // 6 is pos+rot dim
   m_debugData.data.length(1); m_debugData.data[0] = 0.0;
-
+  current_base_pos = hrp::Vector3::Zero();
+  current_base_rpy = hrp::Vector3::Zero();
+  d_cog_pos = hrp::Vector3::Zero();
+  
   //
   szd = new SimpleZMPDistributor(dt);
   std::vector<std::vector<Eigen::Vector2d> > support_polygon_vec;
@@ -754,6 +763,11 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_allCurrentWrenchOut.write();
       m_allEEComp.tm = m_qRef.tm;
       m_allEECompOut.write();
+      m_cogComp.data.x = rel_act_zmp(0);
+      m_cogComp.data.y = rel_act_zmp(1);
+      m_cogComp.data.z = rel_act_zmp(2);
+      m_cogComp.tm = m_qRef.tm;
+      m_cogCompOut.write();
       m_actBaseRpy.data.r = act_base_rpy(0);
       m_actBaseRpy.data.p = act_base_rpy(1);
       m_actBaseRpy.data.y = act_base_rpy(2);
@@ -762,6 +776,10 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_refBaseRpy.data.p = ref_base_rpy(1);
       m_refBaseRpy.data.y = ref_base_rpy(2);
       m_refBaseRpy.tm = m_qRef.tm;
+      m_refBasePos.data.x = ref_base_pos(0);
+      m_refBasePos.data.y = ref_base_pos(1);
+      m_refBasePos.data.z = ref_base_pos(2);
+      m_refBasePos.tm = m_qRef.tm;
       m_currentBaseRpy.data.r = current_base_rpy(0);
       m_currentBaseRpy.data.p = current_base_rpy(1);
       m_currentBaseRpy.data.y = current_base_rpy(2);
@@ -772,6 +790,7 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_currentBasePos.tm = m_qRef.tm;
       m_actBaseRpyOut.write();
       m_refBaseRpyOut.write();
+      m_refBasePosOut.write();
       m_currentBaseRpyOut.write();
       m_currentBasePosOut.write();
       m_debugData.tm = m_qRef.tm;
@@ -886,7 +905,21 @@ void Stabilizer::getActualParameters ()
       }
 
       multicontactstabilizer.isContact(act_contact_states, act_ee_R_world, act_force_world, act_moment_world);
-      on_ground = multicontactstabilizer.getActualParameters(m_robot, qactv,m_robot->rootLink()->p/*Zero*/,m_robot->rootLink()->R/*actworld系*/,act_ee_p_world/*原点不明,actworld系*/,act_ee_R_world/*actworld系*/,act_force_world/*actworld系*/,act_moment_world/*actworld系,eefまわり*/,act_contact_states, contact_decision_threshold);
+      on_ground = multicontactstabilizer.getActualParameters(m_robot,
+                                                             qactv,
+                                                             m_robot->rootLink()->p/*Zero*/,
+                                                             m_robot->rootLink()->R/*actworld系*/,
+                                                             act_ee_p_world/*原点不明,actworld系*/,
+                                                             act_ee_R_world/*actworld系*/,
+                                                             act_force_world/*actworld系*/,
+                                                             act_moment_world/*actworld系,eefまわり*/,
+                                                             act_contact_states,
+                                                             contact_decision_threshold,
+                                                             act_cog/*refworld系*/,
+                                                             act_cogvel/*refworld系*/,
+                                                             act_force_eef/*eef系*/,
+                                                             act_moment_eef/*eef系*/,
+                                                             act_base_rpy/*refworld系*/);
 
       for ( int i = 0; i < m_robot->numJoints(); i++ ){
           m_robot->joint(i)->q = qrefv[i];
@@ -1293,7 +1326,23 @@ void Stabilizer::getTargetParameters ()
           swing_support_gains[i] = stikp[i].swing_support_gain;
       }
 
-      multicontactstabilizer.getTargetParameters(m_robot, transition_smooth_gain,qrefv,target_root_p/*refworld系*/,target_root_R/*refworld系*/,target_ee_p_world/*refworld系*/,target_ee_R_world/*refworld系*/,ref_force_world/*refworld系*/,ref_moment_world/*refworld系,eefまわり*/,ref_contact_states,swing_support_gains);
+      multicontactstabilizer.getTargetParameters(m_robot,
+                                                 transition_smooth_gain,
+                                                 qrefv,
+                                                 target_root_p/*refworld系*/,
+                                                 target_root_R/*refworld系*/,
+                                                 target_ee_p_world/*refworld系*/,
+                                                 target_ee_R_world/*refworld系*/,
+                                                 ref_force_world/*refworld系*/,
+                                                 ref_moment_world/*refworld系,eefまわり*/,
+                                                 ref_contact_states,
+                                                 swing_support_gains,
+                                                 ref_cog/*refworld系*/,
+                                                 ref_cogvel/*refworld系*/,
+                                                 ref_force_eef/*eef系*/,
+                                                 ref_moment_eef/*eef系*/,
+                                                 ref_base_pos/*refworld系*/,
+                                                 ref_base_rpy/*refworld系*/);
       return;
   }
   
@@ -1725,25 +1774,25 @@ void Stabilizer::calcEEForceMomentControl() {
             localps[i] = stikp[i].localp;
             localRs[i] = stikp[i].localR;
         }
+        std::vector<hrp::Vector3> d_foot_pos(stikp.size());
+        std::vector<hrp::Vector3> d_foot_rpy(stikp.size());
         multicontactstabilizer.calcMultiContactControl(is_ik_enable,
                                                        m_robot,
                                                        ee_names,
                                                        ik_loop_count,
                                                        localps,
                                                        localRs,
-                                                       ref_cog,
-                                                       ref_cogvel,
-                                                       act_cog,
-                                                       act_cogvel,
-                                                       act_base_rpy,
-                                                       ref_base_rpy,
+                                                       current_base_pos,
                                                        current_base_rpy,
-                                                       act_force_eef,
-                                                       act_moment_eef,
-                                                       ref_force_eef,
-                                                       ref_moment_eef,
                                                        current_force_eef,
-                                                       current_moment_eef);
+                                                       current_moment_eef,
+                                                       d_foot_pos,
+                                                       d_foot_rpy,
+                                                       d_cog_pos);
+        for(size_t i = 0 ; i < stikp.size(); i++){
+            stikp[i].d_foot_pos = d_foot_pos[i];
+            stikp[i].d_foot_rpy = d_foot_rpy[i];
+        }
         return;
     }
     

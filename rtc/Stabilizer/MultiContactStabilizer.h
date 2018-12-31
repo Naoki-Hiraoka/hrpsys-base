@@ -206,7 +206,7 @@ public:
         cur_root_R/*refworld系*/ = m_robot->rootLink()->R/*refworld系*/;
     }
 
-    void getTargetParameters(hrp::BodyPtr& m_robot, const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_ee_p/*refworld系*/, const std::vector <hrp::Matrix33>& _ref_ee_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains) {
+    void getTargetParameters(hrp::BodyPtr& m_robot, const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_ee_p/*refworld系*/, const std::vector <hrp::Matrix33>& _ref_ee_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains, hrp::Vector3& log_ref_cog/*refworld系*/, hrp::Vector3& log_ref_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_ref_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_ref_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_ref_base_pos/*world系*/, hrp::Vector3& log_ref_base_rpy/*world系*/) {
         //Pg Pgdot Fg hg Ngの目標値を受け取る
         transition_smooth_gain = _transition_smooth_gain;
         ddqrefv = ((_qrefv - qrefv/*前回の値*/)/dt - dqrefv/*前回の値*/)/dt;
@@ -260,10 +260,20 @@ public:
             // atan2(y,x) = atan(y/x)
             ref_eeC_cog[i][3]/*refcog系*/ = atan2(xv[1]-yv[0],xv[0]+yv[1]);
         }
+
+
+        log_ref_cog = ref_cog/*refworld系*/;
+        log_ref_cogvel = ref_cogvel/*refworld系*/;
+        for(size_t i = 0; i < eefnum; i++){
+            log_ref_force_eef[i] = ref_force_eef[i]/*refeef系*/;
+            log_ref_moment_eef[i] = ref_moment_eef[i]/*refeef系*/;
+         }
+        log_ref_base_pos = ref_root_p/*refworld系*/;
+        log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
     }
 
     //on_groundかを返す
-    bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_ee_p/*actworld系*/, const std::vector <hrp::Matrix33>& _act_ee_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, const std::vector<bool>& _act_contact_states, const double& contact_decision_threshold) {
+    bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_ee_p/*actworld系*/, const std::vector <hrp::Matrix33>& _act_ee_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, const std::vector<bool>& _act_contact_states, const double& contact_decision_threshold, hrp::Vector3& log_act_cog/*refworld系*/, hrp::Vector3& log_act_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_act_base_rpy/*world系*/) {
         //接触eefとの相対位置関係と，重力方向さえ正確なら，root位置，yaw,は微分が正確なら誤差が蓄積しても良い
         //root位置が与えられない場合は，接触拘束から推定する
         
@@ -417,6 +427,14 @@ public:
             act_ee_R_origin[i]/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * act_ee_R[i]/*actworld系*/;
         }
 
+        log_act_cog = ref_cog/*refworld系*/ + act_cog_origin/*act_cogorigin系*/;
+        log_act_cogvel = act_cogvel_origin/*act_cogorigin系*/;
+        for(size_t i = 0; i < eefnum; i++){
+            log_act_force_eef[i] = act_force_eef[i]/*eef系*/;
+            log_act_moment_eef[i] = act_moment_eef[i]/*eef系*/;
+        }
+        log_act_base_rpy = hrp::rpyFromRot(act_cogorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
+        
         if(debug){
             std::cerr << "act_root_R" <<std::endl;
             std::cerr << act_root_R <<std::endl;
@@ -451,19 +469,14 @@ public:
                                  std::vector<int> ik_loop_count,
                                  const std::vector<hrp::Vector3>& localps/*eef系*/,
                                  const std::vector<hrp::Matrix33>& localRs/*eef系*/,
-                                 hrp::Vector3& log_ref_cog,/*origin系*/
-                                 hrp::Vector3& log_ref_cogvel,/*origin系*/
-                                 hrp::Vector3& log_act_cog,/*origin系*/
-                                 hrp::Vector3& log_act_cogvel,/*origin系*/
-                                 hrp::Vector3& log_act_base_rpy,/*world系*/
-                                 hrp::Vector3& log_ref_base_rpy,/*world系*/
-                                 hrp::Vector3& log_current_base_rpy,/*world系*/
-                                 std::vector<hrp::Vector3>& log_act_force_eef,/*eef系,eefまわり*/
-                                 std::vector<hrp::Vector3>& log_act_moment_eef,/*eef系,eefまわり*/
-                                 std::vector<hrp::Vector3>& log_ref_force_eef,/*eef系,eefまわり*/
-                                 std::vector<hrp::Vector3>& log_ref_moment_eef,/*eef系,eefまわり*/
-                                 std::vector<hrp::Vector3>& log_current_force_eef,/*eef系,eefまわり*/
-                                 std::vector<hrp::Vector3>& log_current_moment_eef/*eef系,eefまわり*/) {
+                                 hrp::Vector3& log_current_base_pos/*refworld系*/,
+                                 hrp::Vector3& log_current_base_rpy/*refworld系*/,
+                                 std::vector<hrp::Vector3>& log_cur_force_eef/*eef系,eefまわり*/,
+                                 std::vector<hrp::Vector3>& log_cur_moment_eef/*eef系,eefまわり*/,
+                                 std::vector<hrp::Vector3>& log_d_foot_pos/*eef系,eefまわり*/,
+                                 std::vector<hrp::Vector3>& log_d_foot_rpy/*eef系,eefまわり*/,
+                                 hrp::Vector3& log_d_cog_pos/*refworld系*/
+                                 ) {
 
         const hrp::Vector3 g(0, 0, 9.80665);
         
@@ -497,7 +510,6 @@ public:
         
         hrp::dvector d_wrench_eef(6*act_contact_eef_num)/*eef系,eefまわり*/;//actcontactしているeefについての目標反力-今の反力
         bool qp_solved=false;
-
         
         if(act_contact){
             //制御モデルから，必要な入力Fg, Ngを求める
@@ -786,13 +798,14 @@ public:
 
                 //debug
                 struct timeval s, e;
-                gettimeofday(&s, NULL);
+                if(debug){
+                    gettimeofday(&s, NULL);
+                }
 
                 qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0);
-
-                //debug
-                gettimeofday(&e, NULL);
+                
                 if(debug){
+                    gettimeofday(&e, NULL);
                     std::cerr << "QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
                 }
 
@@ -1329,20 +1342,27 @@ public:
         
         
         //m_qRef <- m_robotより
-        log_ref_cog = hrp::Vector3::Zero()/*act_cogorigin系*/;
-        log_ref_cogvel = ref_cogvel/*refworld系*/;
-        log_act_cog = act_cog_origin/*act_cogorigin系*/;
-        log_act_cogvel = act_cogvel_origin/*act_cogorigin系*/;
-        log_act_base_rpy = hrp::rpyFromRot(act_root_R/*actworld系*/);
-        log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
+        log_current_base_pos = m_robot->rootLink()->p/*refworld系*/;
         log_current_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R/*refworld系*/);
-        for(size_t i = 0; i < eefnum; i++){
-            log_act_force_eef[i] = act_force_eef[i]/*acteef系*/;
-            log_act_moment_eef[i] = act_moment_eef[i]/*acteef系*/;
-            log_ref_force_eef[i] = ref_force_eef[i]/*refeef系*/;
-            log_ref_moment_eef[i] = ref_moment_eef[i]/*refeef系*/;
-            //log_current_force_eef[i] = current_force_eef[i]/*eef系*/;
-            //log_current_moment_eef[i] = current_moment_eef[i]/*eef系*/;
+        log_d_cog_pos = d_cog/*refworld系*/;
+        {
+            size_t act_contact_idx=0;
+            for(size_t i = 0; i < eefnum; i++){
+                log_d_foot_pos[i] = d_foot_pos[i];
+                log_d_foot_rpy[i] = d_foot_rpy[i];
+                
+                if(act_contact_states[i]){
+                    log_cur_force_eef[i] = act_force_eef[i]/*eef系*/ + d_wrench_eef.block<3,1>(act_contact_idx*6+0,0)/*eef系*/;
+                    log_cur_moment_eef[i] = act_moment_eef[i]/*eef系*/ + d_wrench_eef.block<3,1>(act_contact_idx*6+3,0)/*eef系*/;
+                    act_contact_idx++;
+                }else if(ref_contact_states[i]){
+                    log_cur_force_eef[i] = hrp::Vector3(0.0,0.0,contactconstraints[i].contact_decision_threshold);
+                    log_cur_moment_eef[i] = hrp::Vector3::Zero();
+                }else{
+                    log_cur_force_eef[i] = ref_force_eef[i]/*eef系*/;
+                    log_cur_moment_eef[i] = ref_moment_eef[i]/*eef系*/;
+                }
+            }
         }
         
         //TODO
