@@ -980,15 +980,25 @@ public:
                 }else{//即ち!ref_contact_states[i]
                     //インピーダンス制御
                     d_foot_pos[i] =
-                        (transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
-                         + (2 * M_p[i] + D_p[i] * dt) * d_foot_pos1[i]
-                         - M_p[i] * d_foot_pos2[i]) /
-                        (M_p[i] + D_p[i] * dt + K_p[i] * dt * dt);
+                        swing_support_gains[i] *
+                        ((transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
+                          + (2 * M_p[i] + D_p[i] * dt) * d_foot_pos1[i]
+                          - M_p[i] * d_foot_pos2[i]) /
+                         (M_p[i] + D_p[i] * dt + K_p[i] * dt * dt))
+                        + (1.0 - swing_support_gains[i]) *
+                        (d_foot_pos1[i]
+                         + transition_smooth_gain * (act_force_eef[i]-ref_force_eef[i]).cwiseQuotient(mcs_pos_damping_gain[i]) * dt
+                         - d_foot_pos1[i].cwiseQuotient(mcs_pos_time_const[i]) *dt);
                     d_foot_rpy[i] =
-                        (transition_smooth_gain * moment_gain[i] * (act_moment_eef[i]-ref_moment_eef[i]) * dt * dt
-                         + (2 * M_r[i] + D_r[i] * dt) * d_foot_rpy1[i]
-                         - M_r[i] * d_foot_rpy2[i]) /
-                        (M_r[i] + D_r[i] * dt + K_r[i] * dt * dt);
+                        swing_support_gains[i] *
+                        ((transition_smooth_gain * moment_gain[i] * (act_moment_eef[i]-ref_moment_eef[i]) * dt * dt
+                          + (2 * M_r[i] + D_r[i] * dt) * d_foot_rpy1[i]
+                          - M_r[i] * d_foot_rpy2[i]) /
+                         (M_r[i] + D_r[i] * dt + K_r[i] * dt * dt))
+                        + (1.0 - swing_support_gains[i]) *
+                        (d_foot_rpy1[i]
+                         + transition_smooth_gain * (act_moment_eef[i]-ref_moment_eef[i]).cwiseQuotient(mcs_rot_damping_gain[i]) * dt
+                         - d_foot_rpy1[i].cwiseQuotient(mcs_rot_time_const[i]) *dt);
                     //swingEEcompensation TODO
 
                     if(debug){
