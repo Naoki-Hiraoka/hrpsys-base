@@ -68,7 +68,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(false)
+    MultiContactStabilizer() : debug(true)
     {
     }
 
@@ -1609,7 +1609,7 @@ public:
             i_stp.mcs_impedance_params[i].M_r = M_r[i];
             i_stp.mcs_impedance_params[i].D_r = D_r[i];
             i_stp.mcs_impedance_params[i].K_r = K_r[i];
-            for(size_t j = 0; i < eefnum; i++){
+            for(size_t j = 0; j < 3; j++){
                 i_stp.mcs_impedance_params[i].force_gain[j] = force_gain[i](j,j);
                 i_stp.mcs_impedance_params[i].moment_gain[j] = moment_gain[i](j,j);
             }
