@@ -84,18 +84,28 @@ module OpenHRP
         unsigned short ik_loop_count;
     };
 
+
     /**
-     * @enum ContactConstraint
-     * @brief ContactConstraint
+     * @enum EndEffector
+     * @brief EndEfector
      */
-    struct ContactConstraintParam {
+    struct EndEffectorParam {
+        double contact_decision_threshold;
+    };
+      
+    /**
+     * @enum ContactEndEffector
+     * @brief ContactEndEfector
+     */
+    struct ContactEndEffectorParam {
         double friction_coefficient;
         double rotation_friction_coefficient;
         double upper_cop_x_margin;
         double lower_cop_x_margin;
         double upper_cop_y_margin;
         double lower_cop_y_margin;
-        double contact_decision_threshold;
+        double min_fz;
+        sequence<double, 6> ee_forcemoment_distribution_weight;
     };
 
     /**
@@ -244,8 +254,6 @@ module OpenHRP
       double mcs_k3;
       /// Sequence of all joint torque distribution weight
       sequence<double> mcs_joint_torque_distribution_weight;
-      /// Sequence of all end-effector force/moment distribution weight
-      sequence<sequence<double, 6> > mcs_ee_forcemoment_distribution_weight;
       /// Sequence of equality constraint weight
       sequence<double, 6> mcs_equality_weight;
       /// Sequence of all end-effector rotation damping gain [Nm/(rad/s)] (r,p,y).
@@ -274,8 +282,10 @@ module OpenHRP
       double mcs_cog_error_cutoff_freq;
       /// Sequence of all end-effector Origincoords weight
       sequence<double> mcs_contacteeforiginweight;
-      /// Sequence of all end-effector contact constraints
-      sequence<ContactConstraintParam> mcs_ccparams;
+      /// Sequence of all end-effector params
+      sequence<EndEffectorParam> mcs_eeparams;
+      /// Sequence of all contact end-effector params
+      sequence<ContactEndEffectorParam> mcs_ceeparams;
       /// Joint weight for Inverse Kinematics calculation.
       sequence<double> mcs_ik_optional_weight_vector;
       /// COG position position compensation limit [m]
