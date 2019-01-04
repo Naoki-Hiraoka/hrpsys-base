@@ -884,26 +884,26 @@ class HrpsysConfigurator(object):
             self.connectLoggerPort(self.kf, 'rpy')
         if self.sh != None:
             self.connectLoggerPort(self.sh, 'qOut')
-            self.connectLoggerPort(self.sh, 'tqOut')
+            #self.connectLoggerPort(self.sh, 'tqOut')
             self.connectLoggerPort(self.sh, 'basePosOut')
             self.connectLoggerPort(self.sh, 'baseRpyOut')
-            self.connectLoggerPort(self.sh, 'zmpOut')
+            #self.connectLoggerPort(self.sh, 'zmpOut')
         if self.ic != None:
             self.connectLoggerPort(self.ic, 'q')
         if self.abc != None:
-            self.connectLoggerPort(self.abc, 'zmpOut')
-            self.connectLoggerPort(self.abc, 'baseTformOut')
-            self.connectLoggerPort(self.abc, 'q')
+            #self.connectLoggerPort(self.abc, 'zmpOut')
+            #self.connectLoggerPort(self.abc, 'baseTformOut')
+            #self.connectLoggerPort(self.abc, 'q')
             self.connectLoggerPort(self.abc, 'contactStates')
             self.connectLoggerPort(self.abc, 'controlSwingSupportTime')
-            self.connectLoggerPort(self.abc, 'cogOut')
+            #self.connectLoggerPort(self.abc, 'cogOut')
         if self.st != None:
-            self.connectLoggerPort(self.st, 'zmp')
-            self.connectLoggerPort(self.st, 'originRefZmp')
+            #self.connectLoggerPort(self.st, 'zmp')
+            #self.connectLoggerPort(self.st, 'originRefZmp')
             self.connectLoggerPort(self.st, 'originRefCog')
             self.connectLoggerPort(self.st, 'originRefCogVel')
-            self.connectLoggerPort(self.st, 'originNewZmp')
-            self.connectLoggerPort(self.st, 'originActZmp')
+            #self.connectLoggerPort(self.st, 'originNewZmp')
+            #self.connectLoggerPort(self.st, 'originActZmp')
             self.connectLoggerPort(self.st, 'originActCog')
             self.connectLoggerPort(self.st, 'originActCogVel')
             self.connectLoggerPort(self.st, 'allRefWrench')
@@ -917,7 +917,7 @@ class HrpsysConfigurator(object):
             self.connectLoggerPort(self.st, 'refBasePos')
             self.connectLoggerPort(self.st, 'currentBasePos')
             self.connectLoggerPort(self.st, 'currentBaseRpy')
-            self.connectLoggerPort(self.st, 'debugData')
+            #self.connectLoggerPort(self.st, 'debugData')
         if self.el != None:
             self.connectLoggerPort(self.el, 'q')
         if self.rh != None:
@@ -931,11 +931,11 @@ class HrpsysConfigurator(object):
         if self.rmfo != None:
             for sen in filter(lambda x: x.type == "Force", self.sensors):
                 self.connectLoggerPort(self.rmfo, "off_"+sen.name)
-        if self.rfu != None:
-            for sen in filter(lambda x: x.type == "Force", self.sensors):
-                self.connectLoggerPort(self.rfu, "ref_"+sen.name+"Out")
-        if self.octd != None:
-            self.connectLoggerPort(self.octd, "octdData")
+        #if self.rfu != None:
+        #    for sen in filter(lambda x: x.type == "Force", self.sensors):
+        #        self.connectLoggerPort(self.rfu, "ref_"+sen.name+"Out")
+        #if self.octd != None:
+        #    self.connectLoggerPort(self.octd, "octdData")
         self.log_svc.clear()
         self.log.setProperty("log_precision","16")
         ## parallel running log process (outside from rtcd) for saving logs by emergency signal
