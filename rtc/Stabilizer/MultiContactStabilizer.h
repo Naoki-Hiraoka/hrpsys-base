@@ -111,6 +111,7 @@ public:
         i_ccp.upper_cop_y_margin = upper_cop_y_margin;
         i_ccp.lower_cop_y_margin = lower_cop_y_margin;
         i_ccp.ee_forcemoment_distribution_weight.length(6);
+        i_ccp.min_fz = min_fz;
         for(size_t i = 0; i < 6; i++){
             i_ccp.ee_forcemoment_distribution_weight[i] = ee_forcemoment_distribution_weight[i];
         }
@@ -960,6 +961,8 @@ public:
                         for(size_t i = 0; i < inequality_len; i++){
                             debuglbA[i] = lbA[i];
                         }
+                        std::cerr << "lbA" <<std::endl;
+                        std::cerr << debuglbA <<std::endl;
                     }
                 }            
                 
@@ -1020,8 +1023,6 @@ public:
                     std::cerr << cur_wrench_cee <<std::endl;
                     std::cerr << "Ax" <<std::endl;
                     std::cerr << debugA * cur_wrench_cee << std::endl;
-                    std::cerr << "lbA" <<std::endl;
-                    std::cerr << debuglbA << std::endl;
                     std::cerr << "Ax - lbA" <<std::endl;
                     std::cerr << debugA * cur_wrench_cee - debuglbA<< std::endl;
                 }
@@ -1054,11 +1055,16 @@ public:
                     std::cerr << d_cog <<std::endl;
                 }
                 hrp::dvector cur_wrench_eef_org/*eef系,eefまわり*/ = hrp::dvector::Zero(6*eefnum);
-                for(size_t i = 0; i < act_contact_cee_num; i++){
-                    cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+0,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(i*6+0,0);
-                    cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+3,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(i*6+3,0);
-                    cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+3,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * hrp::hat(act_cee_p_origin[i]-act_ee_p_origin[endeffector_index_map[contactendeffector[i].endeffector_name]]) * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(i*6+0,0);
-                    
+                {
+                    size_t act_contact_idx = 0;
+                    for(size_t i = 0; i < ceenum; i++){
+                        if(contactendeffector[i].act_contact_state){
+                            cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+0,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(act_contact_idx*6+0,0);
+                            cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+3,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(act_contact_idx*6+3,0);
+                            cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+3,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * hrp::hat(act_cee_p_origin[i]-act_ee_p_origin[endeffector_index_map[contactendeffector[i].endeffector_name]]) * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(act_contact_idx*6+0,0);
+                            act_contact_idx++;
+                        }
+                    }
                 }
                 hrp::dvector cur_wrench_eef/*eef系,eefまわり*/ = hrp::dvector::Zero(6*act_contact_eef_num);
                 {
