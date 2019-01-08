@@ -978,66 +978,93 @@ public:
                 }
                 
                 //copied from eus_qpoases
-                qpOASES::SQProblem* example;
+                boost::shared_ptr<qpOASES::SQProblem> example;
                 std::pair<int, int> tmp_pair(state_len, inequality_len);
-                std::map<std::pair<int, int>, qpOASES::SQProblem*>::iterator it = sqp_map.find(tmp_pair);
+                std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
                 bool is_initial = (it == sqp_map.end());
                 bool internal_error = false;
                 if (!is_initial) {
                     example = it->second;
                     example->setOptions( options );
                     int nWSR = 1000;
+
+                    //debug
+                    struct timeval s, e;
+                    if(debug){
+                        gettimeofday(&s, NULL);
+                    }
+                    
                     qpOASES::returnValue status = example->hotstart( H,g,A,lb,ub,lbA,ubA, nWSR);
+
+                    if(debug){
+                        gettimeofday(&e, NULL);
+                        std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+                    }
+
                     if(qpOASES::getSimpleStatus(status)==0){
+                        if(debug){
+                            std::cerr << "hotstart qp_solved" <<std::endl;
+                        }
+                        
                         qp_solved=true;
                         real_t* xOpt = new real_t[state_len];
-                        example.getPrimalSolution( xOpt );
+                        example->getPrimalSolution( xOpt );
                         for(size_t i=0; i<state_len;i++){
                             cur_wrench_cee[i]=xOpt[i];
                         }
                         delete[] xOpt;
-                    }else if(qpOASES::getSimpleStatus(status)==-1){
-                        internal_error = true;
+                    }else{
+                        if(debug){
+                            std::cerr << "hotstart qp fail" <<std::endl;
+                        }
+                        // Delete unsolved sqp
+                        sqp_map.erase(tmp_pair);
+                        if(qpOASES::getSimpleStatus(status)==-1){
+                            if(debug){
+                                std::cerr << "hotstart qp internal error" <<std::endl;
+                            }
+                            internal_error = true;
+                        }
                     }
                 }
 
-                if(is_ititial){
-                    example = new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN);
-                    sqp_map.insert(std::pair<std::pair<int, int>, qpOASES::SQProblem*>(tmp_pair, example));
-                } else {
-                    
-                }
+                if(is_initial || internal_error){
+                    example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN));
+                    sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
+                    example->setOptions( options );
+                    int nWSR = 1000;
 
-                
-                
-                qpOASES::QProblem example( state_len ,inequality_len);
-                
-                example.setOptions( options );
-                /* Solve first QP. */
-                //高速化のためSQPしたいTODO
-                
-
-                //debug
-                struct timeval s, e;
-                if(debug){
-                    gettimeofday(&s, NULL);
-                }
-
-                qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,ubA, nWSR,0);
-                
-                if(debug){
-                    gettimeofday(&e, NULL);
-                    std::cerr << "QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                }
-
-                if(qpOASES::getSimpleStatus(status)==0){
-                    qp_solved=true;
-                    real_t* xOpt = new real_t[state_len];
-                    example.getPrimalSolution( xOpt );
-                    for(size_t i=0; i<state_len;i++){
-                        cur_wrench_cee[i]=xOpt[i];
+                    //debug
+                    struct timeval s, e;
+                    if(debug){
+                        gettimeofday(&s, NULL);
                     }
-                    delete[] xOpt;
+                    qpOASES::returnValue status = example->init( H,g,A,lb,ub,lbA,ubA, nWSR);
+
+                    if(debug){
+                        gettimeofday(&e, NULL);
+                        std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+                    }
+
+                    if(qpOASES::getSimpleStatus(status)==0){
+                        if(debug){
+                            std::cerr << "initial qp_solved" <<std::endl;
+                        }
+
+                        qp_solved=true;
+                        real_t* xOpt = new real_t[state_len];
+                        example->getPrimalSolution( xOpt );
+                        for(size_t i=0; i<state_len;i++){
+                            cur_wrench_cee[i]=xOpt[i];
+                        }
+                        delete[] xOpt;
+                    }else{
+                        if(debug){
+                            std::cerr << "initial qp fail" <<std::endl;
+                        }
+                        // Delete unsolved sqp
+                        sqp_map.erase(tmp_pair);
+                    }
                 }
                 delete[] H;
                 delete[] A;
@@ -1050,10 +1077,8 @@ public:
             
             if(qp_solved){
                 //output: cur_wrench_cee(eef系,eefまわり)
-
+                
                 if(debug){
-                    std::cerr << "qp_solved" <<std::endl;
-                    std::cerr << qp_solved <<std::endl;
                     std::cerr << "cur_wrench_cee" <<std::endl;
                     std::cerr << cur_wrench_cee <<std::endl;
                     std::cerr << "Ax" <<std::endl;
@@ -1920,7 +1945,7 @@ private:
     size_t eefnum;
     size_t ceenum;
     std::map<std::string, hrp::JointLimitTable> joint_limit_tables;
-    std::map<std::pair<int, int>, SQProblem*> sqp_map;
+    std::map<std::pair<int, int>, boost::shared_ptr<SQProblem> > sqp_map;
 
     double transition_smooth_gain;//0.0~1.0, 0のとき何もしない
     
