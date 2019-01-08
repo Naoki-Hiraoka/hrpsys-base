@@ -980,11 +980,16 @@ public:
                 //copied from eus_qpoases
                 boost::shared_ptr<qpOASES::SQProblem> example;
                 std::pair<int, int> tmp_pair(state_len, inequality_len);
-                std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
-                bool is_initial = (it == sqp_map.end());
+                bool is_initial = true;
                 bool internal_error = false;
+                {
+                    std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
+                    is_initial = (it == sqp_map.end());
+                    if(!is_initial){
+                        example = it->second;
+                    }
+                }
                 if (!is_initial) {
-                    example = it->second;
                     example->setOptions( options );
                     int nWSR = 1000;
 
@@ -1030,7 +1035,8 @@ public:
 
                 if(is_initial || internal_error){
                     example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN));
-                    sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
+                    //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
+                    sqp_map[tmp_pair]=example;
                     example->setOptions( options );
                     int nWSR = 1000;
 
