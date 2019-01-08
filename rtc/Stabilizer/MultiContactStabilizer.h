@@ -1135,7 +1135,7 @@ public:
                 hrp::dvector cur_wrench_eef/*eef系,eefまわり*/ = hrp::dvector::Zero(6*act_contact_eef_num);
                 {
                     size_t act_contact_idx = 0;
-                    for(size_t i = 0; i <ceenum;i++){
+                    for(size_t i = 0; i <eefnum;i++){
                         if(endeffector[i].act_contact_state){
                             cur_wrench_eef.block<6,1>(6*act_contact_idx,0)/*eef系,eefまわり*/=cur_wrench_eef_org.block<6,1>(6*i,0)/*eef系,eefまわり*/;
                             act_contact_idx++;
