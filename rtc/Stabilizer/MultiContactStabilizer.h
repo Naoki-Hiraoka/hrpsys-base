@@ -143,7 +143,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(true)
+    MultiContactStabilizer() : debug(false)
     {
     }
 
@@ -1261,6 +1261,8 @@ public:
                     
                 }else{//即ち!ref_contact_states[i]
                     //インピーダンス制御
+
+                    /*
                     d_foot_pos[i] =
                         swing_support_gains[i] *
                         ((transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
@@ -1281,10 +1283,19 @@ public:
                         (d_foot_rpy1[i]
                          + transition_smooth_gain * (act_moment_eef[i]-ref_moment_eef[i]).cwiseQuotient(mcs_rot_damping_gain[i]) * dt
                          - d_foot_rpy1[i].cwiseQuotient(mcs_rot_time_const[i]) *dt);
+                    */
                     //swingEEcompensation TODO
 
+                    d_foot_pos[i] = ((transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
+                                      + (2 * M_p[i] + D_p[i] * dt) * d_foot_pos1[i]
+                                      - M_p[i] * d_foot_pos2[i]) /
+                                     (M_p[i] + D_p[i] * dt + K_p[i] * dt * dt));
+                    d_foot_rpy[i] = ((transition_smooth_gain * moment_gain[i] * (act_moment_eef[i]-ref_moment_eef[i]) * dt * dt
+                                      + (2 * M_r[i] + D_r[i] * dt) * d_foot_rpy1[i]
+                                      - M_r[i] * d_foot_rpy2[i]) /
+                                     (M_r[i] + D_r[i] * dt + K_r[i] * dt * dt));
                     if(debug){
-                        std::cerr << i << ": インピーダンス制御" <<std::endl;
+                        std::cerr << i << ": インピーダンス制御 swing_support_gain: " << swing_support_gains[i] <<std::endl;
                     }
                 }
                 for(size_t j=0;j<3;j++){
