@@ -596,7 +596,14 @@ public:
             act_cee_p_origin[i]/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_cee_p[i]/*actworld系*/ - act_cogorigin_p/*actworld系*/);
             act_cee_R_origin[i]/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * act_cee_R[i]/*actworld系*/;
         }
-       
+
+        // 前回の出力へ.(sync_2_idle時に使う)
+        m_robot->rootLink()->R = cur_root_R/*refworld系*/;
+        m_robot->rootLink()->p = cur_root_p/*refworld系*/;
+        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
+            m_robot->joint(i)->q = qcurv[i];
+        }
+        
         log_act_cog = ref_cog/*refworld系*/ + act_cog_origin/*act_cogorigin系*/;
         log_act_cogvel = act_cogvel_origin/*act_cogorigin系*/;
         for(size_t i = 0; i < eefnum; i++){
