@@ -965,8 +965,7 @@ public:
                         std::cerr << debuglbA <<std::endl;
                     }
                 }            
-                
-                qpOASES::QProblem example( state_len ,inequality_len);
+
                 qpOASES::Options options;
                 //options.enableFlippingBounds = qpOASES::BT_FALSE;
                 options.initialStatusBounds = qpOASES::ST_INACTIVE;
@@ -977,10 +976,46 @@ public:
                 }else{
                     options.printLevel = qpOASES::PL_NONE;
                 }
+                
+                //copied from eus_qpoases
+                qpOASES::SQProblem* example;
+                std::pair<int, int> tmp_pair(state_len, inequality_len);
+                std::map<std::pair<int, int>, qpOASES::SQProblem*>::iterator it = sqp_map.find(tmp_pair);
+                bool is_initial = (it == sqp_map.end());
+                bool internal_error = false;
+                if (!is_initial) {
+                    example = it->second;
+                    example->setOptions( options );
+                    int nWSR = 1000;
+                    qpOASES::returnValue status = example->hotstart( H,g,A,lb,ub,lbA,ubA, nWSR);
+                    if(qpOASES::getSimpleStatus(status)==0){
+                        qp_solved=true;
+                        real_t* xOpt = new real_t[state_len];
+                        example.getPrimalSolution( xOpt );
+                        for(size_t i=0; i<state_len;i++){
+                            cur_wrench_cee[i]=xOpt[i];
+                        }
+                        delete[] xOpt;
+                    }else if(qpOASES::getSimpleStatus(status)==-1){
+                        internal_error = true;
+                    }
+                }
+
+                if(is_ititial){
+                    example = new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN);
+                    sqp_map.insert(std::pair<std::pair<int, int>, qpOASES::SQProblem*>(tmp_pair, example));
+                } else {
+                    
+                }
+
+                
+                
+                qpOASES::QProblem example( state_len ,inequality_len);
+                
                 example.setOptions( options );
                 /* Solve first QP. */
                 //高速化のためSQPしたいTODO
-                int nWSR = 1000;
+                
 
                 //debug
                 struct timeval s, e;
@@ -1885,6 +1920,7 @@ private:
     size_t eefnum;
     size_t ceenum;
     std::map<std::string, hrp::JointLimitTable> joint_limit_tables;
+    std::map<std::pair<int, int>, SQProblem*> sqp_map;
 
     double transition_smooth_gain;//0.0~1.0, 0のとき何もしない
     
