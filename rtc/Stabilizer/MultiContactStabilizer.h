@@ -1551,7 +1551,7 @@ public:
                             }
                             double r = ((( (jmax + jmin) / 2.0) - jang) / ((jmax - jmin) / 2.0));
                             if ( r > 0 ) { r = r*r; } else { r = - r*r; }
-                            u[6+ik_enable_joint_map[j]] = mcs_ik_optional_weight_vector[j] * 0.001 * r;
+                            u[6+ik_enable_joint_map[j]] = transition_smooth_gain * mcs_ik_optional_weight_vector[j] * 0.001 * r;
                         }
                     }
                     dq = dq + curJnull * u;
