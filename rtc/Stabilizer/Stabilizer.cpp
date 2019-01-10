@@ -763,9 +763,9 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_allCurrentWrenchOut.write();
       m_allEEComp.tm = m_qRef.tm;
       m_allEECompOut.write();
-      m_cogComp.data.x = rel_act_zmp(0);
-      m_cogComp.data.y = rel_act_zmp(1);
-      m_cogComp.data.z = rel_act_zmp(2);
+      m_cogComp.data.x = d_cog_pos(0);
+      m_cogComp.data.y = d_cog_pos(1);
+      m_cogComp.data.z = d_cog_pos(2);
       m_cogComp.tm = m_qRef.tm;
       m_cogCompOut.write();
       m_actBaseRpy.data.r = act_base_rpy(0);

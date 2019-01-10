@@ -143,7 +143,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(false)
+    MultiContactStabilizer() : debug(true)
     {
     }
 
@@ -706,36 +706,43 @@ public:
                 if(d_cogacc[i] < -mcs_cogacc_compensation_limit) d_cogacc[i] = -mcs_cogacc_compensation_limit;
             }
 
-            hrp::dvector6 needed_FgNg/*act_cogorigin系,cogまわり*/ = hrp::dvector6::Zero();
-            needed_FgNg.block<3,1>(0,0) = m_robot->totalMass() * (ref_cogacc/*refworld系*/ + d_cogacc/*act_cogorigin系*/ + g/*act_world系*/);
-            needed_FgNg.block<3,1>(3,0) = ref_total_moment/*refworld系,cogまわり*/;
             
-            if(debug){
-                std::cerr << "cog_error" << std::endl;
-                std::cerr << cog_error << std::endl;
-                std::cerr << "new_d_cogvel" << std::endl;
-                std::cerr << new_d_cogvel << std::endl;
-                std::cerr << "d_cogacc" << std::endl;
-                std::cerr << d_cogacc << std::endl;
-                std::cerr << "ref_cogacc" << std::endl;
-                std::cerr << ref_cogacc << std::endl;
-                std::cerr << "needed_FgNg" << std::endl;
-                std::cerr << needed_FgNg << std::endl;
-            }
-            //Fg,Ngをactcontactしているeefに分配する
-            hrp::dvector6 extern_FgNg/*act_cogorigin系,cogまわり*/ = hrp::dvector6::Zero();//act_contactでないeefに加わる力 = 制御不能の外力
+            // hrp::dvector6 needed_FgNg/*act_cogorigin系,cogまわり*/ = hrp::dvector6::Zero();
+            // needed_FgNg.block<3,1>(0,0) = m_robot->totalMass() * (ref_cogacc/*refworld系*/ + d_cogacc/*act_cogorigin系*/ + g/*act_world系*/);
+            // needed_FgNg.block<3,1>(3,0) = ref_total_moment/*refworld系,cogまわり*/;
+            
+            // if(debug){
+            //     std::cerr << "cog_error" << std::endl;
+            //     std::cerr << cog_error << std::endl;
+            //     std::cerr << "new_d_cogvel" << std::endl;
+            //     std::cerr << new_d_cogvel << std::endl;
+            //     std::cerr << "d_cogacc" << std::endl;
+            //     std::cerr << d_cogacc << std::endl;
+            //     std::cerr << "ref_cogacc" << std::endl;
+            //     std::cerr << ref_cogacc << std::endl;
+            //     std::cerr << "needed_FgNg" << std::endl;
+            //     std::cerr << needed_FgNg << std::endl;
+            // }
+            // //Fg,Ngをactcontactしているeefに分配する
+            // hrp::dvector6 extern_FgNg/*act_cogorigin系,cogまわり*/ = hrp::dvector6::Zero();//act_contactでないeefに加わる力 = 制御不能の外力
+            // for (size_t i = 0; i < eefnum; i++){
+            //     if (!endeffector[i].act_contact_state){
+            //         extern_FgNg.block<3,1>(0,0) += act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/;
+            //         extern_FgNg.block<3,1>(3,0) += hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/ + act_ee_R_origin[i]/*act_cogorigin系*/ * act_moment_eef[i]/*acteef系,acteefまわり*/;
+            //     }
+            // }
+            
+            // const hrp::dvector6 to_distribute_FgNg/*act_cogorigin系*/ = needed_FgNg/*act_cogorigin系,cogまわり*/ - extern_FgNg/*act_cogorigin系,cogまわり*/;
+            
+            hrp::dvector6 to_distribute_FgNg/*act_cogorigin系*/ = hrp::dvector6::Zero();//act_contactであるEEFが現在受けている力の合計
             for (size_t i = 0; i < eefnum; i++){
-                if (!endeffector[i].act_contact_state){
-                    extern_FgNg.block<3,1>(0,0) += act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/;
-                    extern_FgNg.block<3,1>(3,0) += hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/ + act_ee_R_origin[i]/*act_cogorigin系*/ * act_moment_eef[i]/*acteef系,acteefまわり*/;
+                if (endeffector[i].act_contact_state){
+                    to_distribute_FgNg.block<3,1>(0,0) += act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/;
+                    to_distribute_FgNg.block<3,1>(3,0) += hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/ + act_ee_R_origin[i]/*act_cogorigin系*/ * act_moment_eef[i]/*acteef系,acteefまわり*/;
                 }
             }
             
-            const hrp::dvector6 to_distribute_FgNg/*act_cogorigin系*/ = needed_FgNg/*act_cogorigin系,cogまわり*/ - extern_FgNg/*act_cogorigin系,cogまわり*/;
-
             if(debug){
-                std::cerr << "extern_FgNg" << std::endl;
-                std::cerr << extern_FgNg << std::endl;
                 std::cerr << "to_distribute_FgNg" << std::endl;
                 std::cerr << to_distribute_FgNg << std::endl;
             }
@@ -788,6 +795,7 @@ public:
             for (size_t i = 0; i < m_robot->numJoints() ; i++){
                 tau_id[i] = m_robot->joint(i)->u;
             }
+            //tau_idにcontactしてないEEFに対応するJtFを足す必要あり
 
             if(debug){
                 std::cerr << "tau_id" <<std::endl;
@@ -1099,13 +1107,16 @@ public:
                     std::cerr << "Ax - lbA" <<std::endl;
                     std::cerr << debugA * cur_wrench_cee - debuglbA<< std::endl;
                 }
+                
                 //目標重心位置を求める
-                const hrp::dvector6 cur_FgNg/*act_cogorigin系,cogまわり*/ = G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ * cur_wrench_cee/*eef系,eef*/ + extern_FgNg/*act_cogorigin系,cogまわり*/;
-                d_cogacc/*act_cogorigin系*/ =  cur_FgNg.block<3,1>(0,0) / m_robot->totalMass() - ref_cogacc/*refworld系*/ - g/*act_world系*/;
-                for(size_t i=0; i < 3 ; i++){
-                    if(d_cogacc[i] > mcs_cogacc_compensation_limit) d_cogacc[i] = mcs_cogacc_compensation_limit;
-                    if(d_cogacc[i] < -mcs_cogacc_compensation_limit) d_cogacc[i] = -mcs_cogacc_compensation_limit;
-                }
+                // const hrp::dvector6 cur_FgNg/*act_cogorigin系,cogまわり*/ = G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ * cur_wrench_cee/*eef系,eef*/ + extern_FgNg/*act_cogorigin系,cogまわり*/;
+                // d_cogacc/*act_cogorigin系*/ =  cur_FgNg.block<3,1>(0,0) / m_robot->totalMass() - ref_cogacc/*refworld系*/ - g/*act_world系*/;
+                // for(size_t i=0; i < 3 ; i++){
+                //     if(d_cogacc[i] > mcs_cogacc_compensation_limit) d_cogacc[i] = mcs_cogacc_compensation_limit;
+                //     if(d_cogacc[i] < -mcs_cogacc_compensation_limit) d_cogacc[i] = -mcs_cogacc_compensation_limit;
+                // }
+                
+                                
                 d_cogvel/*refworld系*/ += transition_smooth_gain * d_cogacc/*act_cogorigin系*/ * dt;
                 for(size_t i=0; i < 3 ; i++){
                     if(d_cogvel[i] > mcs_cogvel_compensation_limit) d_cogvel[i] = mcs_cogvel_compensation_limit;
@@ -1118,6 +1129,7 @@ public:
                 }
 
                 if(debug){
+                    const hrp::dvector6 cur_FgNg/*act_cogorigin系,cogまわり*/ = G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ * cur_wrench_cee/*eef系,eef*/;
                     std::cerr << "cur_FgNg" <<std::endl;
                     std::cerr << cur_FgNg <<std::endl;
                     std::cerr << "d_cogacc" <<std::endl;
@@ -1172,32 +1184,32 @@ public:
                     std::cerr << d_wrench_eef <<std::endl;
                 }
 
-                hrp::dmatrix Geef/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = hrp::dmatrix::Zero(6,6*act_contact_eef_num);//grasp_matrix
-                {
-                    size_t act_contact_idx = 0;
-                    for(size_t i = 0; i <eefnum;i++){
-                        if(endeffector[i].act_contact_state){
-                            Geef.block<3,3>(0,6*act_contact_idx) = act_ee_R_origin[i]/*act_cogorigin系*/;
-                            Geef.block<3,3>(3,6*act_contact_idx) = hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/;
-                            Geef.block<3,3>(3,6*act_contact_idx+3) = act_ee_R_origin[i]/*act_cogorigin系*/;
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                const hrp::dmatrix Geeft = Geef.transpose();
-                if(debug){
-                    std::cerr << "Geef" <<std::endl;
-                    std::cerr << Geef <<std::endl;
-                }
+                // hrp::dmatrix Geef/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = hrp::dmatrix::Zero(6,6*act_contact_eef_num);//grasp_matrix
+                // {
+                //     size_t act_contact_idx = 0;
+                //     for(size_t i = 0; i <eefnum;i++){
+                //         if(endeffector[i].act_contact_state){
+                //             Geef.block<3,3>(0,6*act_contact_idx) = act_ee_R_origin[i]/*act_cogorigin系*/;
+                //             Geef.block<3,3>(3,6*act_contact_idx) = hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/;
+                //             Geef.block<3,3>(3,6*act_contact_idx+3) = act_ee_R_origin[i]/*act_cogorigin系*/;
+                //             act_contact_idx++;
+                //         }
+                //     }
+                // }
+                // const hrp::dmatrix Geeft = Geef.transpose();
+                // if(debug){
+                //     std::cerr << "Geef" <<std::endl;
+                //     std::cerr << Geef <<std::endl;
+                // }
                 
-                const hrp::dmatrix Geefinv/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = Geeft * (Geef*Geeft).partialPivLu().inverse(); 
+                // const hrp::dmatrix Geefinv/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = Geeft * (Geef*Geeft).partialPivLu().inverse(); 
                 
-                d_wrench_eef/*eef系,eefまわり*/ = (hrp::dmatrix::Identity(6*act_contact_eef_num,6*act_contact_eef_num) - Geefinv * Geef) * d_wrench_eef/*eef系,eefまわり*/;
+                // d_wrench_eef/*eef系,eefまわり*/ = (hrp::dmatrix::Identity(6*act_contact_eef_num,6*act_contact_eef_num) - Geefinv * Geef) * d_wrench_eef/*eef系,eefまわり*/;
 
-                if(debug){
-                    std::cerr << "d_wrench_eef_nullspace" <<std::endl;
-                    std::cerr << d_wrench_eef <<std::endl;
-                }
+                // if(debug){
+                //     std::cerr << "d_wrench_eef_nullspace" <<std::endl;
+                //     std::cerr << d_wrench_eef <<std::endl;
+                // }
                 
             }else{//if(qp_solved)
                 std::cerr << "[" << instance_name << "] QP fail" <<std::endl;
@@ -2077,6 +2089,7 @@ private:
     std::vector<hrp::Matrix33> moment_gain;
     std::vector<double> mcs_ik_optional_weight_vector;
     std::vector<double> mcs_contacteeforiginweight;//滑りにくいeefほど大きい. act_root_pを推定するのに用いる
+
 };
 
 
