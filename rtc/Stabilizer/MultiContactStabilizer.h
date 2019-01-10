@@ -22,15 +22,23 @@ class EndEffector {
 public:
     EndEffector(): contact_decision_threshold(25.0),
                    act_contact_state(false),
-                   prev_act_contact_state(false)
+                   prev_act_contact_state(false),
+                   act_contact_time(0.0),
+                   contact_transition_time(0.04)
     {
         return;
     }
     
     //ActContactStateを判定する関数
-    bool isContact(bool ref_contact_state, hrp::Vector3 force/*eef系*/,hrp::Vector3 moment/*eef系,eefまわり*/){
+    bool isContact(const bool ref_contact_state, const hrp::Vector3& force/*eef系*/,const hrp::Vector3& moment/*eef系,eefまわり*/,const double dt){
         prev_act_contact_state = act_contact_state;
         act_contact_state = (force[2] > contact_decision_threshold) && ref_contact_state;
+        if(act_contact_state){
+            act_contact_time += dt;
+            if(act_contact_time > contact_transition_time) act_contact_time = contact_transition_time;
+        }else{
+            act_contact_time = 0.0;
+        }
         return act_contact_state;
     }
 
@@ -44,6 +52,7 @@ public:
     }
 
     double contact_decision_threshold;
+    double contact_transition_time;
 
     std::string link_name; // Name of end link
     std::string name; // Name(e.g., rleg,lleg, ...)
@@ -53,6 +62,7 @@ public:
     hrp::JointPathExPtr jpe;
     bool act_contact_state;
     bool prev_act_contact_state;
+    double act_contact_time;
 private:
 };
 
@@ -143,7 +153,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(true)
+    MultiContactStabilizer() : debug(false)
     {
     }
 
@@ -450,7 +460,7 @@ public:
         }
 
         for(size_t i=0;i<eefnum;i++){
-            act_contact_states[i] = endeffector[i].isContact(ref_contact_states[i],act_force_eef[i]/*eef系*/,act_moment_eef[i]/*eef系,eefまわり*/);
+            act_contact_states[i] = endeffector[i].isContact(ref_contact_states[i],act_force_eef[i]/*eef系*/,act_moment_eef[i]/*eef系,eefまわり*/,dt);
         }
         for(size_t i = 0; i < ceenum; i++){
             contactendeffector[i].isContact(endeffector,endeffector_index_map);
@@ -1259,12 +1269,14 @@ public:
                     //目標反力実現damping control
                     d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(mcs_pos_time_const[i]) *dt;
                     d_foot_rpy[i] -= d_foot_rpy[i].cwiseQuotient(mcs_rot_time_const[i]) *dt;
-                    d_foot_pos[i] += - transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6,0).cwiseQuotient(mcs_pos_damping_gain[i]) * dt;
-                    d_foot_rpy[i] += - transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6+3,0).cwiseQuotient(mcs_rot_damping_gain[i]) * dt;
+                    d_foot_pos[i] += - (endeffector[i].act_contact_time / endeffector[i].contact_transition_time) * transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6,0).cwiseQuotient(mcs_pos_damping_gain[i]) * dt;
+                    d_foot_pos[i][2] -= (1.0 - (endeffector[i].act_contact_time / endeffector[i].contact_transition_time)) * transition_smooth_gain * mcs_contact_vel * dt;
+                    d_foot_rpy[i] += - (endeffector[i].act_contact_time / endeffector[i].contact_transition_time) * transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6+3,0).cwiseQuotient(mcs_rot_damping_gain[i]) * dt;
+                    
                     act_contact_idx++;
 
                     if(debug){
-                        std::cerr << i << ": 目標反力実現damping control" <<std::endl;
+                        std::cerr << i << ": 目標反力実現damping control gain: " << (endeffector[i].act_contact_time / endeffector[i].contact_transition_time) <<std::endl;
                     }
 
                 }else if(!endeffector[i].act_contact_state && ref_contact_states[i]){
@@ -1938,14 +1950,6 @@ public:
         }
     }
 
-    void isContact(std::vector<bool>& act_contact_states, const std::vector<bool>& ref_contact_states, const std::vector<hrp::Matrix33>& act_ee_R_world/*actworld系*/, const std::vector<hrp::Vector3>& act_force_world/*actworld系*/, const std::vector<hrp::Vector3>& act_moment_world/*actworld系,eefまわり*/){
-        for(size_t i=0;i<eefnum;i++){
-            act_contact_states[i] = endeffector[i].isContact(ref_contact_states[i],act_ee_R_world[i].transpose()*act_force_world[i],act_ee_R_world[i].transpose()*act_moment_world[i]);
-        }
-        for(size_t i = 0; i < ceenum; i++){
-            contactendeffector[i].isContact(endeffector,endeffector_index_map);
-        }
-    }
 
     
 private:
