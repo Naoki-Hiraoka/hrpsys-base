@@ -269,7 +269,6 @@ public:
         ref_L = hrp::Vector3::Zero();
         ref_total_force = hrp::Vector3::Zero();
         ref_total_moment = hrp::Vector3::Zero();
-        ref_eeC_cog.resize(eefnum,Eigen::Vector4d::Zero());
 
         qactv = hrp::dvector::Zero(m_robot->numJoints());
         dqactv = hrp::dvector::Zero(m_robot->numJoints());
@@ -419,16 +418,6 @@ public:
         }
         //目標cogをちょっと進める処理は必要か TODO
 
-        for (size_t i = 0; i < eefnum; i++){
-            //refcog系は，refworldにおける重心位置原点，傾きはrefworldと同じ
-            ref_eeC_cog[i].block<3,1>(0,0)/*refcog系*/ = ref_ee_p[i]/*refworld系*/ - ref_cog/*refworld系*/;
-            const hrp::Vector3 xv/*refworld系*/(ref_ee_R[i] * hrp::Vector3::UnitX()/*eef系*/);
-            const hrp::Vector3 yv/*refworld系*/(ref_ee_R[i] * hrp::Vector3::UnitY()/*eef系*/);
-            // atan2(y,x) = atan(y/x)
-            ref_eeC_cog[i][3]/*refcog系*/ = atan2(xv[1]-yv[0],xv[0]+yv[1]);
-        }
-
-
         log_ref_cog = ref_cog/*refworld系*/;
         log_ref_cogvel = ref_cogvel/*refworld系*/;
         for(size_t i = 0; i < eefnum; i++){
@@ -529,31 +518,22 @@ public:
         //act_cogorigin: actworldに映したrefcog原点，actworldに映したrefworldの傾き, 微分するとゼロ
         if(act_contact_eef_num > 0){
             for (size_t loop = 0; loop < 3; loop++){
-                std::vector<Eigen::Vector4d> act_eeC_cog/*actcog系*/(eefnum);
                 const hrp::Vector3 act_cogorigin_rpy = hrp::rpyFromRot(act_cogorigin_R/*actworld系*/);
                 double act_cogorigin_yaw = act_cogorigin_rpy[2];
-                for (size_t i = 0; i < eefnum; i++){
-                    //refcog系は，refworldにおける重心位置原点，傾きはrefworldと同じ
-                    act_eeC_cog[i].block<3,1>(0,0)/*actcog系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_ee_p[i]/*actworld系*/ - act_cogorigin_p/*actworld系*/);
-                    const hrp::Vector3 xv/*actworld系*/(act_ee_R[i] * hrp::Vector3::UnitX()/*eef系*/);
-                    const hrp::Vector3 yv/*actworld系*/(act_ee_R[i] * hrp::Vector3::UnitY()/*eef系*/);
-                    // atan2(y,x) = atan(y/x)
-                    act_eeC_cog[i][3]/*actcog系*/ = atan2(xv[1]-yv[0],xv[0]+yv[1]) - act_cogorigin_yaw;
-                }
-                
+
                 hrp::dvector error/*x,y,z,yaw,...*/ = hrp::dvector::Zero(act_contact_eef_num*4);
                 hrp::dmatrix J/*xyzyaw... <-> cogorigin xyzyaw*/ = hrp::dmatrix::Zero(act_contact_eef_num*4,4);
                 {
                     size_t act_contact_idx=0;
                     for (size_t i = 0; i< eefnum; i++){
                         if(endeffector[i].act_contact_state){
-                            if(debug){
-                                std::cerr << "ref_eeC_cog" << std::endl;
-                                std::cerr << ref_eeC_cog[i] << std::endl;
-                                std::cerr << "act_eeC_cog" << std::endl;
-                                std::cerr << act_eeC_cog[i] << std::endl;
-                            }
-                            Eigen::Vector4d tmperror = ref_eeC_cog[i] - act_eeC_cog[i];
+                            Eigen::Vector4d tmperror;
+                            tmperror.block<3,1>(0,0) = (ref_ee_p[i]/*refworld系*/ - ref_cog/*refworld系*/) - act_cogorigin_R/*actworld系*/.transpose() * (act_ee_p[i]/*actworld系*/ - act_cogorigin_p/*actworld系*/);
+                            hrp::Matrix33 tmpM = ref_ee_R[i]/*refworld系*/ * (act_cogorigin_R/*actworld系*/.transpose() * act_ee_R[i]/*actworld系*/).transpose();
+                            const hrp::Vector3 xv/*actworld系*/(tmpM * hrp::Vector3::UnitX()/*eef系*/);
+                            const hrp::Vector3 yv/*actworld系*/(tmpM * hrp::Vector3::UnitY()/*eef系*/);
+                            // atan2(y,x) = atan(y/x)
+                            tmperror[3] = atan2(xv[1]-yv[0],xv[0]+yv[1]);
                             while(tmperror[3] > M_PI){
                                 tmperror[3] -= 2*M_PI;
                             }
@@ -2016,8 +1996,6 @@ private:
     hrp::Vector3 ref_L/*refworld系,cogまわり*/;
     hrp::Vector3 ref_total_force/*refworld系*/;
     hrp::Vector3 ref_total_moment/*refworld系,cogまわり*/;
-
-    std::vector<Eigen::Vector4d> ref_eeC_cog/*refcog系,x,y,z,yaw*/;
 
     hrp::dvector qactv;
     hrp::dvector dqactv;
