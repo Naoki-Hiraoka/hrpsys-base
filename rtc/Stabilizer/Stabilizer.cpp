@@ -63,6 +63,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     // <rtc-template block="initializer">
     m_qCurrentIn("qCurrent", m_qCurrent),
     m_qRefIn("qRef", m_qRef),
+    m_acttauIn("acttau", m_acttau),
     m_rpyIn("rpy", m_rpy),
     m_zmpRefIn("zmpRef", m_zmpRef),
     m_StabilizerServicePort("StabilizerService"),
@@ -131,6 +132,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   // Set InPort buffers
   addInPort("qCurrent", m_qCurrentIn);
   addInPort("qRef", m_qRefIn);
+  addInPort("acttau", m_acttauIn);
   addInPort("rpy", m_rpyIn);
   addInPort("zmpRef", m_zmpRefIn);
   addInPort("basePosIn", m_basePosIn);
@@ -463,6 +465,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
 
   m_qCurrent.data.length(m_robot->numJoints());
   m_qRef.data.length(m_robot->numJoints());
+  m_acttau.data.length(m_robot->numJoints());
   m_tau.data.length(m_robot->numJoints());
   transition_joint_q.resize(m_robot->numJoints());
   qorg.resize(m_robot->numJoints());
@@ -586,6 +589,9 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
   }
   if (m_qCurrentIn.isNew()) {
     m_qCurrentIn.read();
+  }
+  if (m_acttauIn.isNew()) {
+    m_acttauIn.read();
   }
   if (m_rpyIn.isNew()) {
     m_rpyIn.read();
@@ -887,8 +893,10 @@ void Stabilizer::getActualParameters ()
 
   if (st_algorithm == OpenHRP::StabilizerService::MCS) {
       hrp::dvector qactv(m_robot->numJoints());
+      hrp::dvector acttauv(m_robot->numJoints());
       for ( int i = 0; i < m_robot->numJoints(); i++ ){
           qactv[i] = m_robot->joint(i)->q;
+          acttauv[i]=m_acttau.data[i];
       }
       std::vector<hrp::Vector3> act_force_world(stikp.size());
       std::vector<hrp::Vector3> act_moment_world(stikp.size());
@@ -912,7 +920,8 @@ void Stabilizer::getActualParameters ()
                                                              act_cogvel/*refworld系*/,
                                                              act_force_eef/*eef系*/,
                                                              act_moment_eef/*eef系*/,
-                                                             act_base_rpy/*refworld系*/);
+                                                             act_base_rpy/*refworld系*/,
+                                                             acttauv);
 
       if (control_mode == MODE_IDLE || control_mode == MODE_AIR) {
           for ( int i = 0; i < m_robot->numJoints(); i++ ){

@@ -409,6 +409,8 @@ class HrpsysConfigurator(object):
                 connectPorts(self.rfu.port("refFootOriginExtMomentIsHoldValue"), self.abc.port("refFootOriginExtMomentIsHoldValue"))
             if self.octd:
                 connectPorts(self.abc.port("contactStates"), self.octd.port("contactStates"))
+            if rtm.findPort(self.rh.ref, "tau") != None:
+                connectPorts(self.rh.port("tau"), self.st.port("acttau"))
 
         # ref force moment connection
         for sen in self.getForceSensorNames():

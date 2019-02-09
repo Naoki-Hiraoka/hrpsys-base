@@ -252,6 +252,10 @@ module OpenHRP
       double mcs_k2;
       /// Feedback gain for Force tracking error (x,y,z)
       double mcs_k3;
+      /// Sequence of Ftw < 0 only joint
+      sequence<boolean> mcs_leq_joint;
+      /// Sequence of Ftw > 0 only joint
+      sequence<boolean> mcs_geq_joint;
       /// Sequence of all joint torque distribution weight
       sequence<double> mcs_joint_torque_distribution_weight;
       /// Sequence of equality constraint weight
