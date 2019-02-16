@@ -1579,7 +1579,13 @@ public:
                         }
                     }
                     hrp::dvector tmp_dq = actcontacteefJinv * v;
+                    //limit checkここから
                 }
+                //cogx,cogy
+
+                //cogz
+
+                //interacteef
                 
                  //ヤコビアンとerror
                 hrp::dmatrix curJ/*refworld系,eefまわり <-> virtualjoint + ik_enable_joint*/ = hrp::dmatrix::Zero(3+6*ik_enable_eef_num, 6+ik_enable_joint_num);//virtualjointはrootlinkのworld側に付いている
