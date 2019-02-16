@@ -304,6 +304,12 @@ module OpenHRP
       double mcs_cogvel_time_const;
       /// end-effector reaching velocity [m/s]
       double mcs_contact_vel;
+      /// Bool sequence for all joints whether the joint is passive.
+      BoolSequence mcs_is_passive;
+      /// joint passive velocity [rad/s]
+      double mcs_passive_vel;
+      /// joint passive2active time [s]
+      double mcs_sync2activetime;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;

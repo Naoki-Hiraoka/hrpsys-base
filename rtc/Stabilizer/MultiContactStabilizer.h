@@ -361,7 +361,13 @@ public:
         K_r.resize(eefnum,66667);
         force_gain.resize(eefnum,hrp::Matrix33::Identity());
         moment_gain.resize(eefnum,hrp::Matrix33::Identity());
-        
+        is_passive.resize(m_robot->numJoints(),false);
+        mcs_passive_vel = 0.034907;//2[degree/sec]
+        prevpassive.resize(m_robot->numJoints(),false);
+        prevcurv.resize(m_robot->numJoints(),0.0);
+        sync2activecnt.resize(m_robot->numJoints(),0);
+        sync2activetime = 2.0;
+            
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
         
@@ -1368,10 +1374,20 @@ public:
                     m_robot->joint(idx)->q = qcurv[idx];
                 }
             }
-        }        
+        }
+
+        // passive joint は速度制限して実際の角度へ。ikではこれらの関節は使わない
+        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
+            if(is_passive[i]){
+                if(m_robot->joint(i)->q + mcs_passive_vel * dt < qactv[i])m_robot->joint(i)->q = m_robot->joint(i)->q + mcs_passive_vel * dt;
+                else if (m_robot->joint(i)->q - mcs_passive_vel * dt > qactv[i])m_robot->joint(i)->q = m_robot->joint(i)->q - mcs_passive_vel * dt;
+                else m_robot->joint(i)->q = qactv[i];
+            }
+            if(sync2activecnt[i]>0)sync2activecnt[i]--;
+        }
+
         m_robot->calcForwardKinematics();
 
-        
         //solve IK
         //cog,eefを目標位置へ
         bool ik_enable = false;
@@ -1389,7 +1405,9 @@ public:
         for(size_t i = 0; i < eefnum; i++){
             if(is_ik_enable[i]){
                 for(size_t j = 0; j < endeffector[i].jpe->numJoints();j++){
-                    ik_enable_joint_states[endeffector[i].jpe->joint(j)->jointId] = true;
+                    if(!is_passive[endeffector[i].jpe->joint(j)->jointId]){
+                        ik_enable_joint_states[endeffector[i].jpe->joint(j)->jointId] = true;
+                    }
                 }
             }
         }
@@ -1423,8 +1441,8 @@ public:
                             std::cerr << "target_link_p" << std::endl;
                             std::cerr << target_link_p[ik_enable_idx] << std::endl;
                         }
-                        
-                        ik_enable_idx++;                        
+
+                        ik_enable_idx++;
                     }
                 }
             }
@@ -1487,7 +1505,9 @@ public:
                             hrp::dmatrix JJ;
                             endeffector[i].jpe->calcJacobian(JJ);
                             for(size_t j = 0; j < endeffector[i].jpe->numJoints(); j++){
-                                curJ.block<6,1>(3+ik_enable_idx*6,6+ik_enable_joint_map[endeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
+                                if(!is_passive[endeffector[i].jpe->joint(j)->jointId]){
+                                    curJ.block<6,1>(3+ik_enable_idx*6,6+ik_enable_joint_map[endeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
+                                }
                             }
                             ik_enable_idx++;
                         }
@@ -1583,7 +1603,7 @@ public:
                             }
                             double r = ((( (jmax + jmin) / 2.0) - jang) / ((jmax - jmin) / 2.0));
                             if ( r > 0 ) { r = r*r; } else { r = - r*r; }
-                            u[6+ik_enable_joint_map[j]] = transition_smooth_gain * mcs_ik_optional_weight_vector[j] * 0.001 * r;
+                            u[6+ik_enable_joint_map[j]] = (1.0-sync2activecnt[j]/(sync2activetime/dt)) * transition_smooth_gain * mcs_ik_optional_weight_vector[j] * 0.001 * r;
                         }
                     }
                     dq = dq + curJnull * u;
@@ -1599,7 +1619,7 @@ public:
                     u.block<3,1>(3,0) = 0.01 * matrix_logEx( ref_root_R/*refworld系*/ * m_robot->rootLink()->R.transpose()/*refworld系*/);
                     for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
                         if(ik_enable_joint_states[j]){
-                            u[6+ik_enable_joint_map[j]] = /*mcs_ik_optional_weight_vector[j] */ 0.01 * ( qrefv[j] - m_robot->joint(j)->q );//optioal_weight_vectorが小さいjointこそ，referenceに追従すべき
+                            u[6+ik_enable_joint_map[j]] = (1.0-sync2activecnt[j]/(sync2activetime/dt)) * /*mcs_ik_optional_weight_vector[j] */ 0.01 * ( qrefv[j] - m_robot->joint(j)->q );//optioal_weight_vectorが小さいjointこそ，referenceに追従すべき
                         }
                     }
                     dq = dq + curJnull * u;
@@ -1663,14 +1683,35 @@ public:
                             llimit = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
                             ulimit = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
                         }
-                        if ( m_robot->joint(j)->q > ulimit) {
-                            m_robot->joint(j)->q = ulimit;
+                        
+                        if (m_robot->joint(j)->q > ulimit ) {
+                            if(prevpassive[j]){
+                                if(m_robot->joint(j)->q > prevcurv[j]) m_robot->joint(j)->q = prevcurv[j];
+                                else m_robot->joint(j)->q = m_robot->joint(j)->q;
+                            }
+                            else { 
+                                m_robot->joint(j)->q = ulimit;
+                            }
                         }
-                        if ( m_robot->joint(j)->q < llimit) {
-                            m_robot->joint(j)->q = llimit;
+                        else if ( m_robot->joint(j)->q < llimit ) {
+                            if(prevpassive[j]){
+                                if(m_robot->joint(j)->q < prevcurv[j]) m_robot->joint(j)->q = prevcurv[j];
+                                else m_robot->joint(j)->q = m_robot->joint(j)->q;
+                            }
+                            else { 
+                                m_robot->joint(j)->q = llimit;
+                            }
+                        }
+                        else {
+                            prevpassive[j]=false;
                         }
                         //m_robot->joint(j)->q = std::max(m_robot->joint(j)->q, m_robot->joint(j)->llimit);
+                    }else{
+                        if(is_passive[j]){
+                            prevpassive[j]=true;
+                        }
                     }
+                    prevcurv[j] = m_robot->joint(j)->q;
                 }
                 
                 m_robot->calcForwardKinematics();                
@@ -1775,6 +1816,8 @@ public:
         mcs_cogpos_time_const = i_stp.mcs_cogpos_time_const;
         mcs_cogvel_time_const = i_stp.mcs_cogvel_time_const;
         mcs_contact_vel = i_stp.mcs_contact_vel;
+        mcs_passive_vel = i_stp.mcs_passive_vel;
+        sync2activetime = i_stp.mcs_sync2activetime;
         if (i_stp.mcs_eeparams.length() == eefnum &&
             i_stp.mcs_rot_damping_gain.length() == eefnum &&
             i_stp.mcs_pos_damping_gain.length() == eefnum &&
@@ -1853,7 +1896,15 @@ public:
                 mcs_geq_joint[i] = i_stp.mcs_geq_joint[i];
             }
         }
-        
+        if(i_stp.mcs_is_passive.length()!=is_passive.size()){
+            std::cerr << "[" << instance_name << "] set mcs_is_passive failed. mcs_is_passive size: " << i_stp.mcs_is_passive.length() << ", joints: " << is_passive.size() <<std::endl;
+        }else{
+            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+                if(is_passive[i] && !i_stp.mcs_is_passive[i])sync2activecnt[i]=sync2activetime/dt;
+                is_passive[i] = i_stp.mcs_is_passive[i];
+            }
+        }
+
         
         std::cerr << "[" << instance_name << "]   mcs_k1 = " << mcs_k1 << ", mcs_k2 = " << mcs_k2 << ", mcs_k3 = " << mcs_k3 <<std::endl;
         std::cerr << "[" << instance_name << "]  mcs_cogvel_cutoff_freq = " << act_cogvel_filter->getCutOffFreq() << std::endl;
@@ -1911,7 +1962,12 @@ public:
             std::cerr<< mcs_geq_joint[i] << ", ";
         }
         std::cerr << "]" <<std::endl;
-
+        std::cerr << "[" << instance_name << "]  mcs_is_passive = [" ;
+        for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+            std::cerr<< is_passive[i] << ", ";
+        }
+        std::cerr << "]" <<std::endl;
+        std::cerr << "[" << instance_name << "]  mcs_passive_vel = " << mcs_passive_vel << std::endl;
 
     }
 
@@ -1932,6 +1988,8 @@ public:
         i_stp.mcs_cogpos_time_const = mcs_cogpos_time_const;
         i_stp.mcs_cogvel_time_const = mcs_cogvel_time_const;
         i_stp.mcs_contact_vel = mcs_contact_vel;
+        i_stp.mcs_passive_vel = mcs_passive_vel;
+        i_stp.mcs_sync2activetime = sync2activetime;
         
         i_stp.mcs_pos_damping_gain.length(eefnum);
         i_stp.mcs_rot_damping_gain.length(eefnum);
@@ -1976,11 +2034,13 @@ public:
         i_stp.mcs_ik_optional_weight_vector.length(m_robot->numJoints());
         i_stp.mcs_leq_joint.length(m_robot->numJoints());
         i_stp.mcs_geq_joint.length(m_robot->numJoints());
+        i_stp.mcs_is_passive.length(m_robot->numJoints());
         for (size_t i = 0; i < m_robot->numJoints(); i++) {
             i_stp.mcs_joint_torque_distribution_weight[i] = mcs_joint_torque_distribution_weight[i];
             i_stp.mcs_ik_optional_weight_vector[i] = mcs_ik_optional_weight_vector[i];
             i_stp.mcs_leq_joint[i] = mcs_leq_joint[i];
             i_stp.mcs_geq_joint[i] = mcs_geq_joint[i];
+            i_stp.mcs_is_passive[i] = is_passive[i];
         }
         i_stp.mcs_equality_weight.length(6);
         for (size_t i = 0 ; i < 6; i++){
@@ -2134,7 +2194,12 @@ private:
     std::vector<hrp::Matrix33> moment_gain;
     std::vector<double> mcs_ik_optional_weight_vector;
     std::vector<double> mcs_contacteeforiginweight;//滑りにくいeefほど大きい. act_root_pを推定するのに用いる
-
+    std::vector<bool> is_passive;
+    double mcs_passive_vel;
+    std::vector<double> prevcurv;
+    std::vector<bool> prevpassive;
+    std::vector<int> sync2activecnt;
+    double sync2activetime;
 };
 
 
