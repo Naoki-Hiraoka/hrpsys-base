@@ -23,6 +23,10 @@ bool robot::init() {
   for (unsigned int i=0; i<numJoints(); i++){
     m_VelocityLimit[i] = DEFAULT_VELOCITY_LIMIT;
   }
+  m_passivejoints.resize(numJoints());
+  for (unsigned int i=0; i<numJoints(); i++){
+    m_passivejoints[i] = false;
+  }
   return true;
 }
 
@@ -75,6 +79,23 @@ bool robot::setVelocityLimit(const char *i_jname, double i_limit) {
     std::cerr << "[el] setVelocityLimit " << i_limit << "[rad/s] for " << i_jname << std::endl;
   }else{
     std::cerr << "[el] Invalid joint name of setVelocityLimit " << i_jname << "!" << std::endl;
+    return false;
+  }
+  return true;
+}
+
+bool robot::setpassivejoint(const char *i_jname, bool i_ispassive) {
+  hrp::Link *l = NULL;
+  if (strcmp(i_jname, "all") == 0 || strcmp(i_jname, "ALL") == 0){
+    for (unsigned int i=0; i<numJoints(); i++){
+      m_passivejoints[i] = i_ispassive;
+    }
+    std::cerr << "[el] setpassivejoint " << ((i_ispassive)?"True":"False") << " for all joints" << std::endl;
+  }else if ((l = this->link(i_jname))){
+    m_passivejoints[l->jointId] = i_ispassive;
+    std::cerr << "[el] setpassivejoint " << ((i_ispassive)?"True":"False") << " for " << i_jname << std::endl;
+  }else{
+    std::cerr << "[el] Invalid joint name of setpassivejoint " << i_jname << "!" << std::endl;
     return false;
   }
   return true;

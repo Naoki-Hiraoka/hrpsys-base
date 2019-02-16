@@ -25,3 +25,8 @@ void SoftErrorLimiterService_impl::setVelocityLimit(const char *jname, double li
     m_robot->setVelocityLimit(jname, limit);
 }
 
+void SoftErrorLimiterService_impl::setpassivejoint(const char *jname, bool ispassive)
+{
+    m_robot->setpassivejoint(jname, ispassive);
+}
+

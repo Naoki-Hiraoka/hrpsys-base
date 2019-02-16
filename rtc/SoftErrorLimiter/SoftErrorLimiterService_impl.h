@@ -26,6 +26,8 @@ public:
 
 	void setVelocityLimit(const char *jname, double limit);
 
+	void setpassivejoint(const char *jname, bool ispassive);
+
     //
     void setRobot(boost::shared_ptr<robot>& i_robot) { m_robot = i_robot; }
 

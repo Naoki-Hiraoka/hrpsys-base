@@ -425,7 +425,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
           }
       
           // Position limitation for reference joint angles
-          if (!productrange_isempty){
+          if ((!productrange_isempty)&&(!m_robot->m_passivejoints[i])){
               double llimit = m_robot->joint(i)->llimit;
               double ulimit = m_robot->joint(i)->ulimit;
               if (joint_limit_tables.find(m_robot->joint(i)->name) != joint_limit_tables.end()) {

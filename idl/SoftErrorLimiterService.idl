@@ -26,5 +26,13 @@ module OpenHRP
      * @param limit the maximum joint servo velocity[rad/s]
      */
     void setVelocityLimit(in string name, in double limit);
+
+      /**
+     * @brief set passive joint (no position check)
+     * @param name joint name, part name or "all"
+     * @param ispassive [bool]
+     */
+    void setpassivejoint(in string name, in boolean ispassive);
+
   };
 };
