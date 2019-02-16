@@ -1409,6 +1409,10 @@ public:
         for(size_t i = 0; i < eefnum ; i++){
             if(is_ik_enable[i])ik_enable_eef_num++;
         }
+        size_t ik_enable_actcontact_eef_num = 0;
+        for(size_t i = 0; i < eefnum ; i++){
+            if(is_ik_enable[i]&&endeffector[i].act_contact_state)ik_enable_actcontact_eef_num++;
+        }
 
         std::vector<bool> ik_enable_joint_states(m_robot->numJoints(),false);
         for(size_t i = 0; i < eefnum; i++){
@@ -1493,8 +1497,91 @@ public:
                         }
                     }
                 }
+                hrp::dvector dq = hrp::dvector::Zero(6+ik_enable_joint_num);
+                
+                hrp::dmatrix w = hrp::dmatrix::Identity(6+ik_enable_joint_num,6+ik_enable_joint_num);
+                for ( int j = 0; j < m_robot->numJoints() ; j++ ) {
+                    if(ik_enable_joint_states[j]){
+                        double jang = m_robot->joint(j)->q;
+                        double jmax = m_robot->joint(j)->ulimit;
+                        double jmin = m_robot->joint(j)->llimit;
+                        if (joint_limit_tables.find(m_robot->joint(j)->name) != joint_limit_tables.end()) {
+                            std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(j)->name);
+                            jmin = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
+                            jmax = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
+                        }
+                        double e = 1*M_PI/180;
+                        if ( (fabs(jang-jmax) <= e) && ( fabs(jang-jmin) <= e ) ) {
+                        } else if ( fabs(jang-jmax) <= e ) {
+                            jang = jmax - e;
+                        } else if ( fabs(jang-jmin) <= e ) {
+                            jang = jmin + e;
+                        }
+                        
+                        double r;
+                        if ( ( fabs(jang-jmax) <= e ) && ( fabs(jang-jmin) <= e ) ) {
+                            r = std::numeric_limits<double>::max();
+                        } else {
+                            r = fabs( (pow((jmax - jmin),2) * (( 2 * jang) - jmax - jmin)) /
+                                      (4 * pow((jmax - jang),2) * pow((jang - jmin),2)) );
+                            if (std::isnan(r)) r = 0;
+                        }
+                        
+                        w(6+ik_enable_joint_map[j], 6+ik_enable_joint_map[j]) = mcs_ik_optional_weight_vector[j] * ( 1.0 / ( 1.0 + r) );
+                    }
+                }
+                
+                hrp::dmatrix actcontacteefJ/*refworld系,eefまわり <-> virtualjoint + ik_enable_joint*/ = hrp::dmatrix::Zero(6*ik_enable_actcontact_eef_num, 6+ik_enable_joint_num);//virtualjointはrootlinkのworld側に付いている
+                {
+                    size_t ik_enable_actcontact_idx =0;
+                    for(size_t i=0;i<eefnum;i++){
+                        if(is_ik_enable[i]&&endeffector[i].act_contact_state){
+                            actcontacteefJ.block<3,3>(ik_enable_actcontact_idx*6,0)= hrp::Matrix33::Identity();
+                            actcontacteefJ.block<3,3>(ik_enable_actcontact_idx*6,3)= - hrp::hat(temp_p[ik_enable_actcontact_idx]/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
+                            actcontacteefJ.block<3,3>(ik_enable_actcontact_idx*6+3,3)= hrp::Matrix33::Identity();
+                            hrp::dmatrix JJ;
+                            endeffector[i].jpe->calcJacobian(JJ);
+                            for(size_t j = 0; j < endeffector[i].jpe->numJoints(); j++){
+                                if(!is_passive[endeffector[i].jpe->joint(j)->jointId]){
+                                    actcontacteefJ.block<6,1>(ik_enable_actcontact_idx*6,6+ik_enable_joint_map[endeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
+                                }
+                            }
+                            ik_enable_actcontact_idx++;
+                        }
+                    }
+                }
+                const hrp::dmatrix actcontacteefJt = actcontacteefJ.transpose();
+                hrp::dmatrix actcontacteefJinv;
+                {
+                    const double manipulability = sqrt((actcontacteefJ*actcontacteefJt).fullPivLu().determinant());
+                    double k = 0;
+                    if ( manipulability < 0.1 ) {
+                        k = 0.001 * pow((1 - ( manipulability / 0.1 )), 2);
+                    }
 
-                //ヤコビアンとerror
+                    //sr inverse
+                    actcontacteefJinv = w * actcontacteefJt * (actcontacteefJ * w * actcontacteefJt + 1.0 * k * hrp::dmatrix::Identity(6*ik_enable_actcontact_eef_num,3+6*ik_enable_actcontact_eef_num)).partialPivLu().inverse();
+                }
+                {
+                    hrp::dvector v(6*ik_enable_actcontact_eef_num)/*refworld系*/;
+                    {
+                        size_t ik_enable_idx=0;
+                        size_t ik_enable_actcontact_idx=0;
+                        for(size_t i = 0 ;i < eefnum; i++){
+                            if(is_ik_enable[i]){
+                                if(endeffector[i].act_contact_state){
+                                    v.block<3,1>(ik_enable_actcontact_idx*6+0,0) = vel_p[ik_enable_idx]/*refworld系*/;
+                                    v.block<3,1>(ik_enable_actcontact_idx*6+3,0) = vel_r[ik_enable_idx]/*refworld系*/;
+                                    ik_enable_actcontact_idx++;
+                                }
+                                ik_enable_idx++;
+                            }
+                        }
+                    }
+                    hrp::dvector tmp_dq = actcontacteefJinv * v;
+                }
+                
+                 //ヤコビアンとerror
                 hrp::dmatrix curJ/*refworld系,eefまわり <-> virtualjoint + ik_enable_joint*/ = hrp::dmatrix::Zero(3+6*ik_enable_eef_num, 6+ik_enable_joint_num);//virtualjointはrootlinkのworld側に付いている
                 {
                     hrp::dmatrix CM_J;
@@ -1628,7 +1715,6 @@ public:
                     u.block<3,1>(3,0) = 0.01 * matrix_logEx( ref_root_R/*refworld系*/ * m_robot->rootLink()->R.transpose()/*refworld系*/);
                     for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
                         if(ik_enable_joint_states[j]){
-                            //if(j==3)std::cerr << 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) << std::endl;
                             u[6+ik_enable_joint_map[j]] = 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) * /*mcs_ik_optional_weight_vector[j] */ 0.01 * ( qrefv[j] - m_robot->joint(j)->q );//optioal_weight_vectorが小さいjointこそ，referenceに追従すべき
                         }
                     }
