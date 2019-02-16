@@ -368,6 +368,7 @@ public:
         prevcurv.resize(m_robot->numJoints(),0.0);
         sync2activecnt.resize(m_robot->numJoints(),0);
         sync2activetime = 2.0;
+        ik_error_count = 0;
             
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
@@ -1611,7 +1612,7 @@ public:
                             }
                             double r = ((( (jmax + jmin) / 2.0) - jang) / ((jmax - jmin) / 2.0));
                             if ( r > 0 ) { r = r*r; } else { r = - r*r; }
-                            u[6+ik_enable_joint_map[j]] = (1.0-sync2activecnt[j]/(sync2activetime/dt)) * transition_smooth_gain * mcs_ik_optional_weight_vector[j] * 0.001 * r;
+                            u[6+ik_enable_joint_map[j]] = 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) * transition_smooth_gain * mcs_ik_optional_weight_vector[j] * 0.001 * r;
                         }
                     }
                     dq = dq + curJnull * u;
@@ -1627,7 +1628,8 @@ public:
                     u.block<3,1>(3,0) = 0.01 * matrix_logEx( ref_root_R/*refworld系*/ * m_robot->rootLink()->R.transpose()/*refworld系*/);
                     for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
                         if(ik_enable_joint_states[j]){
-                            u[6+ik_enable_joint_map[j]] = (1.0-sync2activecnt[j]/(sync2activetime/dt)) * /*mcs_ik_optional_weight_vector[j] */ 0.01 * ( qrefv[j] - m_robot->joint(j)->q );//optioal_weight_vectorが小さいjointこそ，referenceに追従すべき
+                            //if(j==3)std::cerr << 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) << std::endl;
+                            u[6+ik_enable_joint_map[j]] = 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) * /*mcs_ik_optional_weight_vector[j] */ 0.01 * ( qrefv[j] - m_robot->joint(j)->q );//optioal_weight_vectorが小さいjointこそ，referenceに追従すべき
                         }
                     }
                     dq = dq + curJnull * u;
@@ -1721,10 +1723,49 @@ public:
                     }
                     prevcurv[j] = m_robot->joint(j)->q;
                 }
-                
-                m_robot->calcForwardKinematics();                
+
+                m_robot->calcForwardKinematics();
             }
-            
+
+            bool ik_fail = false;
+            const hrp::Vector3 temp_cog_p/*refworld系*/ = m_robot->calcCM();
+            const hrp::Vector3 cog_vel_p/*refworld系*/ = target_cog_p/*refworld系*/ - temp_cog_p/*refworld系*/;
+            if(cog_vel_p.norm() > 0.5*1e-3){
+                if(ik_error_count % int(0.2/dt) == 0){
+                    std::cerr << "[" << instance_name << "] Too large IK error in " << "cog" << " (vel_p) = [" << cog_vel_p(0) << " " << cog_vel_p(1) << " " << cog_vel_p(2) << "][m], count = " << ik_error_count << std::endl;
+                }
+                ik_fail=true;
+            }
+            {
+                size_t ik_enable_idx = 0;
+                for(size_t i = 0; i < eefnum; i++){
+                    if(is_ik_enable[i]){
+                        hrp::Vector3 temp_p/*refworld系*/ = endeffector[i].jpe->endLink()->p/*refworld系*/;
+                        hrp::Vector3 vel_p/*refworld系*/ = target_link_p[ik_enable_idx]/*refworld系*/ - temp_p/*refworld系*/;
+                        hrp::Matrix33 temp_R/*refworld系*/ = endeffector[i].jpe->endLink()->R/*refworld系*/;
+                        hrp::Vector3 vel_r/*refworld系*/ = temp_R/*refworld系*/ * matrix_logEx(temp_R.transpose()/*refworld系*/ * target_link_R[ik_enable_idx]/*refworld系*/);
+                        if(vel_p.norm() > 0.5 * 1e-3){
+                            if(ik_error_count % int(0.2/dt) == 0){
+                                std::cerr << "[" << instance_name << "] Too large IK error in " << endeffector[i].name << " (vel_p) = [" << vel_p(0) << " " << vel_p(1) << " " << vel_p(2) << "][m], count = " << ik_error_count << std::endl;
+                            }
+                            ik_fail=true;
+                        }
+                        if(vel_r.norm() > (1e-2)*M_PI/180.0){
+                            if(ik_error_count % int(0.2/dt) == 0){
+                                std::cerr << "[" << instance_name << "] Too large IK error in " << endeffector[i].name << " (vel_r) = [" << vel_r(0) << " " << vel_r(1) << " " << vel_r(2) << "][m], count = " << ik_error_count << std::endl;
+                            }
+                            ik_fail=true;
+                        }
+                        ik_enable_idx++;
+                    }
+                }
+            }
+            if(ik_fail){
+                ik_error_count++;
+            }
+            else{
+                ik_error_count=0;
+            }
         }
 
         // IKが解けず実際には動いていない場合には，compensation limit によって指令値の発散を防ぐ
@@ -2219,6 +2260,8 @@ private:
     std::vector<bool> prevpassive;
     std::vector<int> sync2activecnt;
     double sync2activetime;
+
+    int ik_error_count;
 };
 
 
