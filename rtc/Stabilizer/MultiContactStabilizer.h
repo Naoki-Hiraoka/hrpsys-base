@@ -362,6 +362,7 @@ public:
         force_gain.resize(eefnum,hrp::Matrix33::Identity());
         moment_gain.resize(eefnum,hrp::Matrix33::Identity());
         is_passive.resize(m_robot->numJoints(),false);
+        mcs_passive_torquedirection.resize(m_robot->numJoints(),0.0);
         mcs_passive_vel = 0.034907;//2[degree/sec]
         prevpassive.resize(m_robot->numJoints(),false);
         prevcurv.resize(m_robot->numJoints(),0.0);
@@ -884,7 +885,8 @@ public:
                 hrp::dmatrix W1 = hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num);
                 for (size_t i = 0; i < m_robot->numJoints(); i++){
                     if(act_contact_joint_states[i]){
-                        W1(act_contact_joint_map[i],act_contact_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
+                        if(is_passive[i]) W1(act_contact_joint_map[i],act_contact_joint_map[i]) = 1e-10;
+                        else W1(act_contact_joint_map[i],act_contact_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
                     }
                 }
                 hrp::dmatrix W2 = hrp::dmatrix::Identity(act_contact_cee_num*6,act_contact_cee_num*6);
@@ -1000,9 +1002,15 @@ public:
                     }
                     for(size_t i = 0; i < m_robot->numJoints(); i++){
                         if(act_contact_joint_states[i]){
-                            const double taumax = m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                            lbA[act_contact_cee_num*11+act_contact_joint_map[i]] = - taumax - tau_id[i];
-                            lbA[act_contact_cee_num*11+act_contact_joint_num + act_contact_joint_map[i]] = -taumax + tau_id[i];
+                            double taumax = m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
+                            double taumin = - m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
+                            if(is_passive[i]){
+                                if(mcs_passive_torquedirection[i]>0)taumin = 0.0;
+                                if(mcs_passive_torquedirection[i]<0)taumax = 0.0;
+                            }
+                            
+                            lbA[act_contact_cee_num*11+act_contact_joint_map[i]] = taumin - tau_id[i];//最小値
+                            lbA[act_contact_cee_num*11+act_contact_joint_num + act_contact_joint_map[i]] = -taumax + tau_id[i];//最大値
                         }
                     }
 
@@ -1904,7 +1912,15 @@ public:
                 is_passive[i] = i_stp.mcs_is_passive[i];
             }
         }
+        if(i_stp.mcs_passive_torquedirection.length()!=mcs_passive_torquedirection.size()){
+            std::cerr << "[" << instance_name << "] set mcs_passive_torquedirection failed. mcs_passive_torquedirection size: " << i_stp.mcs_passive_torquedirection.length() << ", joints: " << mcs_passive_torquedirection.size() <<std::endl;
+        }else{
+            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+                mcs_passive_torquedirection[i] = i_stp.mcs_passive_torquedirection[i];
+            }
+        }
 
+        
         
         std::cerr << "[" << instance_name << "]   mcs_k1 = " << mcs_k1 << ", mcs_k2 = " << mcs_k2 << ", mcs_k3 = " << mcs_k3 <<std::endl;
         std::cerr << "[" << instance_name << "]  mcs_cogvel_cutoff_freq = " << act_cogvel_filter->getCutOffFreq() << std::endl;
@@ -2034,6 +2050,7 @@ public:
         i_stp.mcs_ik_optional_weight_vector.length(m_robot->numJoints());
         i_stp.mcs_leq_joint.length(m_robot->numJoints());
         i_stp.mcs_geq_joint.length(m_robot->numJoints());
+        i_stp.mcs_passive_torquedirection.length(m_robot->numJoints());
         i_stp.mcs_is_passive.length(m_robot->numJoints());
         for (size_t i = 0; i < m_robot->numJoints(); i++) {
             i_stp.mcs_joint_torque_distribution_weight[i] = mcs_joint_torque_distribution_weight[i];
@@ -2041,6 +2058,7 @@ public:
             i_stp.mcs_leq_joint[i] = mcs_leq_joint[i];
             i_stp.mcs_geq_joint[i] = mcs_geq_joint[i];
             i_stp.mcs_is_passive[i] = is_passive[i];
+            i_stp.mcs_passive_torquedirection[i] = mcs_passive_torquedirection[i];
         }
         i_stp.mcs_equality_weight.length(6);
         for (size_t i = 0 ; i < 6; i++){
@@ -2195,6 +2213,7 @@ private:
     std::vector<double> mcs_ik_optional_weight_vector;
     std::vector<double> mcs_contacteeforiginweight;//滑りにくいeefほど大きい. act_root_pを推定するのに用いる
     std::vector<bool> is_passive;
+    std::vector<double> mcs_passive_torquedirection;
     double mcs_passive_vel;
     std::vector<double> prevcurv;
     std::vector<bool> prevpassive;

@@ -306,6 +306,8 @@ module OpenHRP
       double mcs_contact_vel;
       /// Bool sequence for all joints whether the joint is passive.
       BoolSequence mcs_is_passive;
+      /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
+      sequence<double> mcs_passive_torquedirection;
       /// joint passive velocity [rad/s]
       double mcs_passive_vel;
       /// joint passive2active time [s]
