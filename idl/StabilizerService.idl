@@ -90,7 +90,48 @@ module OpenHRP
      * @brief EndEfector
      */
     struct EndEffectorParam {
+        double friction_coefficient;
+        double rotation_friction_coefficient;
+        double upper_cop_x_margin;
+        double lower_cop_x_margin;
+        double upper_cop_y_margin;
+        double lower_cop_y_margin;
+        double outside_upper_cop_x_margin;
+        double outside_lower_cop_x_margin;
+        double outside_upper_cop_y_margin;
+        double outside_lower_cop_y_margin;
+        double max_fz;
+        double min_fz;
         double contact_decision_threshold;
+        sequence<double, 6> ee_forcemoment_distribution_weight;
+        /// rotation damping gain [Nm/(rad/s)] (r,p,y).
+        sequence<double, 3> rot_damping_gain;
+        /// rotation damping time constant [s] (r,p,y).
+        sequence<double, 3> rot_time_const;
+        /// position damping gain [N/(m/s)] (x,y,z).
+        sequence<double, 3> pos_damping_gain;
+        /// position damping time constant [s] (x,y,z).
+        sequence<double, 3> pos_time_const;
+        /// position compensation limit [m]
+        double pos_compensation_limit;
+        /// rot compensation limit [rad]
+        double rot_compensation_limit;
+        /// Position mass [N/(m/s^2)]
+        double M_p;
+        /// Position damper [N/(m/s)]
+        double D_p;
+        /// Position spring [N/m]
+        double K_p;
+        /// Rotation mass [Nm/(rad/s^2)]
+        double M_r;
+        /// Rotation damper [N/(rad/s)]
+        double D_r;
+        /// Rotation spring [N/rad]
+        double K_r;
+        /// Force gain (x,y,z).
+        sequence<double, 3> force_gain;
+        /// Moment gain (x,y,z).
+        sequence<double, 3> moment_gain;
     };
       
     /**
@@ -98,37 +139,6 @@ module OpenHRP
      * @brief ContactEndEfector
      */
     struct ContactEndEffectorParam {
-        double friction_coefficient;
-        double rotation_friction_coefficient;
-        double upper_cop_x_margin;
-        double lower_cop_x_margin;
-        double upper_cop_y_margin;
-        double lower_cop_y_margin;
-        double min_fz;
-        sequence<double, 6> ee_forcemoment_distribution_weight;
-    };
-
-    /**
-     * @struct impedanceParam
-     * @brief Impedance controller parameters for one end-effector.
-     */
-    struct impedanceParam {
-      /// Position mass [N/(m/s^2)]
-      double M_p;
-      /// Position damper [N/(m/s)]
-      double D_p;
-      /// Position spring [N/m]
-      double K_p;
-      /// Rotation mass [Nm/(rad/s^2)]
-      double M_r;
-      /// Rotation damper [N/(rad/s)]
-      double D_r;
-      /// Rotation spring [N/rad]
-      double K_r;
-      /// Force gain (x,y,z).
-      sequence<double, 3> force_gain;
-      /// Moment gain (x,y,z).
-      sequence<double, 3> moment_gain;
     };
       
     /**
@@ -243,8 +253,6 @@ module OpenHRP
       DblArray3 eefm_swing_rot_damping_gain;
       /// Position damping gain for swing leg [N/(m/s)] (x,y,z)
       DblArray3 eefm_swing_pos_damping_gain;
-      /// Sequence of all end-effector force/moment distribution weight
-      sequence<sequence<double, 6> > eefm_ee_forcemoment_distribution_weight;
       // for MCS
       /// Feedback gain for COG position tracking error (x,y,z)
       double mcs_k1;
@@ -260,20 +268,6 @@ module OpenHRP
       sequence<double> mcs_joint_torque_distribution_weight;
       /// Sequence of equality constraint weight
       sequence<double, 6> mcs_equality_weight;
-      /// Sequence of all end-effector rotation damping gain [Nm/(rad/s)] (r,p,y).
-      sequence<sequence<double, 3> > mcs_rot_damping_gain;
-      /// Sequence of all end-effector rotation damping time constant [s] (r,p,y).
-      sequence<sequence<double, 3> > mcs_rot_time_const;
-      /// Sequence of all end-effector position damping gain [N/(m/s)] (x,y,z).
-      sequence<sequence<double, 3> > mcs_pos_damping_gain;
-      /// Sequence of all end-effector position damping time constant [s] (x,y,z).
-      sequence<sequence<double, 3> > mcs_pos_time_const;
-      /// Sequence of all emd-effector Impedance parameters
-      sequence<impedanceParam> mcs_impedance_params;
-      /// all end-effector position compensation limit [m]
-      double mcs_pos_compensation_limit;
-      ///  all end-effector rot compensation limit [rad]
-      double mcs_rot_compensation_limit;
       /// Cutoff frequency of LPF in calculation of COG velocity [Hz]
       double mcs_cogvel_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of COG angular velocity [Hz]
@@ -284,12 +278,8 @@ module OpenHRP
       double mcs_act_root_v_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of COG position error [Hz]
       double mcs_cog_error_cutoff_freq;
-      /// Sequence of all end-effector Origincoords weight
-      sequence<double> mcs_contacteeforiginweight;
       /// Sequence of all end-effector params
       sequence<EndEffectorParam> mcs_eeparams;
-      /// Sequence of all contact end-effector params
-      sequence<ContactEndEffectorParam> mcs_ceeparams;
       /// Joint weight for Inverse Kinematics calculation.
       sequence<double> mcs_ik_optional_weight_vector;
       /// COG position position compensation limit [m]
