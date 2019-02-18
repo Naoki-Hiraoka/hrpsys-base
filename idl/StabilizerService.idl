@@ -116,6 +116,14 @@ module OpenHRP
         double pos_compensation_limit;
         /// rot compensation limit [rad]
         double rot_compensation_limit;
+        /// z contact velocity [m/s]
+        double z_contact_vel;
+        /// rz,ry contact velocity [rad/s]
+        double rot_contact_vel;
+        /// z contact weight
+        double z_contact_weight;
+        /// rz,ry contact weight
+        double rot_contact_weight;
         /// Position mass [N/(m/s^2)]
         double M_p;
         /// Position damper [N/(m/s)]
@@ -132,6 +140,10 @@ module OpenHRP
         sequence<double, 3> force_gain;
         /// Moment gain (x,y,z).
         sequence<double, 3> moment_gain;
+        /// interact weight
+        double pos_interact_weight;
+        /// interact weight
+        double rot_interact_weight;
     };
       
     /**
@@ -292,8 +304,6 @@ module OpenHRP
       double mcs_cogpos_time_const;
       /// COG velocity damping time constant[s]
       double mcs_cogvel_time_const;
-      /// end-effector reaching velocity [m/s]
-      double mcs_contact_vel;
       /// Bool sequence for all joints whether the joint is passive.
       BoolSequence mcs_is_passive;
       /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint

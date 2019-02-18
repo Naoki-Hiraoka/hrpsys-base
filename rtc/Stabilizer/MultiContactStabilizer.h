@@ -42,6 +42,10 @@ public:
                    rot_time_const(hrp::Vector3::Zero()),
                    pos_compensation_limit(0.025),
                    rot_compensation_limit(10.0/180.0*M_PI),
+                   z_contact_vel(0.01),
+                   rot_contact_vel(0.05),
+                   z_contact_weight(1e-4),
+                   rot_contact_weight(1e-4),
                    M_p(0),
                    D_p(174533),
                    K_p(116667),
@@ -50,30 +54,36 @@ public:
                    K_r(66667),
                    force_gain(hrp::Matrix33:Zero()),
                    moment_gain(hrp::Matrix33:Zero()),
-
+                   pos_interact_weight(1e-6),
+                   rot_interact_weight(1e-6),
+                   
                    ref_p(hrp::Vector3::Zero()),
-                   ref_R(hrp::Matrix33::Zero()),
+                   ref_R(hrp::Matrix33::Identity()),
                    ref_force(hrp::Vector3::Zero()),
                    ref_force_eef(hrp::Vector3::Zero()),
                    ref_moment(hrp::Vector3::Zero()),
                    ref_moment_eef(hrp::Vector3::Zero()),
                    ref_contact_state(false),
                    act_p(hrp::Vector3::Zero()),
-                   act_R(hrp::Matrix33::Zero()),
+                   act_R(hrp::Matrix33::Identity()),
                    act_force(hrp::Vector3::Zero()),
                    act_force_eef(hrp::Vector3::Zero()),
                    act_moment(hrp::Vector3::Zero()),
                    act_moment_eef(hrp::Vector3::Zero()),
                    act_contact_state(false),
                    prev_act_contact_state(false),
+                   cur_p(hrp::Vector3::Zero()),
+                   cur_R(hrp::Matrix33::Identity()),
                    d_foot_pos(hrp::Vector3::Zero()),
                    d_foot_rpy(hrp::Vector3::Zero()),
                    d_foot_pos1(hrp::Vector3::Zero()),
                    d_foot_rpy1(hrp::Vector3::Zero()),
                    d_foot_pos2(hrp::Vector3::Zero()),
                    d_foot_rpy2(hrp::Vector3::Zero()),
-                   act_outside_xcop_state(true),
-                   act_outside_ycop_state(true),
+                   act_outside_upper_xcop_state(true),
+                   act_outside_lower_xcop_state(true),
+                   act_outside_upper_ycop_state(true),
+                   act_outside_lower_ycop_state(true),
     {
         ee_forcemoment_distribution_weight << 1e-10,1e-10,1e-10,1e-4,1e-4,1e-10;
         return;
@@ -88,21 +98,96 @@ public:
             act_contact_state = (act_force_eef[2] > min_fz) && ref_contact_state;
         }
         if(act_contact_state){
-            if(act_outside_xcop_state){
-                if(-act_moment_eef[1]/act_force_eef[2] < upper_cop_x_margin && -act_moment_eef[1]/act_force_eef[2] > lower_cop_x_margin) act_outside_xcop_state=false;
+            if(act_outside_upper_xcop_state){
+                if(-act_moment_eef[1]/act_force_eef[2] < upper_cop_x_margin)act_outside_upper_xcop_state=false;
             }else{
-                if(-act_moment_eef[1]/act_force_eef[2] > outside_upper_cop_x_margin || -act_moment_eef[1]/act_force_eef[2] < outside_lower_cop_x_margin) act_outside_xcop_state=true;
+                if(-act_moment_eef[1]/act_force_eef[2] > outside_upper_cop_x_margin) act_outside_upper_xcop_state=true;
             }
-            if(act_outside_ycop_state){
-                if(act_moment_eef[0]/act_force_eef[2] < upper_cop_y_margin && act_moment_eef[0]/act_force_eef[2] > lower_cop_y_margin) act_outside_ycop_state=false;
+            if(act_outside_lower_xcop_state){
+                if(-act_moment_eef[1]/act_force_eef[2] > lower_cop_x_margin)act_outside_lower_xcop_state=false;
             }else{
-                if(act_moment_eef[0]/act_force_eef[2] > outside_upper_cop_y_margin || act_moment_eef[0]/act_force_eef[2] < outside_lower_cop_y_margin) act_outside_ycop_state=true;
+                if(-act_moment_eef[1]/act_force_eef[2] < outside_lower_cop_x_margin) act_outside_lower_xcop_state=true;
+            }
+            if(act_outside_upper_ycop_state){
+                if(act_moment_eef[0]/act_force_eef[2] < upper_cop_y_margin)act_outside_upper_ycop_state=false;
+            }else{
+                if(act_moment_eef[0]/act_force_eef[2] > outside_upper_cop_y_margin) act_outside_upper_ycop_state=true;
+            }
+            if(act_outside_lower_ycop_state){
+                if(act_moment_eef[0]/act_force_eef[2] > lower_cop_y_margin)act_outside_lower_ycop_state=false;
+            }else{
+                if(act_moment_eef[0]/act_force_eef[2] < outside_lower_cop_y_margin) act_outside_lower_ycop_state=true;
             }
         }else{
-            act_outside_xcop_state = true;
-            act_outside_ycop_state = true;
+            act_outside_upper_xcop_state = true;
+            act_outside_upper_ycop_state = true;
+            act_outside_lower_xcop_state = true;
+            act_outside_lower_ycop_state = true;
         }
         return act_contact_state;
+    }
+
+    void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb, hrp::dvector& ub){
+        C = hrp::dmatrix::Zero(11,6);
+        lb = hrp::dvector::Zero(11);
+        ub = hrp::dvector::Zero(11);
+
+        //垂直抗力
+        C(0,2)=1;
+        lb[0] = min_fz;
+        ub[0] = max_fz;
+
+        //x摩擦
+        C(1,0)=-1;
+        C(1,2)= friction_coefficient;
+        lb[1] = 0;
+        ub[1] = 1e10;
+        C(2,0)= 1;
+        C(2,2)= friction_coefficient;
+        lb[2] = 0;
+        ub[2] = 1e10;
+
+        //y摩擦
+        C(3,1)=-1;
+        C(3,2)= friction_coefficient;
+        lb[3] = 0;
+        ub[3] = 1e10;
+        C(4,1)= 1;
+        C(4,2)= friction_coefficient;
+        lb[4] = 0;
+        ub[4] = 1e10;
+
+        //xCOP
+        C(5,4)= 1;
+        C(5,2)= upper_cop_x_margin;
+        lb[5] = 0;
+        ub[5] = 1e10;
+        C(6,4)= -1;
+        C(6,2)= lower_cop_x_margin;
+        lb[6] = 0;
+        ub[6] = 1e10;
+
+        //yCOP
+        C(7,4)= -1;
+        C(7,2)= upper_cop_y_margin;
+        lb[8] = 0;
+        ub[8] = 1e10;
+        C(9,4)= 1;
+        C(9,2)= lower_cop_y_margin;
+        lb[9] = 0;
+        ub[9] = 1e10;
+
+        //回転摩擦
+        C(10,5)= -1;
+        C(10,2)= rotation_friction_coefficient;
+        lb[10] = 0;
+        ub[10] = 1e10;
+        C(11,5)= 1;
+        C(11,2)= rotation_friction_coefficient;
+        lb[11] = 0;
+        ub[11] = 1e10;
+
+        return;
     }
     
     void setParameter(const OpenHRP::StabilizerService::EndEffectorParam& i_ccp,std::string instance_name){
@@ -173,6 +258,19 @@ public:
 
         rot_compensation_limit = i_ccp.rot_compensation_limit;
         std::cerr << "[" << instance_name << "]  rot_compensation_limit = " << rot_compensation_limit << std::endl;
+
+        z_contact_vel = i_ccp.z_contact_vel;
+        std::cerr << "[" << instance_name << "]  z_contact_vel = " << z_contact_vel << std::endl;
+
+        rot_contact_vel = i_ccp.rot_contact_vel;
+        std::cerr << "[" << instance_name << "]  rot_contact_vel = " << rot_contact_vel << std::endl;
+
+        z_contact_weight = i_ccp.z_contact_weight;
+        std::cerr << "[" << instance_name << "]  z_contact_weight = " << z_contact_weight << std::endl;
+
+        rot_contact_weight = i_ccp.rot_contact_weight;
+        std::cerr << "[" << instance_name << "]  rot_contact_weight = " << rot_contact_weight << std::endl;
+
         
         M_p = i_ccp.M_p;
         D_p = i_ccp.D_p;
@@ -193,6 +291,13 @@ public:
             moment_gain = hrp::Vector3(i_ccp.moment_gain[0], i_ccp.moment_gain[1], i_ccp..moment_gain[2]).asDiagonal();
         }
         std::cerr << "[" << instance_name << "]      moment_gain : " << moment_gain.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "\n", "    [", "]")) << std::endl;
+
+        pos_interact_weight = i_ccp.pos_interact_weight;
+        std::cerr << "[" << instance_name << "]  pos_interact_weight = " << pos_interact_weight << std::endl;
+
+        rot_interact_weight = i_ccp.rot_interact_weight;
+        std::cerr << "[" << instance_name << "]  rot_interact_weight = " << rot_interact_weight << std::endl;
+
     }
 
     void getParameter(OpenHRP::StabilizerService::EndEffectorParam& i_ccp){
@@ -221,6 +326,10 @@ public:
         }
         i_ccp.pos_compensation_limit = pos_compensation_limit;
         i_ccp.rot_compensation_limit = rot_compensation_limit;
+        i_ccp.z_contact_vel = z_contact_vel;
+        i_ccp.rot_contact_vel = rot_contact_vel;
+        i_ccp.z_contact_weight = z_contact_weight;
+        i_ccp.rot_contact_weight = rot_contact_weight;
         i_ccp.M_p = M_p;
         i_ccp.D_p = D_p;
         i_ccp.K_p = K_p;
@@ -233,6 +342,8 @@ public:
             i_ccp.force_gain[j] = force_gain(j,j);
             i_ccp.moment_gain[j] = moment_gain(j,j);
         }
+        i_ccp.pos_interact_weight = pos_interact_weight;
+        i_ccp.rot_interact_weight = rot_interact_weight;
     }
 
     //サービスコールで設定
@@ -256,9 +367,15 @@ public:
     hrp::Vector3 rot_time_const;
     double pos_compensation_limit;
     double rot_compensation_limit;
+    double z_contact_vel;
+    double rot_contact_vel;
+    double z_contact_weight;
+    double rot_contact_weight;
     double M_p, D_p, K_p, M_r, D_r, K_r;
     hrp::Matrix33 force_gain;
     hrp::Matrix33 moment_gain;
+    double pos_interact_weight;
+    double rot_interact_weight;
     
     //.configで設定
     std::string link_name; // Name of end link
@@ -280,14 +397,18 @@ public:
     hrp::Vector3 act_moment/*actworld系,eefまわり*/, act_moment_eef/*eef系,eefまわり*/;
     bool act_contact_state;
     bool prev_act_contact_state;
+    hrp::Vector3 cur_p/*refworld系*/;
+    hrp::Matrix33 cur_R/*refworld系*/;
     hrp::Vector3 d_foot_pos/*eef系*/;
     hrp::Vector3 d_foot_rpy/*eef系*/;
     hrp::Vector3 d_foot_pos1/*eef系*/;
     hrp::Vector3 d_foot_rpy1/*eef系*/;
     hrp::Vector3 d_foot_pos2/*eef系*/;
     hrp::Vector3 d_foot_rpy2/*eef系*/;
-    bool act_outside_xcop_state;
-    bool act_outside_ycop_state;
+    bool act_outside_upper_xcop_state;
+    bool act_outside_lower_xcop_state;
+    bool act_outside_upper_ycop_state;
+    bool act_outside_lower_ycop_state;
     
 private:
 };
@@ -396,7 +517,8 @@ public:
         d_cog = hrp::Vector3::Zero();
         d_cogvel = hrp::Vector3::Zero();
         cog_error_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())); // [Hz]
-
+        cur_cog= hrp::Vector3::Zero();
+        
         mcs_leq_joint.resize(m_robot->numJoints(),false);
         mcs_geq_joint.resize(m_robot->numJoints(),false);
         
@@ -424,7 +546,6 @@ public:
         mcs_cogacc_compensation_limit = 1.0;
         mcs_cogpos_time_const = 1.5;
         mcs_cogvel_time_const = 1.5;
-        mcs_contact_vel = 0.01;
         mcs_contacteeforiginweight.resize(eefnum, 1.0);
         is_passive.resize(m_robot->numJoints(),false);
         mcs_passive_torquedirection.resize(m_robot->numJoints(),0.0);
@@ -695,6 +816,13 @@ public:
             }
         }
         m_robot->calcForwardKinematics();
+
+        cur_cog/*refworld系*/ = m_robot->calcCM()/*refworld系*/;
+        for(size_t i=0; i < eefnum; i++){
+            hrp::Link* target/*refworld系*/ = m_robot->link(endeffector[i]->link_name);
+            endeffector[i]->cur_p = target->p/*refworld系*/ + target->R * endeffector[i]->localp;
+            endeffector[i]->cur_R = target->R * endeffector[i]->localR;
+        }
         
         /****************************************************************/
 
@@ -712,38 +840,164 @@ public:
         hrp::dmatrix select_matrix = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
         hrp::dmatrix select_matrix_bar = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
         for(size_t i = 0 ; i < support_eef.size() ; i++){
-            if(!support_eef[i]->act_outside_xcop_state){
-                for(size_t j = 0; j < 6;j++){
-                    select_matrix(i*6+j,i*6+j) = 1.0;
-                    select_matrix_bar(i*6+j,i*6+j) = 0.0;
-                }
+            for(size_t j = 0; j < 3;j++){
+                select_matrix(i*6+j,i*6+j) = 1.0;
+                select_matrix_bar(i*6+j,i*6+j) = 0.0;
+            }
+            if(!support_eef[i]->act_outside_upper_xcop_state && !support_eef[i]->act_outside_lower_xcop_state){
+                select_matrix(i*6+3,i*6+3) = 0.0;
+                select_matrix_bar(i*6+3,i*6+3) = 1.0;
             }else{
-                for(size_t j = 0; j < 3;j++){
-                    select_matrix(i*6+j,i*6+j) = 1.0;
-                    select_matrix_bar(i*6+j,i*6+j) = 0.0;
-                }
-                for(size_t j = 3; j < 5;j++){
-                    select_matrix(i*6+j,i*6+j) = 0.0;
-                    select_matrix_bar(i*6+j,i*6+j) = 1.0;
-                }
-                select_matrix(i*6+5,i*6+5) = 1.0;
-                select_matrix_bar(i*6+5,i*6+5) = 0.0;
+                select_matrix(i*6+3,i*6+3) = 1.0;
+                select_matrix_bar(i*6+3,i*6+3) = 0.0;
+            }
+            if(!support_eef[i]->act_outside_upper_ycop_state && !support_eef[i]->act_outside_lower_ycop_state){
+                select_matrix(i*6+4,i*6+4) = 0.0;
+                select_matrix_bar(i*6+4,i*6+4) = 1.0;
+            }else{
+                select_matrix(i*6+4,i*6+4) = 1.0;
+                select_matrix_bar(i*6+4,i*6+4) = 0.0;
+            }
+            select_matrix(i*6+5,i*6+5) = 1.0;
+            select_matrix_bar(i*6+5,i*6+5) = 0.0;
+        }
+        
+        hrp::dmatrix supportJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*support_eef.size(),6+ik_enable_joint_num);
+        //今のm_robotはrefworld系なので，calcjacobianで出てくるJはrefworld系,eefまわり<->joint であることに注意
+        for(size_t i=0;i<support_eef.size();i++){
+            supportJ.block<3,3>(i*6,0)= support_eef[i]->cur_R/*refworld系*/.transpose();
+            supportJ.block<3,3>(i*6,3)= support_eef[i]->cur_R/*refworld系*/.transpose() * - hrp::hat(support_eef[i]->cur_p/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
+            supportJ.block<3,3>(i*6+3,3)= support_eef[i]->cur_R/*refworld系*/.transpose();
+            hrp::dmatrix JJ;
+            support_eef[i]->jpe->calcJacobian(JJ,support_eef[i]->localp);
+            JJ.block(0,0,3,JJ.cols()) = support_eef[i]->cur_R/*refworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
+            JJ.block(3,0,3,JJ.cols()) = support_eef->cur_R/*refworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
+            for(size_t j = 0; j < support_eef[i]->jpe->numJoints(); j++){
+                supportJ.block<6,1>(i*6,6+ik_enable_joint_map[support_eef[i]->jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
             }
         }
+        
+        hrp::dmatrix D/*レンチ eef系,eefまわり<->変位 eef系,eefまわり*/ = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
+        for(size_t i=0;i<support_eef.size();i++){
+            for(size_t j = 0; j < 3; j++){
+                D(6*i+j,6*i+j) = support_eef[i]->pos_damping_gain[j];
+                D(6*i+3+j,6*i+3+j) = support_eef[i]->rot_damping_gain[j];
+            }
+        }
+
+        hrp::dmatrix Tinv/*時定数*/ = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
+        for(size_t i=0;i<support_eef.size();i++){
+            for(size_t j = 0; j < 3; j++){
+                T(6*i+j,6*i+j) = 1.0/support_eef[i]->pos_time_const[j];
+                T(6*i+3+j,6*i+3+j) = 1.0/support_eef[i]->rot_time_const[j];
+            }
+        }
+
+        hrp::dvector d_support_foot/*eef系*/ = hrp::dvector::Zero(6*support_eef.size());
+        for(size_t i=0;i<support_eef.size();i++){
+            d_support_foot.block<3,1>(i*6,0) = support_eef[i]->d_foot_pos;
+            d_support_foot.block<3,1>(i*6+3,0) = support_eef[i]->d_foot_rpy;
+        }
+        
+        hrp::dmatrix interactJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*interact_eef.size(),6+ik_enable_joint_num);
+        //今のm_robotはrefworld系なので，calcjacobianで出てくるJはrefworld系,eefまわり<->joint であることに注意
+        for(size_t i=0;i<interact_eef.size();i++){
+            interactJ.block<3,3>(i*6,0)= interact_eef[i]->cur_R/*refworld系*/.transpose();
+            interactJ.block<3,3>(i*6,3)= interact_eef[i]->cur_R/*refworld系*/.transpose() * - hrp::hat(interact_eef[i]->cur_p/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
+            interactJ.block<3,3>(i*6+3,3)= interact_eef[i]->cur_R/*refworld系*/.transpose();
+            hrp::dmatrix JJ;
+            interact_eef[i]->jpe->calcJacobian(JJ,interact_eef[i]->localp);
+            JJ.block(0,0,3,JJ.cols()) = interact_eef[i]->cur_R/*refworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
+            JJ.block(3,0,3,JJ.cols()) = interact_eef[i]->cur_R/*refworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
+            for(size_t j = 0; j < interact_eef[i]->jpe->numJoints(); j++){
+                interactJ.block<6,1>(i*6,6+ik_enable_joint_map[interact_eef[i]->jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
+            }
+        }
+
         /*****************************************************************/
         //torque
         {
-            //ここから
-            hrp::dmatrix W = hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num);
+            hrp::dmatrix W = hrp::dmatrix::Identity(ik_enable_joint_num,ik_enable_joint_num);
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                if(act_contact_joint_states[i]){
-                    if(is_passive[i]) W1(act_contact_joint_map[i],act_contact_joint_map[i]) = 1e-10;
-                    else W1(act_contact_joint_map[i],act_contact_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
+                if(ik_enable_joint_states[i]){
+                    if(is_passive[i]) W(ik_enable_joint_map[i],ik_enable_joint_map[i]) = 1e-10;
+                    else W(ik_enable_joint_map[i],ik_enable_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
                 }
             }
+
+            hrp::dmatrix a = supportJ.transpose() * select_matrix * D * supportJ / dt;
+            hrp::dvector b = supportJ.transpose() * select_matrix * D * Tinv * d_support_foot;
+            for(size_t i=0; i < m_robot->numJoints(); i++){
+                if(ik_enable_joint_states[i]){
+                    b[6+ik_enable_joint_map[i]]+=acttauv[i];
+                }
+            }
+            
+            H += a.transpose() * W * a;
+            g += b.transpose() * W * a;
+
+            hrp::dvector taumin=hrp::dvector::Zero(6+ik_enable_joint_num);
+            hrp::dvector taumax=hrp::dvector::Zero(6+ik_enable_joint_num);
+            for(size_t i = 0; i<6; i++){
+                taumin[i] = -1e10;
+                taumax[i] = 1e10;
+            }
+            for(size_t i=0; i < m_robot->numJoints(); i++){
+                if(ik_enable_joint_states[i]){
+                    taumin[6+ik_enable_joint_map[i]]=(mcs_passive_torquedirection[i]>0)?0:- m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
+                    taumax[6+ik_enable_joint_map[i]]=(mcs_passive_torquedirection[i]<0)?0:+ m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
+                }
+            }
+            hrp::dvector lbA = taumin - b;
+            hrp::dvector ubA = taumax - b;
+            hrp::dvector A = a;
+            
+            As.push_back(A);
+            lbAs.push_back(lbA);
+            ubAs.push_back(ubA);
         }
         /*****************************************************************/
         //wrench
+        {
+            hrp::dmatrix W = hrp::dmatrix::Identity(6*support_eef.size(),6*support_eef.size());
+            for (size_t i = 0; i < support_eef.size(); i++){
+                for(size_t j = 0 ; j < 6; j++){
+                    W(6*i+j,6*i+j) = support_eef[i]->ee_forcemoment_distribution_weight[j];
+                }
+            }
+
+            hrp::dmatrix a = - select_matrix * D * supportJ / dt;
+            hrp::dvector b = - select_matrix * D * Tinv * d_support_foot;
+            hrp::dvector c = b;
+            for(size_t i = 0; i < support_eef.size(); i++){
+                b.block<3,1>(i*6,0) += support_eef[i]->act_force_eef;
+                b.block<3,1>(i*6+3,0) += support_eef[i]->act_moment_eef;
+            }
+
+            H += a.trasnpose() * W * a;
+            g += b.transpose() * W * a;
+
+            for(size_t i = 0 ; i < support_eef.size() ; i++){
+                hrp::dmatrix C;
+                hrp::dvector lb;
+                hrp::dvector ub;
+                support_eef[i]->getContactConstraint(C,lB,ub);
+                As.push_back(C * a.block<6,1>(i*6,0));
+                lbAs.push_back(lb-C*b.block<6,1>(i*6,0));
+                ubAs.push_back(ub-C*b.block<6,1>(i*6,0));
+            }
+
+            hrp::dmatrix G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = hrp::dmatrix::Zero(6,6*support_eef.size());//grasp_matrix
+            for(size_t i = 0; i <support_eef.size();i++){
+                G.block<3,3>(0,6*i) = support_eef[i]->act_R_origin/*act_cogorigin系*/;
+                G.block<3,3>(3,6*i) = hrp::hat(support_eef[i]->act_p_origin/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * support_eef[i]->act_R_origin/*act_cogorigin系*/;
+                G.block<3,3>(3,6*i+3) = support_eef[i]->act_R_origin/*act_cogorigin系*/;
+            }
+            As.push_back(G*a);
+            lbAs.push_back(-G*c);
+            ubAs.push_back(-G*c);
+            
+        }
 
         /*****************************************************************/
         //centroid
@@ -773,16 +1027,60 @@ public:
 
             H += CM_J.transpose() * W * CM_J;
             g += - delta_cog * W * CM_J;
+
         }
         
         /*****************************************************************/
         //support eef
-        hrp::dvector delta_support_eef = hrp::dvector::Zero(6*support_eef.size());
-                
+        {
+            hrp::dmatrix W = hrp::dmatrix::Identity(6*support_eef.size(),6*support_eef.size());
+            for (size_t i = 0; i < support_eef.size(); i++){
+                W(6*i+3,6*i+3) = support_eef[i]->rot_contact_weight;
+                W(6*i+4,6*i+4) = support_eef[i]->rot_contact_weight;
+            }
+            
+            hrp::dvector delta_support_eef = hrp::dvector::Zero(6*support_eef.size());
+            for(size_t i=0;i < support_eef.size(); i++){
+                if(support_eef[i]->act_outside_upper_xcop_state)delta_support_eef[i*6+4]=-support_eef[i]->rot_contact_vel;
+                if(support_eef[i]->act_outside_lower_xcop_state)delta_support_eef[i*6+4]=support_eef[i]->rot_contact_vel;
+                if(support_eef[i]->act_outside_upper_ycop_state)delta_support_eef[i*6+3]=support_eef[i]->rot_contact_vel;
+                if(support_eef[i]->act_outside_lower_ycop_state)delta_support_eef[i*6+3]=-support_eef[i]->rot_contact_vel;
+            }
+
+            hrp::dmatrix a = - select_matrix_bar * supportJ;
+            hrp::dvector b = delta_support_eef;
+
+            H += a.transpose() * W * a;
+            g += b.transpose() * W * a;
+        }
         /*****************************************************************/
         //interact eef
-        hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
-        
+        {
+            hrp::dmatrix W = hrp::dmatrix::Identity(6*interact_eef.size(),6*interact_eef.size());
+            for (size_t i = 0; i < interact_eef.size(); i++){
+                for(size_t j = 0; j < 3; j++){
+                    W(6*i+j,6*i+j) = interact_eef[i]->pos_interact_weight;
+                    W(6*i+j+3,6*i+j+3) = interact_eef[i]->rot_interact_weight;
+                }
+            }
+            
+            hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
+            for (size_t i = 0; i < interact_eef.size(); i++){
+                hrp::Vector3 target_p = interact_eef[i]->ref_p
+                    + ((transition_smooth_gain * interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef-interact_eef[i]->ref_force_eef) * dt * dt
+                        + (2 * interact_eef[i]->M_p + interact_eef[i]->D_p * dt) * interact_eef[i]->d_foot_pos
+                        - interact_eef[i]->M_p * interact_eef[i]->d_foot_pos1) /
+                       (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt));
+                hrp::Vector3 tmp_rpy = ((transition_smooth_gain * interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef-interact_eef[i]->ref_moment_eef) * dt * dt
+                                         + (2 * interact_eef[i]->M_r + interact_eef[i]->D_r * dt) * interact_eef[i]->d_foot_rpy
+                                         - interact_eef[i]->M_r * interact_eef[i]->d_foot_rpy1) /
+                                        (interact_eef[i]->M_r + interact_eef[i]->D_r * dt + interact_eef[i]->K_r * dt * dt));
+                hrp::Matrix33 tartet_R = 
+                if(interact_eef[i]->ref_contact_state){
+
+                }
+            }
+        }
         /*****************************************************************/
         //reference q
 
@@ -1917,9 +2215,15 @@ public:
             }
         }
 
-        //TODO
-        d_cog;
-        
+    //TODO
+    d_cog;
+    d_foot_pos/*eef系*/;
+    d_foot_rpy/*eef系*/;
+    d_foot_pos1/*eef系*/;
+    d_foot_rpy1/*eef系*/;
+    d_foot_pos2/*eef系*/;
+    d_foot_rpy2/*eef系*/;
+    
         // IKが解けず実際には動いていない場合には，compensation limit によって指令値の発散を防ぐ
         // //実際に解いた結果を記録
         // hrp::Vector3 original_d_cog/*refworld系*/ = d_cog/*refworld系*/;
@@ -2272,6 +2576,8 @@ private:
     hrp::Vector3 d_cogvel/*refworld系*/;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > cog_error_filter/*refworld系*/;
 
+    hrp::Vector3 cur_cog/*refworld系*/;
+
     std::vector<boost::shared_ptr<EndEffector> > endeffector;
     std::map<std::string, size_t> endeffector_index_map;
 
@@ -2281,7 +2587,6 @@ private:
     double mcs_k1, mcs_k2, mcs_k3;
     std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
     hrp::dvector6 mcs_equality_weight;//等式制約に対する重み
-    double mcs_contact_vel;
     double mcs_cogpos_compensation_limit;
     double mcs_cogvel_compensation_limit;
     double mcs_cogacc_compensation_limit;
