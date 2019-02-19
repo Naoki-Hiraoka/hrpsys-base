@@ -451,7 +451,7 @@ public:
         const_robot = m_robot;
 
         //name, link_name, ?, localpx, localpy, localpz, localRx, localRy, localRz, localRangle
-        coil::vstring end_effectors_str = coil::split(prop["end_effectors"], ",");
+        coil::vstring end_effectors_str = coil::split(prop["contact_end_effectors"], ",");//ここから
         if (end_effectors_str.size() > 0) {
             size_t prop_num = 10;
             size_t num = end_effectors_str.size()/prop_num;
@@ -850,6 +850,9 @@ public:
             if(sync2activecnt[i] > 0){
                 sync2activecnt[i] = std::max(0.0, sync2activecnt[i]-dt);
             }
+            if(sync2referencecnt[i] > 0){
+                sync2referencecnt[i] = std::max(0.0, sync2referencecnt[i]-dt);
+            }
         }
         
         /****************************************************************/
@@ -1173,13 +1176,22 @@ public:
                         max = target_vel;
                         min = target_vel;
                     }
-
-                    if(prevpassive[i]){
-                        if(m_robot->joint(i)->q > ulimit[i]) max = std::min(max,0.0);
-                        if(m_robot->joint(i)->q > llimit[i]) min = std::max(min,0.0);
-                    }
-
-                    if(!is_passive[i]){
+                    else if(is_reference[i]){
+                        double reference_vel=0;
+                        if(sync2referencecnt[i]>0.0){
+                            double now = 1/(1+exp(-9.19*((1.0 - sync2referencecnt[i]/sync2referencetime - 0.5))));
+                            double next = 1/(1+exp(-9.19*((1.0 - (sync2referencecnt[i]-dt)/sync2referencetime - 0.5))));
+                            reference_vel = (next-now)/(1-now) * (qrefv[i] - m_robot->joint(i)->q);
+                        }else{
+                            reference_vel = qrefv[i] - m_robot->joint(i)->q;
+                        }
+                        max = reference_vel;
+                        min = reference_vel;
+                    }else{
+                        if(prevpassive[i]){
+                            if(m_robot->joint(i)->q > ulimit[i]) max = std::min(max,0.0);
+                            if(m_robot->joint(i)->q > llimit[i]) min = std::max(min,0.0);
+                        }
                         if(sync2activecnt[i]>0.0){
                             max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * dt);
                             min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * dt);
@@ -1188,7 +1200,7 @@ public:
                             min = std::min(min,m_robot->joint(i)->lvlimit * dt);
                         }
                     }
-
+                    
                     u[6+ik_enable_joint_map[i]] = max;
                     l[6+ik_enable_joint_map[i]] = min;
                 }
