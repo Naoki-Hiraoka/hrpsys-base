@@ -304,8 +304,6 @@ module OpenHRP
       double mcs_cogpos_time_const;
       /// COG velocity damping time constant[s]
       double mcs_cogvel_time_const;
-      /// Bool sequence for all joints whether the joint is passive.
-      BoolSequence mcs_is_passive;
       /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
       sequence<double> mcs_passive_torquedirection;
       /// joint passive velocity [rad/s]
@@ -382,6 +380,19 @@ module OpenHRP
      */
     void setParameter(in stParam i_param);
 
+      /**
+     * @brief set passive joint
+     * @param name joint name
+     */
+    void setPassiveJoint(in string name);
+
+      /**
+     * @brief set active joint
+     * @param name joint name
+     */
+    void setActiveJoint(in string name);
+
+      
     /**
      * @brief Start Stabilizer mode.
      * @param

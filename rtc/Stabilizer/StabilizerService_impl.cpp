@@ -21,6 +21,16 @@ void StabilizerService_impl::stopStabilizer(void)
 	m_stabilizer->stopStabilizer();
 }
 
+void StabilizerService_impl::setPassiveJoint(const char *jname)
+{
+	m_stabilizer->setPassiveJoint(jname);
+}
+
+void StabilizerService_impl::setActiveJoint(const char *jname)
+{
+	m_stabilizer->setActiveJoint(jname);
+}
+
 void StabilizerService_impl::getParameter(OpenHRP::StabilizerService::stParam_out i_param)
 {
   i_param = new OpenHRP::StabilizerService::stParam();

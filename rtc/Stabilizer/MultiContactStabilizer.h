@@ -128,64 +128,91 @@ public:
     }
 
     void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb, hrp::dvector& ub){
-        C = hrp::dmatrix::Zero(11,6);
-        lb = hrp::dvector::Zero(11);
-        ub = hrp::dvector::Zero(11);
+        int constraint_num = 7;
+        if(!act_outside_upper_xcop_state)constraint_num++;
+        if(!act_outside_lower_xcop_state)constraint_num++;
+        if(!act_outside_upper_ycop_state)constraint_num++;
+        if(!act_outside_lower_ycop_state)constraint_num++;
+        C = hrp::dmatrix::Zero(constraint_num,6);
+        lb = hrp::dvector::Zero(constraint_num);
+        ub = hrp::dvector::Zero(constraint_num);
+
+        int constraint_idx = 0;
 
         //垂直抗力
-        C(0,2)=1;
-        lb[0] = min_fz;
-        ub[0] = max_fz;
+        C(constraint_idx,2)=1;
+        lb[constraint_idx] = min_fz;
+        ub[constraint_idx] = max_fz;
+        constraint_idx++;
 
         //x摩擦
-        C(1,0)=-1;
-        C(1,2)= friction_coefficient;
-        lb[1] = 0;
-        ub[1] = 1e10;
-        C(2,0)= 1;
-        C(2,2)= friction_coefficient;
-        lb[2] = 0;
-        ub[2] = 1e10;
+        C(constraint_idx,0)=-1;
+        C(constraint_idx,2)= friction_coefficient;
+        lb[constraint_idx] = 0;
+        ub[constraint_idx] = 1e10;
+        constraint_idx++;
+        
+        C(constraint_idx,0)= 1;
+        C(constraint_idx,2)= friction_coefficient;
+        lb[constraint_idx] = 0;
+        ub[constraint_idx] = 1e10;
+        constraint_idx++;
 
         //y摩擦
-        C(3,1)=-1;
-        C(3,2)= friction_coefficient;
-        lb[3] = 0;
-        ub[3] = 1e10;
-        C(4,1)= 1;
-        C(4,2)= friction_coefficient;
-        lb[4] = 0;
-        ub[4] = 1e10;
+        C(constraint_idx,1)=-1;
+        C(constraint_idx,2)= friction_coefficient;
+        lb[constraint_idx] = 0;
+        ub[constraint_idx] = 1e10;
+        constraint_idx++;
+        C(constraint_idx,1)= 1;
+        C(constraint_idx,2)= friction_coefficient;
+        lb[constraint_idx] = 0;
+        ub[constraint_idx] = 1e10;
+        constraint_idx++;
 
         //xCOP
-        C(5,4)= 1;
-        C(5,2)= upper_cop_x_margin;
-        lb[5] = 0;
-        ub[5] = 1e10;
-        C(6,4)= -1;
-        C(6,2)= lower_cop_x_margin;
-        lb[6] = 0;
-        ub[6] = 1e10;
+        if(!act_outside_upper_xcop_state){
+            C(constraint_idx,4)= 1;
+            C(constraint_idx,2)= upper_cop_x_margin;
+            lb[constraint_idx] = 0;
+            ub[constraint_idx] = 1e10;
+            constraint_idx++;
+        }
+        if(!act_outside_lower_xcop_state){
+            C(constraint_idx,4)= -1;
+            C(constraint_idx,2)= lower_cop_x_margin;
+            lb[constraint_idx] = 0;
+            ub[constraint_idx] = 1e10;
+            constraint_idx++;
+        }
 
         //yCOP
-        C(7,4)= -1;
-        C(7,2)= upper_cop_y_margin;
-        lb[8] = 0;
-        ub[8] = 1e10;
-        C(9,4)= 1;
-        C(9,2)= lower_cop_y_margin;
-        lb[9] = 0;
-        ub[9] = 1e10;
+        if(!act_outside_upper_ycop_state){
+            C(constraint_idx,4)= -1;
+            C(constraint_idx,2)= upper_cop_y_margin;
+            lb[constraint_idx] = 0;
+            ub[constraint_idx] = 1e10;
+            constraint_idx++;
+        }
+        if(!act_outside_lower_ycop_state){
+            C(constraint_idx,4)= 1;
+            C(constraint_idx,2)= lower_cop_y_margin;
+            lb[constraint_idx] = 0;
+            ub[constraint_idx] = 1e10;
+            constraint_idx++;
+        }
 
         //回転摩擦
-        C(10,5)= -1;
-        C(10,2)= rotation_friction_coefficient;
-        lb[10] = 0;
-        ub[10] = 1e10;
-        C(11,5)= 1;
-        C(11,2)= rotation_friction_coefficient;
-        lb[11] = 0;
-        ub[11] = 1e10;
+        C(constraint_idx,5)= -1;
+        C(constraint_idx,2)= rotation_friction_coefficient;
+        lb[constraint_idx] = 0;
+        ub[constraint_idx] = 1e10;
+        constraint_idx++;
+        C(constraint_idx,5)= 1;
+        C(constraint_idx,2)= rotation_friction_coefficient;
+        lb[constraint_idx] = 0;
+        ub[constraint_idx] = 1e10;
+        constraint_idx++;
 
         return;
     }
@@ -555,6 +582,10 @@ public:
         sync2activecnt.resize(m_robot->numJoints(),0);
         sync2activetime = 2.0;
         ik_error_count = 0;
+
+        reference_time_const = 1.5;
+        centroid_weight = 1e-6;
+        reference_weight = 1e-10;
             
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
@@ -798,6 +829,9 @@ public:
         for(size_t i = 0; i < eefnum;i++){
             if(!(endeffector[i]->act_contact_state) && is_ik_enable[i])interact_eef.push_back(endeffector[i]);
         }
+
+
+
         
 
         /**************************************************************/
@@ -823,17 +857,38 @@ public:
             endeffector[i]->cur_p = target->p/*refworld系*/ + target->R * endeffector[i]->localp;
             endeffector[i]->cur_R = target->R * endeffector[i]->localR;
         }
+
+        hrp::dvector llimit = hrp::dvector::Zero(m_robot->numJoints());
+        hrp::dvector ulimit = hrp::dvector::Zero(m_robot->numJoints());
+        for(size_t i = 0 ; i < m_robot->numJoints() ; i++){
+            if (joint_limit_tables.find(m_robot->joint(i)->name) != joint_limit_tables.end()) {
+                std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(i)->name);
+                llimit[i] = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
+                ulimit[i] = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
+            }else{
+                llimit[i] = m_robot->joint(i)->llimit;
+                ulimit[i] = m_robot->joint(i)->ulimit;
+            }
+        }
+        
+        for(size_t i = 0; i < m_robot->numJoints() ; i++){
+            if(prevpassive[i] && m_robot->joint(i)->q < ulimit && m_robot->joint(i)->q > llimit){
+                prevpassive[i] = false;
+            }
+            if(sync2activecnt[i] > 0){
+                sync2activecnt[i] = std::max(0.0, sync2activecnt[i]-dt)
+            }
+        }
         
         /****************************************************************/
 
-        bool qp_solved=false;
         hrp::dmatrix H = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num);
         hrp::dmatrix g = hrp::dmatrix::Zero(1,6+ik_enable_joint_num);
         std::vector<hrp::dmatrix> As();
         std::vector<hrp::dvector> lbAs();
         std::vector<hrp::dvector> ubAs();
-        std::vector<hrp::dvector> lbs();
-        std::vector<hrp::dvector> ubs();
+        hrp::dvector lb();
+        hrp::dvector ub();
 
         /****************************************************************/
         //utils
@@ -1002,7 +1057,7 @@ public:
         /*****************************************************************/
         //centroid
         {
-            hrp::dvector3 tmp_d_cog/*refworld系*/ = d_cog/*refworld系*/ - mcs_k1 * transition_smooth_gain * cog_error_filter->passFilter(act_cog_origin/*act_cogorigin系*/) * dt;
+            hrp::dvector3 tmp_d_cog/*refworld系*/ = d_cog/*refworld系*/ - mcs_k1 * cog_error_filter->passFilter(act_cog_origin/*act_cogorigin系*/) * dt;
             for(size_t i=0; i < 3 ; i++){
                 if(tmp_d_cog[i] > mcs_cogpos_compensation_limit) tmp_d_cog[i] = mcs_cogpos_compensation_limit;
                 if(tmp_d_cog[i] < -mcs_cogpos_compensation_limit) tmp_d_cog[i] = -mcs_cogpos_compensation_limit;
@@ -1022,7 +1077,7 @@ public:
 
             hrp::dmatrix W = hrp::dmatrix::Identity(3,3);
             for (size_t i = 0; i < 3; i++){
-                W(i,i) = 1e-6;
+                W(i,i) = centroid_weight;
             }
 
             H += CM_J.transpose() * W * CM_J;
@@ -1066,1191 +1121,310 @@ public:
             
             hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
             for (size_t i = 0; i < interact_eef.size(); i++){
-                hrp::Vector3 target_p = interact_eef[i]->ref_p
-                    + ((transition_smooth_gain * interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef-interact_eef[i]->ref_force_eef) * dt * dt
-                        + (2 * interact_eef[i]->M_p + interact_eef[i]->D_p * dt) * interact_eef[i]->d_foot_pos
-                        - interact_eef[i]->M_p * interact_eef[i]->d_foot_pos1) /
-                       (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt));
+                hrp::Vector3 target_p/*refworld系*/ = interact_eef[i]->ref_p
+                    + interact_eef[i]->ref_R((interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef-interact_eef[i]->ref_force_eef) * dt * dt
+                                              + (2 * interact_eef[i]->M_p + interact_eef[i]->D_p * dt) * interact_eef[i]->d_foot_pos
+                                              - interact_eef[i]->M_p * interact_eef[i]->d_foot_pos1) /
+                                             (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt));
                 hrp::Vector3 tmp_rpy = ((transition_smooth_gain * interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef-interact_eef[i]->ref_moment_eef) * dt * dt
                                          + (2 * interact_eef[i]->M_r + interact_eef[i]->D_r * dt) * interact_eef[i]->d_foot_rpy
                                          - interact_eef[i]->M_r * interact_eef[i]->d_foot_rpy1) /
                                         (interact_eef[i]->M_r + interact_eef[i]->D_r * dt + interact_eef[i]->K_r * dt * dt));
-                hrp::Matrix33 tartet_R = 
-                if(interact_eef[i]->ref_contact_state){
+                hrp::Matrix33 target_R = interact_eef[i]->ref_R * hrp::rotFromRpy(tmp_rpy)/*eef系*/;
 
+                delta_interact_eef.block<3,1>(i*6,0) = interact_eef[i]->cur_R.transpose() * (target_p - interact_eef[i]->cur_p);
+                delta_interact_eef.block<3,1>(i*6+3,0) = matrix_logEx(interact_eef[i]->cur_p.transpose() * target_R);
+                
+                if(interact_eef[i]->ref_contact_state){
+                    delta_interact_eef[i*6+2] = interact_eef[i]->z_contact_vel*dt;
                 }
             }
+
+            hrp::dmatrix a = - interanctJ;
+            hrp::dvector b = delta_interact_eef;
+
+            H += a.transpose() * W * a;
+            g += b.transpose() * W * a;
+
         }
         /*****************************************************************/
         //reference q
+        {
+            hrp::dmatrix W = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num);
+            for (size_t i = 0; i < 6+ik_enable_joint_num; i++){
+                W(i,i) = reference_weight;
+            }
+            
+            hrp::dvector reference_q = hrp::dvector::Zero(6+ik_enable_joint_num);
+            reference_q.block<3,1>(0,0) = ref_root_p/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/;
+            reference_q.block<3,1>(3,0) = matrix_logEx( ref_root_R/*refworld系*/ * m_robot->rootLink()->R.transpose()/*refworld系*/);
+            for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
+                if(ik_enable_joint_states[j]){
+                    reference_q[6+ik_enable_joint_map[j]] = qrefv[j] - m_robot->joint(j)->q;
+                }
+            }
 
+            reference_q *= dt / reference_time_const;
+
+            H += W;
+            g += - reference_q * W;
+        }
         /*****************************************************************/
         //min-max
+        {
+            hrp::dvector u = hrp::dvector::Zero(6+ik_enable_joint_num);
+            hrp::dvector l = hrp::dvector::Zero(6+ik_enable_joint_num);
+
+            for(size_t i = 0 ; i < 6; i++){
+                ub[i] = 1e10;
+                lb[i] = -1e10;
+            }
+            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+                if(ik_enable_joint_states[i]){
+                    double max = 1e10;
+                    double min = -1e10;
+                    
+                    if(!is_passive[i] && !prevpassive[i]){
+                        max = std::min(max,ulimit[i] - m_robot->joint(i)->q);
+                        min = std::max(min,llimit[i] - m_robot->joint(i)->q);
+                    }else if (!is_passive[i] && prevpassive[i]){
+                        if(m_robot->joint(i)->q <= ulimit[i]) max = std::min(max,ulimit[i] - m_robot->joint(i)->q);
+                        if(m_robot->joint(i)->q >= llimit[i]) min = std::max(min,llimit[i] - m_robot->joint(i)->q);
+                    }
+
+                    if(is_passive[i]){
+                        double target_vel=0;
+                        if(m_robot->joint(i)->q + mcs_passive_vel * dt < qactv[i])target_vel = mcs_passive_vel * dt;
+                        else if (m_robot->joint(i)->q - mcs_passive_vel * dt > qactv[i])target_vel = - mcs_passive_vel * dt;
+                        else target_vel = qactv[i] - m_robot->joint(i)->q;
+
+                        max = target_vel;
+                        min = target_vel;
+                    }
+
+                    if(prevpassive[i]){
+                        if(m_robot->joint(i)->q > ulimit) max = std::min(max,0.0);
+                        if(m_robot->joint(i)->q > llimit) min = std::max(min,0.0);
+                    }
+
+                    if(!is_passive[i]){
+                        if(sync2activecnt[i]>0.0){
+                            max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(j)->uvlimit * dt);
+                            min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(j)->lvlimit * dt);
+                        }else{
+                            max = std::min(max,m_robot->joint(j)->uvlimit * dt);
+                            min = std::min(min,m_robot->joint(j)->lvlimit * dt);
+                        }
+                    }
+
+                    u[6+ik_enable_joint_map[i]] = max;
+                    l[6+ik_enable_joint_map[i]] = min;
+                }
+            }
+
+            ub = u;
+            lb = l;
+        }
         
         /*****************************************************************/
-        
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
         
-        
-
-            
-            hrp::dvector6 to_distribute_FgNg/*act_cogorigin系*/ = hrp::dvector6::Zero();//act_contactであるEEFが現在受けている力の合計
-            for (size_t i = 0; i < eefnum; i++){
-                if (endeffector[i].act_contact_state){
-                    to_distribute_FgNg.block<3,1>(0,0) += act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/;
-                    to_distribute_FgNg.block<3,1>(3,0) += hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/ * act_force_eef[i]/*acteef系*/ + act_ee_R_origin[i]/*act_cogorigin系*/ * act_moment_eef[i]/*acteef系,acteefまわり*/;
-                }
-            }
-            
-            if(debug){
-                std::cerr << "to_distribute_FgNg" << std::endl;
-                std::cerr << to_distribute_FgNg << std::endl;
-            }
-            hrp::dmatrix G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = hrp::dmatrix::Zero(6,6*act_contact_cee_num);//grasp_matrix
-            {
-                size_t act_contact_idx = 0;
-                for(size_t i = 0; i <ceenum;i++){
-                    if(contactendeffector[i].act_contact_state){
-                        if(debug){
-                            std::cerr << "act_cee_p_origin - act_cog_origin" << std::endl;
-                            std::cerr << act_cee_p_origin[i] - act_cog_origin << std::endl;
-                            std::cerr << "act_cee_R_origin" << std::endl;
-                            std::cerr << act_cee_R_origin[i] << std::endl;
-                        }
-                        
-                        G.block<3,3>(0,6*act_contact_idx) = act_cee_R_origin[i]/*act_cogorigin系*/;
-                        G.block<3,3>(3,6*act_contact_idx) = hrp::hat(act_cee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_cee_R_origin[i]/*act_cogorigin系*/;
-                        G.block<3,3>(3,6*act_contact_idx+3) = act_cee_R_origin[i]/*act_cogorigin系*/;
-                        act_contact_idx++;
-                    }
-                }
-            }
-            const hrp::dmatrix Gt = G.transpose();
-            if(debug){
-                std::cerr << "G" <<std::endl;
-                std::cerr << G <<std::endl;
-            }
-
-            hrp::dvector act_wrench_eef/*eef系,eefまわり*/ = hrp::dvector(6*act_contact_eef_num);
-            {
-                size_t act_contact_idx = 0;
-                for(size_t i = 0; i <eefnum;i++){
-                    if(endeffector[i].act_contact_state){
-                        act_wrench_eef.block<3,1>(6*act_contact_idx,0)= act_force_eef[i]/*eef系*/;
-                        act_wrench_eef.block<3,1>(6*act_contact_idx+3,0)= act_moment_eef[i]/*eef系,eefまわり*/;
-                        act_contact_idx++;
-                    }
-                }
-            }
-            
-            hrp::dmatrix acteefJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(act_contact_eef_num*6,act_contact_eef_joint_num);
-            //今のm_robotはactworld系なので，calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
-            {
-                size_t act_contact_idx =0;
-                for(size_t i=0;i<eefnum;i++){
-                    if(endeffector[i].act_contact_state){
-                        hrp::dmatrix JJ;
-                        endeffector[i].jpe->calcJacobian(JJ,endeffector[i].localp);
-                        JJ.block(0,0,3,JJ.cols()) = act_ee_R[i]/*actworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
-                        JJ.block(3,0,3,JJ.cols()) = act_ee_R[i]/*actworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
-                        for(size_t j = 0; j < endeffector[i].jpe->numJoints(); j++){
-                            acteefJ.block<6,1>(act_contact_idx*6,act_contact_eef_joint_map[endeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
-                        }
-                        act_contact_idx++;
-                    }
-                }
-            }
-            hrp::dvector tau_id = acttauv;
-            {
-                hrp::dvector Jtw = acteefJ.transpose()/*eef系,eefまわり<->joint*/ * act_wrench_eef/*eef系,eefまわり*/;
-                for(size_t i=0; i < act_contact_eef_joint_num; i++){
-                    if((mcs_leq_joint[act_contact_eef_joint_map[i]] && Jtw[i] < 0) ||
-                       (mcs_geq_joint[act_contact_eef_joint_map[i]] && Jtw[i] > 0) ||
-                       (!mcs_leq_joint[act_contact_eef_joint_map[i]] && !mcs_geq_joint[act_contact_eef_joint_map[i]])){
-                        tau_id[act_contact_eef_joint_map[i]] += Jtw[i];
-                    }
-                }
-            }
-            
-            if(debug){
-                std::cerr << "tau_id" <<std::endl;
-                std::cerr << tau_id <<std::endl;
-                std::cerr << "acteefJ" <<std::endl;
-                std::cerr << acteefJ <<std::endl;
-            }
-            hrp::dmatrix actJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(act_contact_cee_num*6,act_contact_joint_num);
-            //今のm_robotはactworld系なので，calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
-            {
-                size_t act_contact_idx =0;
-                for(size_t i=0;i<ceenum;i++){
-                    if(contactendeffector[i].act_contact_state){
-                        hrp::dmatrix JJ;
-                        contactendeffector[i].jpe->calcJacobian(JJ,contactendeffector[i].localp);
-                        JJ.block(0,0,3,JJ.cols()) = act_cee_R[i]/*actworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
-                        JJ.block(3,0,3,JJ.cols()) = act_cee_R[i]/*actworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
-                        for(size_t j = 0; j < contactendeffector[i].jpe->numJoints(); j++){
-                            actJ.block<6,1>(act_contact_idx*6,act_contact_joint_map[contactendeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
-                        }
-                        act_contact_idx++;
-                    }
-                }
-            }
-            const hrp::dmatrix actJt = actJ.transpose();
-
-            if(debug){
-                std::cerr << "actJ" <<std::endl;
-                std::cerr << actJ <<std::endl;
-            }
-            //debug
-            hrp::dmatrix debugA;
-            hrp::dvector debuglbA(act_contact_cee_num * 11 + act_contact_joint_num * 2);
-            
-            //to_distribute_FgNgを分配するQP
-            //USE_QPOASES を ON にすること
-            hrp::dvector cur_wrench_cee(6*act_contact_cee_num)/*eef系,eefまわり*/;//actcontactしているeefについての目標反力
-            {
-                const size_t state_len = act_contact_cee_num * 6;
-                const size_t inequality_len = act_contact_cee_num * 11 + act_contact_joint_num * 2;
-                real_t* H = new real_t[state_len * state_len]; // 0.5 xt H x + xt g が目的関数であることに注意
-                real_t* A = new real_t[inequality_len * state_len];
-                real_t* g = new real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
-                real_t* ub = NULL;
-                real_t* lb = NULL;
-                real_t* ubA = new real_t[inequality_len];
-                real_t* lbA = new real_t[inequality_len];
-
-                hrp::dmatrix W1 = hrp::dmatrix::Identity(act_contact_joint_num,act_contact_joint_num);
-                for (size_t i = 0; i < m_robot->numJoints(); i++){
-                    if(act_contact_joint_states[i]){
-                        if(is_passive[i]) W1(act_contact_joint_map[i],act_contact_joint_map[i]) = 1e-10;
-                        else W1(act_contact_joint_map[i],act_contact_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
-                    }
-                }
-                hrp::dmatrix W2 = hrp::dmatrix::Identity(act_contact_cee_num*6,act_contact_cee_num*6);
-                {
-                    size_t act_contact_idx = 0;
-                    for (size_t i = 0; i < ceenum; i++){
-                        if(contactendeffector[i].act_contact_state){
-                            for(size_t j = 0; j < 6; j++){
-                                W2(act_contact_idx*6 + j,act_contact_idx*6 + j) = contactendeffector[i].ee_forcemoment_distribution_weight[j];
-                            }
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                hrp::dmatrix W3 = hrp::dmatrix::Identity(6,6);
-                for(size_t i = 0; i < 6 ; i++){
-                    W3(i,i) = mcs_equality_weight[i];
-                }
-
-                if(debug){
-                    std::cerr << "W1" <<std::endl;
-                    std::cerr << W1 <<std::endl;
-                    std::cerr << "W2" <<std::endl;
-                    std::cerr << W2 <<std::endl;
-                    std::cerr << "W3" <<std::endl;
-                    std::cerr << W3 <<std::endl;
-                }
-                
-                {
-                    //H = JW1Jt + W2 + GtW3G
-                    const hrp::dmatrix tmpH = actJ * W1 * actJt + W2 + Gt * W3 * G;
-                    for (size_t i = 0; i < state_len; i++) {
-                        for(size_t j = 0; j < state_len; j++){ 
-                            H[i*state_len + j] = tmpH(i,j);
-                        }
-                    }
-
-                    if(debug){
-                        std::cerr << "H" <<std::endl;
-                        std::cerr << tmpH <<std::endl;
-                    }
-                }
-                {
-                    //2g = -2 tauidt W1 Jt - 2 FgNgt W3 G
-                    const hrp::dmatrix tmpg = - tau_id * W1 * actJt - to_distribute_FgNg.transpose() * W3 * G;
-                    for (size_t i=0;i<state_len;i++){
-                        g[i]=tmpg(0,i);
-                    }
-                    if(debug){
-                        std::cerr << "g" <<std::endl;
-                        std::cerr << tmpg <<std::endl;
-                    }
-                }
-                {
-                    hrp::dmatrix tmpA=hrp::dmatrix::Zero(inequality_len,state_len);
-                    size_t act_contact_idx = 0;
-                    for(size_t i=0; i< ceenum;i++){
-                        if(contactendeffector[i].act_contact_state){
-                            tmpA(act_contact_idx*11+0,act_contact_idx*6+2) = 1;//垂直抗力
-                            tmpA(act_contact_idx*11+1,act_contact_idx*6+0) = -1;//x摩擦
-                            tmpA(act_contact_idx*11+1,act_contact_idx*6+2) = contactendeffector[i].friction_coefficient;//x摩擦
-                            tmpA(act_contact_idx*11+2,act_contact_idx*6+0) = 1;//x摩擦
-                            tmpA(act_contact_idx*11+2,act_contact_idx*6+2) = contactendeffector[i].friction_coefficient;//x摩擦
-                            tmpA(act_contact_idx*11+3,act_contact_idx*6+1) = -1;//y摩擦
-                            tmpA(act_contact_idx*11+3,act_contact_idx*6+2) = contactendeffector[i].friction_coefficient;//y摩擦
-                            tmpA(act_contact_idx*11+4,act_contact_idx*6+1) = 1;//y摩擦
-                            tmpA(act_contact_idx*11+4,act_contact_idx*6+2) = contactendeffector[i].friction_coefficient;//y摩擦
-                            tmpA(act_contact_idx*11+5,act_contact_idx*6+3) = -1;//NxCOP
-                            tmpA(act_contact_idx*11+5,act_contact_idx*6+2) = contactendeffector[i].upper_cop_y_margin;//xCOP
-                            tmpA(act_contact_idx*11+6,act_contact_idx*6+3) = 1;//NxCOP
-                            tmpA(act_contact_idx*11+6,act_contact_idx*6+2) = -contactendeffector[i].lower_cop_y_margin;//xCOP
-                            tmpA(act_contact_idx*11+7,act_contact_idx*6+4) = -1;//NyCOP
-                            tmpA(act_contact_idx*11+7,act_contact_idx*6+2) = -contactendeffector[i].lower_cop_x_margin;//yCOP
-                            tmpA(act_contact_idx*11+8,act_contact_idx*6+4) = 1;//NyCOP
-                            tmpA(act_contact_idx*11+8,act_contact_idx*6+2) = contactendeffector[i].upper_cop_x_margin;//yCOP
-                            tmpA(act_contact_idx*11+9,act_contact_idx*6+5) = -1;//回転摩擦
-                            tmpA(act_contact_idx*11+9,act_contact_idx*6+2) = contactendeffector[i].rotation_friction_coefficient;//回転摩擦
-                            tmpA(act_contact_idx*11+10,act_contact_idx*6+5) = 1;//回転摩擦
-                            tmpA(act_contact_idx*11+10,act_contact_idx*6+2) = contactendeffector[i].rotation_friction_coefficient;//回転摩擦
-                            act_contact_idx++;
-                        }
-                    }
-
-                    //tmpA =| -Jt |
-                    //      |  Jt |
-                    tmpA.block(act_contact_cee_num * 11,0,act_contact_joint_num,act_contact_cee_num*6) = -actJt;
-                    tmpA.block(act_contact_cee_num * 11 + act_contact_joint_num,0,act_contact_joint_num,act_contact_cee_num*6) = actJt;
-
-                    for(size_t i =0; i< inequality_len;i++){
-                        for(size_t j = 0; j < state_len; j++){
-                            A[i*state_len + j] = tmpA(i,j);
-                        }
-                    }
-                    if(debug){
-                        std::cerr << "tmpA" <<std::endl;
-                        std::cerr << tmpA <<std::endl;
-                    
-                        debugA = tmpA;
-                    }
-                }
-                {
-                    
-                    for (int i = 0;i < inequality_len;i++){
-                        lbA[i] = 0.0;
-                        ubA[i] = 1e10;
-                    }
-                    size_t act_contact_idx =0;
-                    for(size_t i=0;i<ceenum; i++){
-                        if(contactendeffector[i].act_contact_state){
-                            lbA[act_contact_idx*11+0] = contactendeffector[i].min_fz;//垂直抗力最小値
-                            act_contact_idx++;
-                        }
-                    }
-                    for(size_t i = 0; i < m_robot->numJoints(); i++){
-                        if(act_contact_joint_states[i]){
-                            double taumax = m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                            double taumin = - m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                            if(is_passive[i]){
-                                if(mcs_passive_torquedirection[i]>0)taumin = 0.0;
-                                if(mcs_passive_torquedirection[i]<0)taumax = 0.0;
-                            }
-                            
-                            lbA[act_contact_cee_num*11+act_contact_joint_map[i]] = taumin - tau_id[i];//最小値
-                            lbA[act_contact_cee_num*11+act_contact_joint_num + act_contact_joint_map[i]] = -taumax + tau_id[i];//最大値
-                        }
-                    }
-
-
-                    if(debug){
-                        for(size_t i = 0; i < inequality_len; i++){
-                            debuglbA[i] = lbA[i];
-                        }
-                        std::cerr << "lbA" <<std::endl;
-                        std::cerr << debuglbA <<std::endl;
-                    }
-                }            
-
-                qpOASES::Options options;
-                //options.enableFlippingBounds = qpOASES::BT_FALSE;
-                options.initialStatusBounds = qpOASES::ST_INACTIVE;
-                options.numRefinementSteps = 1;
-                options.enableCholeskyRefactorisation = 1;
-                if(debug){
-                    options.printLevel = qpOASES::PL_HIGH;
-                }else{
-                    options.printLevel = qpOASES::PL_NONE;
-                }
-                
-                //copied from eus_qpoases
-                boost::shared_ptr<qpOASES::SQProblem> example;
-                std::pair<int, int> tmp_pair(state_len, inequality_len);
-                bool is_initial = true;
-                bool internal_error = false;
-                {
-                    std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
-                    is_initial = (it == sqp_map.end());
-                    if(!is_initial){
-                        example = it->second;
-                    }
-                }
-                if (!is_initial) {
-                    example->setOptions( options );
-                    int nWSR = 1000;
-
-                    //debug
-                    struct timeval s, e;
-                    if(debug){
-                        gettimeofday(&s, NULL);
-                    }
-                    
-                    qpOASES::returnValue status = example->hotstart( H,g,A,lb,ub,lbA,ubA, nWSR);
-
-                    if(debug){
-                        gettimeofday(&e, NULL);
-                        std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                    }
-
-                    if(qpOASES::getSimpleStatus(status)==0){
-                        if(debug){
-                            std::cerr << "hotstart qp_solved" <<std::endl;
-                        }
-                        
-                        qp_solved=true;
-                        real_t* xOpt = new real_t[state_len];
-                        example->getPrimalSolution( xOpt );
-                        for(size_t i=0; i<state_len;i++){
-                            cur_wrench_cee[i]=xOpt[i];
-                        }
-                        delete[] xOpt;
-                    }else{
-                        if(debug){
-                            std::cerr << "hotstart qp fail" <<std::endl;
-                        }
-                        // Delete unsolved sqp
-                        sqp_map.erase(tmp_pair);
-                        if(qpOASES::getSimpleStatus(status)==-1){
-                            if(debug){
-                                std::cerr << "hotstart qp internal error" <<std::endl;
-                            }
-                            internal_error = true;
-                        }
-                    }
-                }
-
-                if(is_initial || internal_error){
-                    example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN));
-                    //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
-                    sqp_map[tmp_pair]=example;
-                    example->setOptions( options );
-                    int nWSR = 1000;
-
-                    //debug
-                    struct timeval s, e;
-                    if(debug){
-                        gettimeofday(&s, NULL);
-                    }
-                    qpOASES::returnValue status = example->init( H,g,A,lb,ub,lbA,ubA, nWSR);
-
-                    if(debug){
-                        gettimeofday(&e, NULL);
-                        std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                    }
-
-                    if(qpOASES::getSimpleStatus(status)==0){
-                        if(debug){
-                            std::cerr << "initial qp_solved" <<std::endl;
-                        }
-
-                        qp_solved=true;
-                        real_t* xOpt = new real_t[state_len];
-                        example->getPrimalSolution( xOpt );
-                        for(size_t i=0; i<state_len;i++){
-                            cur_wrench_cee[i]=xOpt[i];
-                        }
-                        delete[] xOpt;
-                    }else{
-                        if(debug){
-                            std::cerr << "initial qp fail" <<std::endl;
-                        }
-                        // Delete unsolved sqp
-                        sqp_map.erase(tmp_pair);
-                    }
-                }
-                delete[] H;
-                delete[] A;
-                delete[] g;
-                delete[] ub;
-                delete[] lb;
-                delete[] ubA;
-                delete[] lbA;
-            }
-            
-            if(qp_solved){
-                //output: cur_wrench_cee(eef系,eefまわり)
-                
-                if(debug){
-                    std::cerr << "cur_wrench_cee" <<std::endl;
-                    std::cerr << cur_wrench_cee <<std::endl;
-                    std::cerr << "Ax" <<std::endl;
-                    std::cerr << debugA * cur_wrench_cee << std::endl;
-                    std::cerr << "Ax - lbA" <<std::endl;
-                    std::cerr << debugA * cur_wrench_cee - debuglbA<< std::endl;
-                }
-                
-                //目標重心位置を求める
-                // const hrp::dvector6 cur_FgNg/*act_cogorigin系,cogまわり*/ = G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ * cur_wrench_cee/*eef系,eef*/ + extern_FgNg/*act_cogorigin系,cogまわり*/;
-                // d_cogacc/*act_cogorigin系*/ =  cur_FgNg.block<3,1>(0,0) / m_robot->totalMass() - ref_cogacc/*refworld系*/ - g/*act_world系*/;
-                // for(size_t i=0; i < 3 ; i++){
-                //     if(d_cogacc[i] > mcs_cogacc_compensation_limit) d_cogacc[i] = mcs_cogacc_compensation_limit;
-                //     if(d_cogacc[i] < -mcs_cogacc_compensation_limit) d_cogacc[i] = -mcs_cogacc_compensation_limit;
-                // }
-                
-                                
-                d_cogvel/*refworld系*/ += transition_smooth_gain * d_cogacc/*act_cogorigin系*/ * dt;
-                for(size_t i=0; i < 3 ; i++){
-                    if(d_cogvel[i] > mcs_cogvel_compensation_limit) d_cogvel[i] = mcs_cogvel_compensation_limit;
-                    if(d_cogvel[i] < -mcs_cogvel_compensation_limit) d_cogvel[i] = -mcs_cogvel_compensation_limit;
-                }
-                d_cog/*refworld系*/ += d_cogvel/*refworld系*/ * dt;
-                for(size_t i=0; i < 3 ; i++){
-                    if(d_cog[i] > mcs_cogpos_compensation_limit) d_cog[i] = mcs_cogpos_compensation_limit;
-                    if(d_cog[i] < -mcs_cogpos_compensation_limit) d_cog[i] = -mcs_cogpos_compensation_limit;
-                }
-
-                if(debug){
-                    const hrp::dvector6 cur_FgNg/*act_cogorigin系,cogまわり*/ = G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ * cur_wrench_cee/*eef系,eef*/;
-                    std::cerr << "cur_FgNg" <<std::endl;
-                    std::cerr << cur_FgNg <<std::endl;
-                    std::cerr << "d_cogacc" <<std::endl;
-                    std::cerr << d_cogacc <<std::endl;
-                    std::cerr << "d_cogvel" <<std::endl;
-                    std::cerr << d_cogvel <<std::endl;
-                    std::cerr << "d_cog" <<std::endl;
-                    std::cerr << d_cog <<std::endl;
-                }
-                hrp::dvector cur_wrench_eef_org/*eef系,eefまわり*/ = hrp::dvector::Zero(6*eefnum);
-                {
-                    size_t act_contact_idx = 0;
-                    for(size_t i = 0; i < ceenum; i++){
-                        if(contactendeffector[i].act_contact_state){
-                            cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+0,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(act_contact_idx*6+0,0);
-                            cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+3,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(act_contact_idx*6+3,0);
-                            cur_wrench_eef_org.block<3,1>(6*endeffector_index_map[contactendeffector[i].endeffector_name]+3,0) += act_ee_R_origin[endeffector_index_map[contactendeffector[i].endeffector_name]].transpose() * hrp::hat(act_cee_p_origin[i]-act_ee_p_origin[endeffector_index_map[contactendeffector[i].endeffector_name]]) * act_cee_R_origin[i] * cur_wrench_cee.block<3,1>(act_contact_idx*6+0,0);
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                hrp::dvector cur_wrench_eef/*eef系,eefまわり*/ = hrp::dvector::Zero(6*act_contact_eef_num);
-                {
-                    size_t act_contact_idx = 0;
-                    for(size_t i = 0; i <eefnum;i++){
-                        if(endeffector[i].act_contact_state){
-                            cur_wrench_eef.block<6,1>(6*act_contact_idx,0)/*eef系,eefまわり*/=cur_wrench_eef_org.block<6,1>(6*i,0)/*eef系,eefまわり*/;
-                            act_contact_idx++;
-                        }
-                    }
-                }
-                
-                d_wrench_eef/*eef系,eefまわり*/ = cur_wrench_eef/*eef系,eefまわり*/ - act_wrench_eef/*eef系,eefまわり*/;
-
-                if(debug){
-                    std::cerr << "cur_wrench_eef" <<std::endl;
-                    std::cerr << cur_wrench_eef <<std::endl;
-                    std::cerr << "act_wrench_eef" <<std::endl;
-                    std::cerr << act_wrench_eef <<std::endl;
-                    std::cerr << "d_wrench_eef" <<std::endl;
-                    std::cerr << d_wrench_eef <<std::endl;
-                }
-
-                // hrp::dmatrix Geef/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = hrp::dmatrix::Zero(6,6*act_contact_eef_num);//grasp_matrix
-                // {
-                //     size_t act_contact_idx = 0;
-                //     for(size_t i = 0; i <eefnum;i++){
-                //         if(endeffector[i].act_contact_state){
-                //             Geef.block<3,3>(0,6*act_contact_idx) = act_ee_R_origin[i]/*act_cogorigin系*/;
-                //             Geef.block<3,3>(3,6*act_contact_idx) = hrp::hat(act_ee_p_origin[i]/*act_cogorigin系*/ - act_cog_origin/*act_cogorigin系*/) * act_ee_R_origin[i]/*act_cogorigin系*/;
-                //             Geef.block<3,3>(3,6*act_contact_idx+3) = act_ee_R_origin[i]/*act_cogorigin系*/;
-                //             act_contact_idx++;
-                //         }
-                //     }
-                // }
-                // const hrp::dmatrix Geeft = Geef.transpose();
-                // if(debug){
-                //     std::cerr << "Geef" <<std::endl;
-                //     std::cerr << Geef <<std::endl;
-                // }
-                
-                // const hrp::dmatrix Geefinv/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = Geeft * (Geef*Geeft).partialPivLu().inverse(); 
-                
-                // d_wrench_eef/*eef系,eefまわり*/ = (hrp::dmatrix::Identity(6*act_contact_eef_num,6*act_contact_eef_num) - Geefinv * Geef) * d_wrench_eef/*eef系,eefまわり*/;
-
-                // if(debug){
-                //     std::cerr << "d_wrench_eef_nullspace" <<std::endl;
-                //     std::cerr << d_wrench_eef <<std::endl;
-                // }
-                
-            }else{//if(qp_solved)
-                std::cerr << "[" << instance_name << "] QP fail" <<std::endl;
-            }
-            
-        }else{//if(act_contact)
-            std::cerr << "[" << instance_name << "] not act_contact" << std::endl;
-        }
-        
-        if(!act_contact || !qp_solved){
-            d_cogvel/*refworld系*/ -= d_cogvel/*refworld系*/ / mcs_cogpos_time_const * dt;
-            for(size_t i=0; i < 3 ; i++){
-                if(d_cogvel[i] > mcs_cogvel_compensation_limit) d_cogvel[i] = mcs_cogvel_compensation_limit;
-                if(d_cogvel[i] < -mcs_cogvel_compensation_limit) d_cogvel[i] = -mcs_cogvel_compensation_limit;
-            }
-            d_cog/*refworld系*/ -= d_cog/*refworld系*/ / mcs_cogpos_time_const * dt;
-            d_cog/*refworld系*/ += d_cogvel/*refworld系*/ * dt;
-            for(size_t i=0; i < 3 ; i++){
-                if(d_cog[i] > mcs_cogpos_compensation_limit) d_cog[i] = mcs_cogpos_compensation_limit;
-                if(d_cog[i] < -mcs_cogpos_compensation_limit) d_cog[i] = -mcs_cogpos_compensation_limit;
-            }
-
-            d_wrench_eef = hrp::dvector::Zero(6*act_contact_eef_num);
-
-            if(debug){
-                std::cerr << "d_cogvel" <<std::endl;
-                std::cerr << d_cogvel <<std::endl;
-                std::cerr << "d_cog" <<std::endl;
-                std::cerr << d_cog <<std::endl;
-                std::cerr << "d_wrench_eef" <<std::endl;
-                std::cerr << d_wrench_eef <<std::endl;
-            }
-        }
-
-
-        
-
-        //各EEFの修正量を決める
+        //USE_QPOASES を ON にすること
+        bool qp_solved=false;
+        hrp::dvector command_dq = hrp::dvector::Zero(6+ik_enable_joint_num);
         {
-            size_t act_contact_idx = 0;
-            for (size_t i = 0; i < eefnum; i++){
-                d_foot_pos2[i] = d_foot_pos1[i];
-                d_foot_rpy2[i] = d_foot_rpy1[i];
-                d_foot_pos1[i] = d_foot_pos[i];
-                d_foot_rpy1[i] = d_foot_rpy[i];
-                if(endeffector[i].act_contact_state){
-                    //目標反力実現damping control
-                    d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(mcs_pos_time_const[i]) *dt;
-                    d_foot_rpy[i] -= d_foot_rpy[i].cwiseQuotient(mcs_rot_time_const[i]) *dt;
-                    d_foot_pos[i] += - (endeffector[i].act_contact_time / endeffector[i].contact_transition_time) * transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6,0).cwiseQuotient(mcs_pos_damping_gain[i]) * dt;
-                    d_foot_pos[i][2] -= (1.0 - (endeffector[i].act_contact_time / endeffector[i].contact_transition_time)) * transition_smooth_gain * mcs_contact_vel * dt;
-                    d_foot_rpy[i] += - (endeffector[i].act_contact_time / endeffector[i].contact_transition_time) * transition_smooth_gain * d_wrench_eef.block<3,1>(act_contact_idx*6+3,0).cwiseQuotient(mcs_rot_damping_gain[i]) * dt;
-                    
-                    act_contact_idx++;
-
-                    if(debug){
-                        std::cerr << i << ": 目標反力実現damping control gain: " << (endeffector[i].act_contact_time / endeffector[i].contact_transition_time) <<std::endl;
-                    }
-
-                }else if(!endeffector[i].act_contact_state && ref_contact_states[i]){
-                    //contactするようz方向に伸ばす
-                    d_foot_pos[i] -= d_foot_pos[i].cwiseQuotient(mcs_pos_time_const[i]) *dt;
-                    d_foot_rpy[i] -= d_foot_rpy[i].cwiseQuotient(mcs_rot_time_const[i]) *dt;
-                    d_foot_pos[i][2] -= transition_smooth_gain * mcs_contact_vel * dt;
-                    //swingEEcompensation TODO
-
-                    if(debug){
-                        std::cerr << i << ": contactするようz方向に伸ばす" <<std::endl;
-                    }
-                    
-                }else{//即ち!ref_contact_states[i]
-                    //インピーダンス制御
-
-                    /*
-                    d_foot_pos[i] =
-                        swing_support_gains[i] *
-                        ((transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
-                          + (2 * M_p[i] + D_p[i] * dt) * d_foot_pos1[i]
-                          - M_p[i] * d_foot_pos2[i]) /
-                         (M_p[i] + D_p[i] * dt + K_p[i] * dt * dt))
-                        + (1.0 - swing_support_gains[i]) *
-                        (d_foot_pos1[i]
-                         + transition_smooth_gain * (act_force_eef[i]-ref_force_eef[i]).cwiseQuotient(mcs_pos_damping_gain[i]) * dt
-                         - d_foot_pos1[i].cwiseQuotient(mcs_pos_time_const[i]) *dt);
-                    d_foot_rpy[i] =
-                        swing_support_gains[i] *
-                        ((transition_smooth_gain * moment_gain[i] * (act_moment_eef[i]-ref_moment_eef[i]) * dt * dt
-                          + (2 * M_r[i] + D_r[i] * dt) * d_foot_rpy1[i]
-                          - M_r[i] * d_foot_rpy2[i]) /
-                         (M_r[i] + D_r[i] * dt + K_r[i] * dt * dt))
-                        + (1.0 - swing_support_gains[i]) *
-                        (d_foot_rpy1[i]
-                         + transition_smooth_gain * (act_moment_eef[i]-ref_moment_eef[i]).cwiseQuotient(mcs_rot_damping_gain[i]) * dt
-                         - d_foot_rpy1[i].cwiseQuotient(mcs_rot_time_const[i]) *dt);
-                    */
-                    //swingEEcompensation TODO
-
-                    d_foot_pos[i] = ((transition_smooth_gain * force_gain[i] * (act_force_eef[i]-ref_force_eef[i]) * dt * dt
-                                      + (2 * M_p[i] + D_p[i] * dt) * d_foot_pos1[i]
-                                      - M_p[i] * d_foot_pos2[i]) /
-                                     (M_p[i] + D_p[i] * dt + K_p[i] * dt * dt));
-                    d_foot_rpy[i] = ((transition_smooth_gain * moment_gain[i] * (act_moment_eef[i]-ref_moment_eef[i]) * dt * dt
-                                      + (2 * M_r[i] + D_r[i] * dt) * d_foot_rpy1[i]
-                                      - M_r[i] * d_foot_rpy2[i]) /
-                                     (M_r[i] + D_r[i] * dt + K_r[i] * dt * dt));
-                    if(debug){
-                        std::cerr << i << ": インピーダンス制御" << std::endl;
+            const size_t state_len = 6+ik_enable_joint_num;
+            size_t inequality_len = 0;
+            for(size_t i = 0 ; i < As.size(); i ++){
+                inequality_len += As[i].rows();
+            }
+            real_t* qp_H = new real_t[state_len * state_len]; // 0.5 xt H x + xt g が目的関数であることに注意
+            real_t* qp_A = new real_t[inequality_len * state_len];
+            real_t* qp_g = new real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
+            real_t* qp_ub = new real_t[state_len];
+            real_t* qp_lb = new real_t[state_len];
+            real_t* qp_ubA = new real_t[inequality_len];
+            real_t* qp_lbA = new real_t[inequality_len];
+            
+            for (size_t i = 0; i < state_len; i++) {
+                for(size_t j = 0; j < state_len; j++){ 
+                    qp_H[i*state_len + j] = H(i,j);
+                }
+            }
+            for (size_t i = 0; i < state_len; i++) {
+                qp_g[i] = g[i];
+                qp_lb[i] = lb[i];
+                qp_ub[i] = ub[i];
+            }
+            {
+                size_t inequality_idx = 0; 
+                for (size_t i = 0; i < As.size(); i++) {
+                    for(size_t j = 0; j < As[i].rows() ; j++){
+                        for(size_t k = 0; k < state_len; k++){ 
+                            qp_A[state_len*inequality_idx + j] = As[i](j,k);
+                        }
+                        qp_lbA[inequality_idx] = lbAs[i][j];
+                        qp_ubA[inequality_idx] = ubAs[i][j];
+                        inequality_idx++;
                     }
                 }
-                for(size_t j=0;j<3;j++){
-                    if(d_foot_pos[i][j] > mcs_pos_compensation_limit) d_foot_pos[i][j] = mcs_pos_compensation_limit;
-                    if(d_foot_pos[i][j] < -mcs_pos_compensation_limit) d_foot_pos[i][j] = -mcs_pos_compensation_limit;
-                    
-                    if(d_foot_rpy[i][j] > mcs_rot_compensation_limit) d_foot_rpy[i][j] = mcs_rot_compensation_limit;
-                    if(d_foot_rpy[i][j] < -mcs_rot_compensation_limit) d_foot_rpy[i][j] = -mcs_rot_compensation_limit;
+            }
+            
+            qpOASES::Options options;
+            //options.enableFlippingBounds = qpOASES::BT_FALSE;
+            options.initialStatusBounds = qpOASES::ST_INACTIVE;
+            options.numRefinementSteps = 1;
+            options.enableCholeskyRefactorisation = 1;
+            if(debug){
+                options.printLevel = qpOASES::PL_HIGH;
+            }else{
+                options.printLevel = qpOASES::PL_NONE;
+            }
+            
+            //copied from eus_qpoases
+            boost::shared_ptr<qpOASES::SQProblem> example;
+            std::pair<int, int> tmp_pair(state_len, inequality_len);
+            bool is_initial = true;
+            bool internal_error = false;
+            {
+                std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
+                is_initial = (it == sqp_map.end());
+                if(!is_initial){
+                    example = it->second;
                 }
-
+            }
+            if (!is_initial) {
+                example->setOptions( options );
+                int nWSR = 1000;
+                
+                //debug
+                struct timeval s, e;
                 if(debug){
-                    std::cerr << "d_foot_pos" <<std::endl;
-                    std::cerr << d_foot_pos[i] <<std::endl;
-                    std::cerr << "d_foot_rpy" <<std::endl;
-                    std::cerr << d_foot_rpy[i] <<std::endl;
+                    gettimeofday(&s, NULL);
+                }
+                
+                qpOASES::returnValue status = example->hotstart( H,g,A,lb,ub,lbA,ubA, nWSR);
+                
+                if(debug){
+                    gettimeofday(&e, NULL);
+                    std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+                }
+                
+                if(qpOASES::getSimpleStatus(status)==0){
+                    if(debug){
+                        std::cerr << "hotstart qp_solved" <<std::endl;
+                    }
+                    
+                    qp_solved=true;
+                    real_t* xOpt = new real_t[state_len];
+                    example->getPrimalSolution( xOpt );
+                    for(size_t i=0; i<state_len;i++){
+                        command_dq[i]=xOpt[i];
+                    }
+                    delete[] xOpt;
+                }else{
+                    if(debug){
+                        std::cerr << "hotstart qp fail" <<std::endl;
+                    }
+                    // Delete unsolved sqp
+                    sqp_map.erase(tmp_pair);
+                    if(qpOASES::getSimpleStatus(status)==-1){
+                        if(debug){
+                            std::cerr << "hotstart qp internal error" <<std::endl;
+                        }
+                        internal_error = true;
+                    }
                 }
             }
-        }
-                        
-        // 前回の出力へ.関係ないjointは今回のref値へ
-        m_robot->rootLink()->R = cur_root_R/*refworld系*/;
-        m_robot->rootLink()->p = cur_root_p/*refworld系*/;
-        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
-            m_robot->joint(i)->q = qrefv[i];
-        }
-        for (size_t i = 0; i < eefnum; i++) {
-            if (is_ik_enable[i]) {
-                //optional_weight_vectorが0のjointも，一度curにする．optional_weight_vectorを変えた時に値が飛ぶため.reference_gainで追従する->応答が遅いことに注意
-                for ( int j = 0; j < endeffector[i].jpe->numJoints(); j++ ){
-                    const int idx = endeffector[i].jpe->joint(j)->jointId;
-                    m_robot->joint(idx)->q = qcurv[idx];
+            
+            if(is_initial || internal_error){
+                example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN));
+                //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
+                sqp_map[tmp_pair]=example;
+                example->setOptions( options );
+                int nWSR = 1000;
+                
+                //debug
+                struct timeval s, e;
+                if(debug){
+                    gettimeofday(&s, NULL);
+                }
+                qpOASES::returnValue status = example->init( H,g,A,lb,ub,lbA,ubA, nWSR);
+                
+                if(debug){
+                    gettimeofday(&e, NULL);
+                    std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+                }
+                
+                if(qpOASES::getSimpleStatus(status)==0){
+                    if(debug){
+                        std::cerr << "initial qp_solved" <<std::endl;
+                    }
+                    
+                    qp_solved=true;
+                    real_t* xOpt = new real_t[state_len];
+                    example->getPrimalSolution( xOpt );
+                    for(size_t i=0; i<state_len;i++){
+                        command_dq[i]=xOpt[i];
+                    }
+                    delete[] xOpt;
+                }else{
+                    if(debug){
+                        std::cerr << "initial qp fail" <<std::endl;
+                    }
+                    // Delete unsolved sqp
+                    sqp_map.erase(tmp_pair);
                 }
             }
+            delete[] H;
+            delete[] A;
+            delete[] g;
+            delete[] ub;
+            delete[] lb;
+            delete[] ubA;
+            delete[] lbA;
         }
 
-        // passive joint は速度制限して実際の角度へ。ikではこれらの関節は使わない
-        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
-            if(is_passive[i]){
-                if(m_robot->joint(i)->q + mcs_passive_vel * dt < qactv[i])m_robot->joint(i)->q = m_robot->joint(i)->q + mcs_passive_vel * dt;
-                else if (m_robot->joint(i)->q - mcs_passive_vel * dt > qactv[i])m_robot->joint(i)->q = m_robot->joint(i)->q - mcs_passive_vel * dt;
-                else m_robot->joint(i)->q = qactv[i];
+        
+        
+
+
+
+
+        /*****************************************************************/
+
+        m_robot->rootLink()->p/*refworld系*/ += transition_smooth_gain * command_dq.block<3,1>(0,0);
+        hrp::Matrix33 dR/*refworld系*/;
+        hrp::calcRodrigues(dR,command_dq.block<3,1>(3,0).normalized(),transition_smooth_gain*command_dq.block<3,1>(3,0).norm());
+        m_robot->rootLink()->R/*refworld系*/ = dR/*refworld系*/ * m_robot->rootLink()->R/*refworld系*/;
+        for(int j=0; j < m_robot->numJoints(); ++j){
+            if(ik_enable_joint_states[j]){
+                m_robot->joint(j)->q += transition_smooth_gain * command_dq[6+ik_enable_joint_map[j]];
             }
-            if(sync2activecnt[i]>0)sync2activecnt[i]--;
         }
-
         m_robot->calcForwardKinematics();
 
-        //solve IK
-        //cog,eefを目標位置へ
-        bool ik_enable = false;
-        for(size_t i = 0; i < eefnum;i++){
-            if(is_ik_enable[i])ik_enable=true;
+        d_cog = m_robot->calcCM()/*refworld系*/ - ref_cog/*refworld系*/;
+        for(size_t i=0; i < eefnum; i++){
+            endeffector[i]->d_foot_pos1/*eef系*/ = endeffector[i]->d_foot_pos;
+            endeffector[i]->d_foot_rpy1/*eef系*/ = endeffector[i]->d_foot_rpy;
+
+            hrp::Link* target/*refworld系*/ = m_robot->link(endeffector[i]->link_name);
+            endeffector[i]->cur_p = target->p/*refworld系*/ + target->R * endeffector[i]->localp;
+            endeffector[i]->cur_R = target->R * endeffector[i]->localR;
+
+            endeffector[i]->d_foot_pos/*eef系*/ = endeffector[i]->ref_R.transpose() * (endeffector[i]->cur_p - endeffector[i]->ref_p);
+            endeffector[i]->d_foot_rpy/*eef系*/ = hrp::rpyFromRot(endeffector[i]->ref_R.transpose() * endeffector[i]->cur_R);
         }
+        
 
-        //ik_enableなeef
-        size_t ik_enable_eef_num = 0;
-        for(size_t i = 0; i < eefnum ; i++){
-            if(is_ik_enable[i])ik_enable_eef_num++;
-        }
-        size_t ik_enable_actcontact_eef_num = 0;
-        for(size_t i = 0; i < eefnum ; i++){
-            if(is_ik_enable[i]&&endeffector[i].act_contact_state)ik_enable_actcontact_eef_num++;
-        }
 
-        std::vector<bool> ik_enable_joint_states(m_robot->numJoints(),false);
-        for(size_t i = 0; i < eefnum; i++){
-            if(is_ik_enable[i]){
-                for(size_t j = 0; j < endeffector[i].jpe->numJoints();j++){
-                    if(!is_passive[endeffector[i].jpe->joint(j)->jointId]){
-                        ik_enable_joint_states[endeffector[i].jpe->joint(j)->jointId] = true;
-                    }
-                }
-            }
-        }
-        size_t ik_enable_joint_num=0;
-        std::map<size_t,size_t> ik_enable_joint_map;
-        for(size_t i = 0; i < m_robot->numJoints(); i++){
-            if(ik_enable_joint_states[i]){
-                ik_enable_joint_map[i] = ik_enable_joint_num;
-                ik_enable_joint_num++;
-            }
-        }
 
-        if(ik_enable){
-            const hrp::Vector3 target_cog_p/*refworld系*/ = ref_cog/*refworld系*/ + d_cog/*refworld系*/;
-
-            if(debug){
-                std::cerr << "target_cog_p" << std::endl;
-                std::cerr << target_cog_p << std::endl;
-            }
-            std::vector<hrp::Vector3> target_link_p(ik_enable_eef_num)/*refworld系*/;
-            std::vector<hrp::Matrix33> target_link_R(ik_enable_eef_num)/*refworld系*/;
-            {
-                size_t ik_enable_idx = 0;
-                for(size_t i = 0; i < eefnum; i++){
-                    if(is_ik_enable[i]){
-                        target_link_R[ik_enable_idx]/*refworld系*/ = ref_ee_R[i]/*refworld系*/ * hrp::rotFromRpy(d_foot_rpy[i])/*eef系*/ * endeffector[i].localR.transpose()/*eef系*/;
-                        target_link_p[ik_enable_idx]/*refworld系*/ = ref_ee_p[i]/*refworld系*/ + ref_ee_R[i]/*refworld系*/ * d_foot_pos[i]/*eef系*/ - target_link_R[ik_enable_idx]/*refworld系*/ * endeffector[i].localp/*eef系*/;
-                        if(debug){
-                            std::cerr << "target_link_R" << std::endl;
-                            std::cerr << target_link_R[ik_enable_idx] << std::endl;
-                            std::cerr << "target_link_p" << std::endl;
-                            std::cerr << target_link_p[ik_enable_idx] << std::endl;
-                        }
-
-                        ik_enable_idx++;
-                    }
-                }
-            }
-
-            for(size_t loop = 0; loop < 3; loop++){
-                //現状
-                const hrp::Vector3 temp_cog_p/*refworld系*/ = m_robot->calcCM();
-                const hrp::Vector3 cog_vel_p/*refworld系*/ = target_cog_p/*refworld系*/ - temp_cog_p/*refworld系*/;
-
-                if(debug){
-                    std::cerr << "temp_cog_p" << std::endl;
-                    std::cerr << temp_cog_p << std::endl;
-                    std::cerr << "cog_vel_p" << std::endl;
-                    std::cerr << cog_vel_p << std::endl;
-                }
-                std::vector<hrp::Vector3> temp_p(ik_enable_eef_num)/*refworld系*/;
-                std::vector<hrp::Matrix33> temp_R(ik_enable_eef_num)/*refworld系*/;
-                std::vector<hrp::Vector3> vel_p(ik_enable_eef_num)/*refworld系*/;
-                std::vector<hrp::Vector3> vel_r(ik_enable_eef_num)/*refworld系*/;
-                {
-                    size_t ik_enable_idx = 0;
-                    for(size_t i = 0; i < eefnum; i++){
-                        if(is_ik_enable[i]){
-                            temp_p[ik_enable_idx]/*refworld系*/ = endeffector[i].jpe->endLink()->p/*refworld系*/;
-                            vel_p[ik_enable_idx]/*refworld系*/ = target_link_p[ik_enable_idx]/*refworld系*/ - temp_p[ik_enable_idx]/*refworld系*/;
-                            temp_R[ik_enable_idx]/*refworld系*/ = endeffector[i].jpe->endLink()->R/*refworld系*/;
-                            vel_r[ik_enable_idx]/*refworld系*/ = temp_R[ik_enable_idx]/*refworld系*/ * matrix_logEx(temp_R[ik_enable_idx].transpose()/*refworld系*/ * target_link_R[ik_enable_idx]/*refworld系*/);
-                            if(debug){
-                                std::cerr << "temp_p" << std::endl;
-                                std::cerr << temp_p[ik_enable_idx] << std::endl;
-                                std::cerr << "vel_p" << std::endl;
-                                std::cerr << vel_p[ik_enable_idx] << std::endl;
-                                std::cerr << "temp_R" << std::endl;
-                                std::cerr << temp_R[ik_enable_idx] << std::endl;
-                                std::cerr << "vel_r" << std::endl;
-                                std::cerr << vel_r[ik_enable_idx] << std::endl;
-                            }
-                            ik_enable_idx++;
-                        }
-                    }
-                }
-                hrp::dvector dq = hrp::dvector::Zero(6+ik_enable_joint_num);
-                
-                hrp::dmatrix w = hrp::dmatrix::Identity(6+ik_enable_joint_num,6+ik_enable_joint_num);
-                for ( int j = 0; j < m_robot->numJoints() ; j++ ) {
-                    if(ik_enable_joint_states[j]){
-                        double jang = m_robot->joint(j)->q;
-                        double jmax = m_robot->joint(j)->ulimit;
-                        double jmin = m_robot->joint(j)->llimit;
-                        if (joint_limit_tables.find(m_robot->joint(j)->name) != joint_limit_tables.end()) {
-                            std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(j)->name);
-                            jmin = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                            jmax = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                        }
-                        double e = 1*M_PI/180;
-                        if ( (fabs(jang-jmax) <= e) && ( fabs(jang-jmin) <= e ) ) {
-                        } else if ( fabs(jang-jmax) <= e ) {
-                            jang = jmax - e;
-                        } else if ( fabs(jang-jmin) <= e ) {
-                            jang = jmin + e;
-                        }
-                        
-                        double r;
-                        if ( ( fabs(jang-jmax) <= e ) && ( fabs(jang-jmin) <= e ) ) {
-                            r = std::numeric_limits<double>::max();
-                        } else {
-                            r = fabs( (pow((jmax - jmin),2) * (( 2 * jang) - jmax - jmin)) /
-                                      (4 * pow((jmax - jang),2) * pow((jang - jmin),2)) );
-                            if (std::isnan(r)) r = 0;
-                        }
-                        
-                        w(6+ik_enable_joint_map[j], 6+ik_enable_joint_map[j]) = mcs_ik_optional_weight_vector[j] * ( 1.0 / ( 1.0 + r) );
-                    }
-                }
-                
-                hrp::dmatrix actcontacteefJ/*refworld系,eefまわり <-> virtualjoint + ik_enable_joint*/ = hrp::dmatrix::Zero(6*ik_enable_actcontact_eef_num, 6+ik_enable_joint_num);//virtualjointはrootlinkのworld側に付いている
-                {
-                    size_t ik_enable_actcontact_idx =0;
-                    for(size_t i=0;i<eefnum;i++){
-                        if(is_ik_enable[i]&&endeffector[i].act_contact_state){
-                            actcontacteefJ.block<3,3>(ik_enable_actcontact_idx*6,0)= hrp::Matrix33::Identity();
-                            actcontacteefJ.block<3,3>(ik_enable_actcontact_idx*6,3)= - hrp::hat(temp_p[ik_enable_actcontact_idx]/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
-                            actcontacteefJ.block<3,3>(ik_enable_actcontact_idx*6+3,3)= hrp::Matrix33::Identity();
-                            hrp::dmatrix JJ;
-                            endeffector[i].jpe->calcJacobian(JJ);
-                            for(size_t j = 0; j < endeffector[i].jpe->numJoints(); j++){
-                                if(!is_passive[endeffector[i].jpe->joint(j)->jointId]){
-                                    actcontacteefJ.block<6,1>(ik_enable_actcontact_idx*6,6+ik_enable_joint_map[endeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
-                                }
-                            }
-                            ik_enable_actcontact_idx++;
-                        }
-                    }
-                }
-                const hrp::dmatrix actcontacteefJt = actcontacteefJ.transpose();
-                hrp::dmatrix actcontacteefJinv;
-                {
-                    const double manipulability = sqrt((actcontacteefJ*actcontacteefJt).fullPivLu().determinant());
-                    double k = 0;
-                    if ( manipulability < 0.1 ) {
-                        k = 0.001 * pow((1 - ( manipulability / 0.1 )), 2);
-                    }
-
-                    //sr inverse
-                    actcontacteefJinv = w * actcontacteefJt * (actcontacteefJ * w * actcontacteefJt + 1.0 * k * hrp::dmatrix::Identity(6*ik_enable_actcontact_eef_num,3+6*ik_enable_actcontact_eef_num)).partialPivLu().inverse();
-                }
-                {
-                    hrp::dvector v(6*ik_enable_actcontact_eef_num)/*refworld系*/;
-                    {
-                        size_t ik_enable_idx=0;
-                        size_t ik_enable_actcontact_idx=0;
-                        for(size_t i = 0 ;i < eefnum; i++){
-                            if(is_ik_enable[i]){
-                                if(endeffector[i].act_contact_state){
-                                    v.block<3,1>(ik_enable_actcontact_idx*6+0,0) = vel_p[ik_enable_idx]/*refworld系*/;
-                                    v.block<3,1>(ik_enable_actcontact_idx*6+3,0) = vel_r[ik_enable_idx]/*refworld系*/;
-                                    ik_enable_actcontact_idx++;
-                                }
-                                ik_enable_idx++;
-                            }
-                        }
-                    }
-                    hrp::dvector tmp_dq = actcontacteefJinv * v;
-                    //limit checkここから
-                }
-                //cogx,cogy
-
-                //cogz
-
-                //interacteef
-                
-                 //ヤコビアンとerror
-                hrp::dmatrix curJ/*refworld系,eefまわり <-> virtualjoint + ik_enable_joint*/ = hrp::dmatrix::Zero(3+6*ik_enable_eef_num, 6+ik_enable_joint_num);//virtualjointはrootlinkのworld側に付いている
-                {
-                    hrp::dmatrix CM_J;
-                    m_robot->calcCMJacobian(NULL,CM_J);//CM_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順
-                    curJ.block<3,6>(0,0) = CM_J.block<3,6>(0,m_robot->numJoints());
-                    for(size_t i = 0; i < m_robot->numJoints(); i++){
-                        if(ik_enable_joint_states[i]){
-                            curJ.block<3,1>(0,6+ik_enable_joint_map[i]) = CM_J.block<3,1>(0,i);
-                        }
-                    }
-                    size_t ik_enable_idx =0;
-                    for(size_t i=0;i<eefnum;i++){
-                        if(is_ik_enable[i]){
-                            curJ.block<3,3>(3+ik_enable_idx*6,0)= hrp::Matrix33::Identity();
-                            curJ.block<3,3>(3+ik_enable_idx*6,3)= - hrp::hat(temp_p[ik_enable_idx]/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
-                            curJ.block<3,3>(3+ik_enable_idx*6+3,3)= hrp::Matrix33::Identity();
-                            hrp::dmatrix JJ;
-                            endeffector[i].jpe->calcJacobian(JJ);
-                            for(size_t j = 0; j < endeffector[i].jpe->numJoints(); j++){
-                                if(!is_passive[endeffector[i].jpe->joint(j)->jointId]){
-                                    curJ.block<6,1>(3+ik_enable_idx*6,6+ik_enable_joint_map[endeffector[i].jpe->joint(j)->jointId])=JJ.block<6,1>(0,j);
-                                }
-                            }
-                            ik_enable_idx++;
-                        }
-                    }
-                }
-
-                const hrp::dmatrix curJt = curJ.transpose();
-                hrp::dmatrix curJinv(6+ik_enable_joint_num, 3+6*ik_enable_eef_num);
-                {
-                    hrp::dmatrix w = hrp::dmatrix::Identity(6+ik_enable_joint_num,6+ik_enable_joint_num);
-                    for ( int j = 0; j < m_robot->numJoints() ; j++ ) {
-                        if(ik_enable_joint_states[j]){
-                            double jang = m_robot->joint(j)->q;
-                            double jmax = m_robot->joint(j)->ulimit;
-                            double jmin = m_robot->joint(j)->llimit;
-                            if (joint_limit_tables.find(m_robot->joint(j)->name) != joint_limit_tables.end()) {
-                                std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(j)->name);
-                                jmin = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                                jmax = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                            }
-                            double e = 1*M_PI/180;
-                            if ( (fabs(jang-jmax) <= e) && ( fabs(jang-jmin) <= e ) ) {
-                            } else if ( fabs(jang-jmax) <= e ) {
-                                jang = jmax - e;
-                            } else if ( fabs(jang-jmin) <= e ) {
-                                jang = jmin + e;
-                            }
-                            
-                            double r;
-                            if ( ( fabs(jang-jmax) <= e ) && ( fabs(jang-jmin) <= e ) ) {
-                                r = std::numeric_limits<double>::max();
-                            } else {
-                                r = fabs( (pow((jmax - jmin),2) * (( 2 * jang) - jmax - jmin)) /
-                                          (4 * pow((jmax - jang),2) * pow((jang - jmin),2)) );
-                                if (std::isnan(r)) r = 0;
-                            }
-                            
-                            w(6+ik_enable_joint_map[j], 6+ik_enable_joint_map[j]) = mcs_ik_optional_weight_vector[j] * ( 1.0 / ( 1.0 + r) );
-                        }
-                    }
-
-                    const double manipulability = sqrt((curJ*curJt).fullPivLu().determinant());
-                                        
-                    double k = 0;
-                    if ( manipulability < 0.1 ) {
-                        k = 0.001 * pow((1 - ( manipulability / 0.1 )), 2);
-                    }
-
-                    //sr inverse
-                    curJinv = w * curJt * (curJ * w * curJt + 1.0 * k * hrp::dmatrix::Identity(3+6*ik_enable_eef_num,3+6*ik_enable_eef_num)).partialPivLu().inverse();
-                }
-                const hrp::dmatrix curJnull = hrp::dmatrix::Identity(6+ik_enable_joint_num, 6+ik_enable_joint_num) - curJinv * curJ;
-
-                
-                if(debug){
-                    std::cerr << "curJ" <<std::endl;
-                    std::cerr << curJ <<std::endl;
-                    std::cerr << "curJinv" <<std::endl;
-                    std::cerr << curJinv <<std::endl;
-                }
-                hrp::dvector v(3+6*ik_enable_eef_num)/*refworld系*/;
-                v.block<3,1>(0,0) = cog_vel_p/*refworld系*/;
-                for(size_t i = 0 ;i < ik_enable_eef_num; i++){
-                    v.block<3,1>(3+i*6+0,0) = vel_p[i]/*refworld系*/;
-                    v.block<3,1>(3+i*6+3,0) = vel_r[i]/*refworld系*/;
-                }
-
-                if(debug){
-                    std::cerr << "v" <<std::endl;
-                    std::cerr << v <<std::endl;
-                }
-                hrp::dvector dq = curJinv * v;
-
-                if(debug){
-                    std::cerr << "dq" <<std::endl;
-                    std::cerr << dq <<std::endl;
-                }
-                {
-                    // dq = J#t a dx + ( I - J# J ) Jt b dx
-                    // avoid-nspace-joint-limit: avoiding joint angle limit
-                    //
-                    // dH/dq = (((t_max + t_min)/2 - t) / ((t_max - t_min)/2)) ^2
-                    hrp::dvector u = hrp::dvector::Zero(6+ik_enable_joint_num);
-                    for ( int j = 0; j < m_robot->numJoints() ; j++ ) {
-                        if(ik_enable_joint_states[j]){
-                            double jang = m_robot->joint(j)->q;
-                            double jmax = m_robot->joint(j)->ulimit;
-                            double jmin = m_robot->joint(j)->llimit;
-                            if (joint_limit_tables.find(m_robot->joint(j)->name) != joint_limit_tables.end()) {
-                                std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(j)->name);
-                                jmin = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                                jmax = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                            }
-                            double r = ((( (jmax + jmin) / 2.0) - jang) / ((jmax - jmin) / 2.0));
-                            if ( r > 0 ) { r = r*r; } else { r = - r*r; }
-                            u[6+ik_enable_joint_map[j]] = 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) * transition_smooth_gain * mcs_ik_optional_weight_vector[j] * 0.001 * r;
-                        }
-                    }
-                    dq = dq + curJnull * u;
-                }
-
-                if(debug){
-                    std::cerr << "dq avoid" <<std::endl;
-                    std::cerr << dq <<std::endl;
-                }
-                {
-                    hrp::dvector u = hrp::dvector::Zero(6+ik_enable_joint_num);
-                    u.block<3,1>(0,0) = 0.01 * ( ref_root_p/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/);
-                    u.block<3,1>(3,0) = 0.01 * matrix_logEx( ref_root_R/*refworld系*/ * m_robot->rootLink()->R.transpose()/*refworld系*/);
-                    for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
-                        if(ik_enable_joint_states[j]){
-                            u[6+ik_enable_joint_map[j]] = 1/(1+exp(-2*9.19*((1.0 - sync2activecnt[j]/(sync2activetime/dt) - 0.5)))) * /*mcs_ik_optional_weight_vector[j] */ 0.01 * ( qrefv[j] - m_robot->joint(j)->q );//optioal_weight_vectorが小さいjointこそ，referenceに追従すべき
-                        }
-                    }
-                    dq = dq + curJnull * u;
-                }
-
-                if(debug){
-                    std::cerr << "dq reference" <<std::endl;
-                    std::cerr << dq <<std::endl;
-                }
-                // dq limitation using lvlimit/uvlimit
-                double min_speed_ratio = 1.0;
-                for(int j=0; j < m_robot->numJoints(); ++j){
-                    if(ik_enable_joint_states[j]){
-                        double speed_ratio = 1.0;
-                        if (dq[6+ik_enable_joint_map[j]] < m_robot->joint(j)->lvlimit * dt) {
-                            speed_ratio = fabs(m_robot->joint(j)->lvlimit * dt / dq[6+ik_enable_joint_map[j]]);
-                        } else if (dq[6+ik_enable_joint_map[j]] > m_robot->joint(j)->uvlimit * dt) {
-                            speed_ratio = fabs(m_robot->joint(j)->uvlimit * dt / dq[6+ik_enable_joint_map[j]]);
-                        }
-                        min_speed_ratio = std::max(std::min(min_speed_ratio, speed_ratio), 0.0);
-                    }
-                }
-                if ( min_speed_ratio < 1.0 ) {
-                    dq *= min_speed_ratio;
-                }
-
-                if(debug){
-                    std::cerr << "dq maxspeed" <<std::endl;
-                    std::cerr << dq <<std::endl;
-                }
-                // check nan / inf
-                bool solve_linear_equation = true;
-                for(int j=0; j < 6+ik_enable_joint_num; ++j){
-                    if ( std::isnan(dq(j)) || std::isinf(dq(j)) ) {
-                        solve_linear_equation = false;
-                        break;
-                    }
-                }
-                if ( ! solve_linear_equation ) {
-                    std::cerr << "[" << instance_name << "] ERROR nan/inf is found" << std::endl;
-                }else{
-                    // joint angles update
-                    m_robot->rootLink()->p/*refworld系*/ += 1.0 * dq.block<3,1>(0,0);
-                    hrp::Matrix33 dR/*refworld系*/;
-                    hrp::calcRodrigues(dR,dq.block<3,1>(3,0).normalized(),dq.block<3,1>(3,0).norm());
-                    m_robot->rootLink()->R/*refworld系*/ = dR/*refworld系*/ * m_robot->rootLink()->R/*refworld系*/;
-                    for(int j=0; j < m_robot->numJoints(); ++j){
-                        if(ik_enable_joint_states[j]){
-                            m_robot->joint(j)->q += 1.0 * dq[6+ik_enable_joint_map[j]];
-                        }
-                    }
-                }
-
-                // upper/lower limit check
-                for(int j=0; j < m_robot->numJoints(); ++j){
-                    if(ik_enable_joint_states[j]){
-                        double llimit = m_robot->joint(j)->llimit;
-                        double ulimit = m_robot->joint(j)->ulimit;
-                        if (joint_limit_tables.find(m_robot->joint(j)->name) != joint_limit_tables.end()) {
-                            std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(j)->name);
-                            llimit = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                            ulimit = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                        }
-                        
-                        if (m_robot->joint(j)->q > ulimit ) {
-                            if(prevpassive[j]){
-                                if(m_robot->joint(j)->q > prevcurv[j]) m_robot->joint(j)->q = prevcurv[j];
-                                else m_robot->joint(j)->q = m_robot->joint(j)->q;
-                            }
-                            else { 
-                                m_robot->joint(j)->q = ulimit;
-                            }
-                        }
-                        else if ( m_robot->joint(j)->q < llimit ) {
-                            if(prevpassive[j]){
-                                if(m_robot->joint(j)->q < prevcurv[j]) m_robot->joint(j)->q = prevcurv[j];
-                                else m_robot->joint(j)->q = m_robot->joint(j)->q;
-                            }
-                            else { 
-                                m_robot->joint(j)->q = llimit;
-                            }
-                        }
-                        else {
-                            prevpassive[j]=false;
-                        }
-                        //m_robot->joint(j)->q = std::max(m_robot->joint(j)->q, m_robot->joint(j)->llimit);
-                    }else{
-                        if(is_passive[j]){
-                            prevpassive[j]=true;
-                        }
-                    }
-                    prevcurv[j] = m_robot->joint(j)->q;
-                }
-
-                m_robot->calcForwardKinematics();
-            }
-
-            bool ik_fail = false;
-            const hrp::Vector3 temp_cog_p/*refworld系*/ = m_robot->calcCM();
-            const hrp::Vector3 cog_vel_p/*refworld系*/ = target_cog_p/*refworld系*/ - temp_cog_p/*refworld系*/;
-            if(cog_vel_p.norm() > 0.5*1e-3){
-                if(ik_error_count % int(0.2/dt) == 0){
-                    std::cerr << "[" << instance_name << "] Too large IK error in " << "cog" << " (vel_p) = [" << cog_vel_p(0) << " " << cog_vel_p(1) << " " << cog_vel_p(2) << "][m], count = " << ik_error_count << std::endl;
-                }
-                ik_fail=true;
-            }
-            {
-                size_t ik_enable_idx = 0;
-                for(size_t i = 0; i < eefnum; i++){
-                    if(is_ik_enable[i]){
-                        hrp::Vector3 temp_p/*refworld系*/ = endeffector[i].jpe->endLink()->p/*refworld系*/;
-                        hrp::Vector3 vel_p/*refworld系*/ = target_link_p[ik_enable_idx]/*refworld系*/ - temp_p/*refworld系*/;
-                        hrp::Matrix33 temp_R/*refworld系*/ = endeffector[i].jpe->endLink()->R/*refworld系*/;
-                        hrp::Vector3 vel_r/*refworld系*/ = temp_R/*refworld系*/ * matrix_logEx(temp_R.transpose()/*refworld系*/ * target_link_R[ik_enable_idx]/*refworld系*/);
-                        if(vel_p.norm() > 0.5 * 1e-3){
-                            if(ik_error_count % int(0.2/dt) == 0){
-                                std::cerr << "[" << instance_name << "] Too large IK error in " << endeffector[i].name << " (vel_p) = [" << vel_p(0) << " " << vel_p(1) << " " << vel_p(2) << "][m], count = " << ik_error_count << std::endl;
-                            }
-                            ik_fail=true;
-                        }
-                        if(vel_r.norm() > (1e-2)*M_PI/180.0){
-                            if(ik_error_count % int(0.2/dt) == 0){
-                                std::cerr << "[" << instance_name << "] Too large IK error in " << endeffector[i].name << " (vel_r) = [" << vel_r(0) << " " << vel_r(1) << " " << vel_r(2) << "][m], count = " << ik_error_count << std::endl;
-                            }
-                            ik_fail=true;
-                        }
-                        ik_enable_idx++;
-                    }
-                }
-            }
-            if(ik_fail){
-                ik_error_count++;
-            }
-            else{
-                ik_error_count=0;
-            }
-        }
-
-    //TODO
-    d_cog;
-    d_foot_pos/*eef系*/;
-    d_foot_rpy/*eef系*/;
-    d_foot_pos1/*eef系*/;
-    d_foot_rpy1/*eef系*/;
-    d_foot_pos2/*eef系*/;
-    d_foot_rpy2/*eef系*/;
-    
-        // IKが解けず実際には動いていない場合には，compensation limit によって指令値の発散を防ぐ
-        // //実際に解いた結果を記録
-        // hrp::Vector3 original_d_cog/*refworld系*/ = d_cog/*refworld系*/;
-        // d_cog/*refworld系*/ = m_robot->calcCM() - ref_cog/*refworld系*/;
-        // d_cogvel/*refworld系*/ -= (original_d_cog/*refworld系*/ - d_cog/*refworld系*/) / dt;
-
-        // //debug
-        // std::cerr << "d_cog" <<std::endl;
-        // std::cerr << d_cog <<std::endl;
-        // std::cerr << "d_cogvel" <<std::endl;
-        // std::cerr << d_cogvel <<std::endl;
-
-        // for (size_t i = 0; i < eefnum; i++){
-        //     hrp::Link* target = jpe_v[i]->endLink();
-        //     d_foot_pos[i]/*eef系*/ = ref_ee_R[i].transpose()/*refworld系*/ * ( (target->p/*refworld系*/ + target->R/*refworld系*/ * localps[i]) - ref_ee_p[i]/*refworld系*/);
-        //     d_foot_rpy[i]/*eef系*/ = hrp::rpyFromRot(ref_ee_R[i].transpose()/*refworld系*/ * (target->R/*refworld系*/ * localRs[i]));
-
-        //     //debug
-        //     std::cerr << "d_foot_pos" <<std::endl;
-        //     std::cerr << d_foot_pos[i] <<std::endl;
-        //     std::cerr << "d_foot_rpy" <<std::endl;
-        //     std::cerr << d_foot_rpy[i] <<std::endl;
-
-        // }
-
+        /*****************************************************************/
         
         
+                
         //m_qRef <- m_robotより
         log_current_base_pos = m_robot->rootLink()->p/*refworld系*/;
         log_current_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R/*refworld系*/);
@@ -2321,6 +1495,9 @@ public:
         mcs_contact_vel = i_stp.mcs_contact_vel;
         mcs_passive_vel = i_stp.mcs_passive_vel;
         sync2activetime = i_stp.mcs_sync2activetime;
+        reference_time_const = i_stp.reference_time_const;
+        centroid_weight = i_stp.centroid_weight;
+        reference_weight = i_stp.reference_weight;
         if (i_stp.mcs_eeparams.length() == eefnum){
             for(size_t i = 0; i < eefnum; i++){
                 endeffector[i].setParameter(i_stp.mcs_eeparams[i],instance_name);
@@ -2361,14 +1538,6 @@ public:
         }else{
             for(size_t i = 0 ; i < m_robot->numJoints(); i++){
                 mcs_geq_joint[i] = i_stp.mcs_geq_joint[i];
-            }
-        }
-        if(i_stp.mcs_is_passive.length()!=is_passive.size()){
-            std::cerr << "[" << instance_name << "] set mcs_is_passive failed. mcs_is_passive size: " << i_stp.mcs_is_passive.length() << ", joints: " << is_passive.size() <<std::endl;
-        }else{
-            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-                if(is_passive[i] && !i_stp.mcs_is_passive[i])sync2activecnt[i]=sync2activetime/dt;
-                is_passive[i] = i_stp.mcs_is_passive[i];
             }
         }
         if(i_stp.mcs_passive_torquedirection.length()!=mcs_passive_torquedirection.size()){
@@ -2448,6 +1617,9 @@ public:
         i_stp.mcs_contact_vel = mcs_contact_vel;
         i_stp.mcs_passive_vel = mcs_passive_vel;
         i_stp.mcs_sync2activetime = sync2activetime;
+        i_stp.reference_time_const = reference_time_const;
+        i_stp.centroid_weight = centroid_weight;
+        i_stp.reference_weight = reference_weight;
         
         i_stp.mcs_pos_damping_gain.length(eefnum);
         i_stp.mcs_rot_damping_gain.length(eefnum);
@@ -2499,7 +1671,6 @@ public:
             i_stp.mcs_ik_optional_weight_vector[i] = mcs_ik_optional_weight_vector[i];
             i_stp.mcs_leq_joint[i] = mcs_leq_joint[i];
             i_stp.mcs_geq_joint[i] = mcs_geq_joint[i];
-            i_stp.mcs_is_passive[i] = is_passive[i];
             i_stp.mcs_passive_torquedirection[i] = mcs_passive_torquedirection[i];
         }
         i_stp.mcs_equality_weight.length(6);
@@ -2508,8 +1679,36 @@ public:
         }
     }
 
+void setPassiveJoint(const char *jname){
+    hrp::Link *l = NULL;
+    if ((l = this->link(i_jname))){
+        is_passive[l->jointId] = true;
+        prevpassive[l->jointId] = false;
+        sync2activecnt[l->jointId] = 0.0;
+        std::cerr << "[" << instance_name << "] setPassiveJoint for " << i_jname << std::endl;
+    }else{
+        std::cerr << "[" << instance_name << "] Invalid joint name of setPassiveJoint " << i_jname << "!" << std::endl;
+        return false;
+    }
+    return true;
+}
 
-    
+void setActiveJoint(const char *jname){
+    hrp::Link *l = NULL;
+    if ((l = this->link(i_jname))){
+        if(is_passive[l->jointId]){
+            is_passive[l->jointId] = false;
+            prevpassive[l->jointId] = true;
+            sync2activecnt[l->jointId] = 2sync2activetime;
+        }
+        std::cerr << "[" << instance_name << "] setActiveJoint for " << i_jname << std::endl;
+    }else{
+        std::cerr << "[" << instance_name << "] Invalid joint name of setActiveJoint " << i_jname << "!" << std::endl;
+        return false;
+    }
+    return true;
+}
+
 private:
     hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         hrp::Vector3 mlog;
@@ -2600,9 +1799,13 @@ private:
     double mcs_passive_vel;
     std::vector<double> prevcurv;
     std::vector<bool> prevpassive;
-    std::vector<int> sync2activecnt;
+    std::vector<double> sync2activecnt;
     double sync2activetime;
     int ik_error_count;
+
+    double reference_time_const;
+    double centroid_weight;
+    double reference_weight;
 };
 
 

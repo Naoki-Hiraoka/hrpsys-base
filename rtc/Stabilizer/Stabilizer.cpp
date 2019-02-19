@@ -2632,6 +2632,14 @@ void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
   multicontactstabilizer.setParameter(i_stp,m_robot);
 }
 
+void Stabilizer::setPassiveJoint(const char *jname){
+    multicontactstabilizer.setPassiveJoint(jname);
+}
+
+void Stabilizer::setActiveJoint(const char *jname){
+    multicontactstabilizer.setActiveJoint(jname);
+}
+
 std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService::STAlgorithm _st_algorithm)
 {
     switch (_st_algorithm) {
