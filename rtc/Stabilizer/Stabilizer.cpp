@@ -2636,6 +2636,10 @@ void Stabilizer::setPassiveJoint(const char *jname){
     multicontactstabilizer.setPassiveJoint(jname);
 }
 
+void Stabilizer::setReferenceJoint(const char *jname){
+    multicontactstabilizer.setReferenceJoint(jname);
+}
+
 void Stabilizer::setActiveJoint(const char *jname){
     multicontactstabilizer.setActiveJoint(jname);
 }

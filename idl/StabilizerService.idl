@@ -145,14 +145,7 @@ module OpenHRP
         /// interact weight
         double rot_interact_weight;
     };
-      
-    /**
-     * @enum ContactEndEffector
-     * @brief ContactEndEfector
-     */
-    struct ContactEndEffectorParam {
-    };
-      
+            
     /**
      * @struct stParam
      * @brief Stabilizer Parameters.
@@ -265,6 +258,8 @@ module OpenHRP
       DblArray3 eefm_swing_rot_damping_gain;
       /// Position damping gain for swing leg [N/(m/s)] (x,y,z)
       DblArray3 eefm_swing_pos_damping_gain;
+      /// Sequence of all end-effector force/moment distribution weight
+      sequence<sequence<double, 6> > eefm_ee_forcemoment_distribution_weight;
       // for MCS
       /// Feedback gain for COG position tracking error (x,y,z)
       double mcs_k1;
@@ -272,28 +267,10 @@ module OpenHRP
       double mcs_k2;
       /// Feedback gain for Force tracking error (x,y,z)
       double mcs_k3;
-      /// Sequence of Ftw < 0 only joint
-      sequence<boolean> mcs_leq_joint;
-      /// Sequence of Ftw > 0 only joint
-      sequence<boolean> mcs_geq_joint;
-      /// Sequence of all joint torque distribution weight
-      sequence<double> mcs_joint_torque_distribution_weight;
-      /// Sequence of equality constraint weight
-      sequence<double, 6> mcs_equality_weight;
-      /// Cutoff frequency of LPF in calculation of COG velocity [Hz]
-      double mcs_cogvel_cutoff_freq;
-      /// Cutoff frequency of LPF in calculation of COG angular velocity [Hz]
-      double mcs_L_cutoff_freq;
-      /// Cutoff frequency of LPF in calculation of actual joint angle velocity [Hz]
-      double mcs_dqactv_cutoff_freq;
-      /// Cutoff frequency of LPF in calculation of actual rootLink velocity [Hz]
-      double mcs_act_root_v_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of actual torque [Hz]
+      double mcs_acttauv_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of COG position error [Hz]
       double mcs_cog_error_cutoff_freq;
-      /// Sequence of all end-effector params
-      sequence<EndEffectorParam> mcs_eeparams;
-      /// Joint weight for Inverse Kinematics calculation.
-      sequence<double> mcs_ik_optional_weight_vector;
       /// COG position position compensation limit [m]
       double mcs_cogpos_compensation_limit;
       /// COG velocity position compensation limit [m/s]
@@ -304,12 +281,30 @@ module OpenHRP
       double mcs_cogpos_time_const;
       /// COG velocity damping time constant[s]
       double mcs_cogvel_time_const;
-      /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
-      sequence<double> mcs_passive_torquedirection;
       /// joint passive velocity [rad/s]
       double mcs_passive_vel;
       /// joint passive2active time [s]
       double mcs_sync2activetime;
+      /// joint passive2reference time [s]
+      double mcs_sync2referencetime;
+      /// reference time const [s]
+      double reference_time_const;
+      /// centroid weight
+      double centroid_weight;
+      /// reference weight
+      double reference_weight;
+      /// Sequence of all joint torque distribution weight
+      sequence<double> mcs_joint_torque_distribution_weight;
+      /// Sequence of equality constraint weight
+      sequence<double, 6> mcs_equality_weight;
+      /// Sequence of Ftw < 0 only joint
+      sequence<boolean> mcs_leq_joint;
+      /// Sequence of Ftw > 0 only joint
+      sequence<boolean> mcs_geq_joint;
+      /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
+      sequence<double> mcs_passive_torquedirection;        
+      /// Sequence of all end-effector params
+      sequence<EndEffectorParam> mcs_eeparams;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;
@@ -385,6 +380,12 @@ module OpenHRP
      * @param name joint name
      */
     void setPassiveJoint(in string name);
+
+      /**
+     * @brief set reference joint
+     * @param name joint name
+     */
+    void setReferenceJoint(in string name);
 
       /**
      * @brief set active joint

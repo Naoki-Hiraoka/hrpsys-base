@@ -26,7 +26,8 @@ public:
 	void getParameter(OpenHRP::StabilizerService::stParam_out i_param);
 	void setParameter(const OpenHRP::StabilizerService::stParam& i_param);
 	void setPassiveJoint(const char *jname);
-	void setActiveJoint(const char *jname)
+	void setReferenceJoint(const char *jname);
+	void setActiveJoint(const char *jname);
 	void stabilizer(Stabilizer *i_stabilizer);
 
 	bool dummy();

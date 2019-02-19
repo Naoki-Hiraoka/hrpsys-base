@@ -107,6 +107,7 @@ class Stabilizer
   void startStabilizer(void);
   void stopStabilizer(void);
   void setPassiveJoint(const char *jname);
+  void setReferenceJoint(const char *jname);
   void setActiveJoint(const char *jname);
   void getCurrentParameters ();
   void getActualParameters ();

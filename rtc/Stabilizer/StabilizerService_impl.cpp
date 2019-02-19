@@ -26,6 +26,11 @@ void StabilizerService_impl::setPassiveJoint(const char *jname)
 	m_stabilizer->setPassiveJoint(jname);
 }
 
+void StabilizerService_impl::setReferenceJoint(const char *jname)
+{
+	m_stabilizer->setReferenceJoint(jname);
+}
+
 void StabilizerService_impl::setActiveJoint(const char *jname)
 {
 	m_stabilizer->setActiveJoint(jname);
