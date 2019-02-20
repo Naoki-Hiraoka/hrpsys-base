@@ -176,7 +176,7 @@ public:
         }
         if(!act_outside_lower_xcop_state){
             C(constraint_idx,4)= -1;
-            C(constraint_idx,2)= lower_cop_x_margin;
+            C(constraint_idx,2)= -lower_cop_x_margin;
             lb[constraint_idx] = 0;
             ub[constraint_idx] = 1e10;
             constraint_idx++;
@@ -184,15 +184,15 @@ public:
 
         //yCOP
         if(!act_outside_upper_ycop_state){
-            C(constraint_idx,4)= -1;
+            C(constraint_idx,3)= -1;
             C(constraint_idx,2)= upper_cop_y_margin;
             lb[constraint_idx] = 0;
             ub[constraint_idx] = 1e10;
             constraint_idx++;
         }
         if(!act_outside_lower_ycop_state){
-            C(constraint_idx,4)= 1;
-            C(constraint_idx,2)= lower_cop_y_margin;
+            C(constraint_idx,3)= 1;
+            C(constraint_idx,2)= -lower_cop_y_margin;
             lb[constraint_idx] = 0;
             ub[constraint_idx] = 1e10;
             constraint_idx++;
@@ -341,6 +341,10 @@ public:
         for(size_t i = 0; i < 6; i++){
             i_ccp.ee_forcemoment_distribution_weight[i] = ee_forcemoment_distribution_weight[i];
         }
+        i_ccp.pos_damping_gain.length(3);
+        i_ccp.rot_damping_gain.length(3);
+        i_ccp.pos_time_const.length(3);
+        i_ccp.rot_time_const.length(3);
         for(size_t j = 0; j<3 ; j++){
             i_ccp.pos_damping_gain[j] = pos_damping_gain[j];
             i_ccp.rot_damping_gain[j] = rot_damping_gain[j];
@@ -435,12 +439,12 @@ private:
 };
 
 
-
+//TODO toe knee に対応したeefを追加する方法 abc などにも手を加える必要
 
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(false)
+    MultiContactStabilizer() : debug(true)
     {
     }
 
@@ -523,10 +527,7 @@ public:
                         
         d_cog = hrp::Vector3::Zero();
         cog_error_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())); // [Hz]
-        
-        mcs_leq_joint.resize(m_robot->numJoints(),false);
-        mcs_geq_joint.resize(m_robot->numJoints(),false);
-        
+                
         //14.76230184   7.69057546
         //7.67639696  4.58959131 -0.17237698
         mcs_k1 = 0.0;
@@ -562,7 +563,8 @@ public:
         ik_error_count = 0;
 
         reference_time_const = 1.5;
-        centroid_weight = 1e-6;
+        centroid_weight = hrp::Vector3();
+        centroid_weight << 1e-6, 1e-6, 1e-8;
         reference_weight = 1e-10;
             
         // load joint limit table
@@ -578,6 +580,10 @@ public:
     }
 
     void getTargetParameters(hrp::BodyPtr& m_robot, const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains, hrp::Vector3& log_ref_cog/*refworld系*/, hrp::Vector3& log_ref_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_ref_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_ref_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_ref_base_pos/*world系*/, hrp::Vector3& log_ref_base_rpy/*world系*/) {
+        if(debug){
+            std::cerr << "getTargetParameters start" << std::endl;
+        }
+
         //Pg Pgdot Fg hg Ngの目標値を受け取る
         transition_smooth_gain = _transition_smooth_gain;
         qrefv = _qrefv;
@@ -616,10 +622,19 @@ public:
          }
         log_ref_base_pos = ref_root_p/*refworld系*/;
         log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
+
+        if(debug){
+            std::cerr << "getTargetParameters end" << std::endl;
+        }
+
     }
 
     //on_groundかを返す
     bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, std::vector<bool>& act_contact_states, const double& contact_decision_threshold, hrp::Vector3& log_act_cog/*refworld系*/, hrp::Vector3& log_act_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_act_base_rpy/*world系*/,const hrp::dvector& _acttauv) {
+        if(debug){
+            std::cerr << "getActualParameters start" << std::endl;
+        }
+
         //接触eefとの相対位置関係と，重力方向さえ正確なら，root位置，yaw,は微分が正確なら誤差が蓄積しても良い
         //root位置が与えられない場合は，接触拘束から推定する
         
@@ -639,7 +654,7 @@ public:
             endeffector[i]->act_moment_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
             endeffector[i]->isContact();
         }
-                
+
         for ( int i = 0;i< m_robot->numJoints();i++){
             m_robot->joint(i)->q = qactv[i];
         }
@@ -716,8 +731,8 @@ public:
 
         act_cog_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_cog/*actworld系*/ - act_cogorigin_p/*actworld系*/);
         for (size_t i = 0; i< eefnum; i++){
-            act_contact_eef[i]->act_p_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * (act_contact_eef[i]->act_p/*actworld系*/ - act_cogorigin_p/*actworld系*/);
-            act_contact_eef[i]->act_R_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * act_contact_eef[i]->act_R/*actworld系*/;
+            endeffector[i]->act_p_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * (endeffector[i]->act_p/*actworld系*/ - act_cogorigin_p/*actworld系*/);
+            endeffector[i]->act_R_origin/*act_cogorigin系*/ = act_cogorigin_R/*actworld系*/.transpose() * endeffector[i]->act_R/*actworld系*/;
         }
 
         // 前回の出力へ.(sync_2_idle時に使う)
@@ -730,8 +745,8 @@ public:
         log_act_cog = ref_cog/*refworld系*/ + act_cog_origin/*act_cogorigin系*/;
         log_act_cogvel = hrp::Vector3::Zero()/*act_cogorigin系*/;
         for(size_t i = 0; i < eefnum; i++){
-            log_act_force_eef[i] = act_contact_eef[i]->act_force_eef/*eef系*/;
-            log_act_moment_eef[i] = act_contact_eef[i]->act_moment_eef/*eef系*/;
+            log_act_force_eef[i] = endeffector[i]->act_force_eef/*eef系*/;
+            log_act_moment_eef[i] = endeffector[i]->act_moment_eef/*eef系*/;
         }
         log_act_base_rpy = hrp::rpyFromRot(act_cogorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
         
@@ -746,6 +761,8 @@ public:
             std::cerr << act_cogorigin_R <<std::endl;
             std::cerr << "act_cog_origin" <<std::endl;
             std::cerr << act_cog_origin <<std::endl;
+            std::cerr << "getActualParameters end" << std::endl;
+
         }
         return act_total_force[2] > contact_decision_threshold;
     }
@@ -791,7 +808,6 @@ public:
                 ik_enable_joint_num++;
             }
         }
-
         
         std::vector<boost::shared_ptr<EndEffector> > support_eef;
         for(size_t i = 0; i < eefnum;i++){
@@ -802,6 +818,16 @@ public:
             if(!(endeffector[i]->act_contact_state) && is_ik_enable[i])interact_eef.push_back(endeffector[i]);
         }
 
+        if(debug){
+            std::cerr << "support_eef" << std::endl;
+            for(size_t i = 0; i < support_eef.size(); i++){
+                std::cerr << support_eef[i]->name << std::endl;
+            }
+            std::cerr << "interact_eef" << std::endl;
+            for(size_t i = 0; i < interact_eef.size(); i++){
+                std::cerr << interact_eef[i]->name << std::endl;
+            }
+        }
 
 
         
@@ -854,6 +880,24 @@ public:
                 sync2referencecnt[i] = std::max(0.0, sync2referencecnt[i]-dt);
             }
         }
+
+        if(debug){
+            std::cerr << "prevpassive" << std::endl;
+            for(size_t i = 0; i < prevpassive.size(); i++){
+                std::cerr << prevpassive[i] ;
+            }
+            std::cerr << std::endl;
+            std::cerr << "sync2activecnt" << std::endl;
+            for(size_t i = 0; i < sync2activecnt.size(); i++){
+                std::cerr << sync2activecnt[i] ;
+            }
+            std::cerr << std::endl;
+            std::cerr << "sync2referencecnt" << std::endl;
+            for(size_t i = 0; i < sync2referencecnt.size(); i++){
+                std::cerr << sync2referencecnt[i] ;
+            }
+            std::cerr << std::endl;
+        }
         
         /****************************************************************/
 
@@ -875,18 +919,18 @@ public:
                 select_matrix_bar(i*6+j,i*6+j) = 0.0;
             }
             if(!support_eef[i]->act_outside_upper_xcop_state && !support_eef[i]->act_outside_lower_xcop_state){
-                select_matrix(i*6+3,i*6+3) = 0.0;
-                select_matrix_bar(i*6+3,i*6+3) = 1.0;
-            }else{
                 select_matrix(i*6+3,i*6+3) = 1.0;
                 select_matrix_bar(i*6+3,i*6+3) = 0.0;
+            }else{
+                select_matrix(i*6+3,i*6+3) = 0.0;
+                select_matrix_bar(i*6+3,i*6+3) = 1.0;
             }
             if(!support_eef[i]->act_outside_upper_ycop_state && !support_eef[i]->act_outside_lower_ycop_state){
-                select_matrix(i*6+4,i*6+4) = 0.0;
-                select_matrix_bar(i*6+4,i*6+4) = 1.0;
-            }else{
                 select_matrix(i*6+4,i*6+4) = 1.0;
                 select_matrix_bar(i*6+4,i*6+4) = 0.0;
+            }else{
+                select_matrix(i*6+4,i*6+4) = 0.0;
+                select_matrix_bar(i*6+4,i*6+4) = 1.0;
             }
             select_matrix(i*6+5,i*6+5) = 1.0;
             select_matrix_bar(i*6+5,i*6+5) = 0.0;
@@ -944,18 +988,36 @@ public:
             }
         }
 
+        if(debug){
+            std::cerr << "select_matrix" << std::endl;
+            std::cerr << select_matrix << std::endl;
+            std::cerr << "select_matrix_bar" << std::endl;
+            std::cerr << select_matrix_bar << std::endl;
+            std::cerr << "supportJ" << std::endl;
+            std::cerr << supportJ << std::endl;
+            std::cerr << "D" << std::endl;
+            std::cerr << D << std::endl;
+            std::cerr << "Tinv" << std::endl;
+            std::cerr << Tinv << std::endl;
+            std::cerr << "d_support_foot" << std::endl;
+            std::cerr << d_support_foot << std::endl;
+            std::cerr << "interactJ" << std::endl;
+            std::cerr << interactJ << std::endl;
+        }
+
+        
         /*****************************************************************/
         //torque
-        {
-            hrp::dmatrix W = hrp::dmatrix::Identity(ik_enable_joint_num,ik_enable_joint_num);
+        if(support_eef.size()>0){
+            hrp::dmatrix W = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num);
             for (size_t i = 0; i < m_robot->numJoints(); i++){
                 if(ik_enable_joint_states[i]){
-                    if(is_passive[i]) W(ik_enable_joint_map[i],ik_enable_joint_map[i]) = 1e-10;
-                    else W(ik_enable_joint_map[i],ik_enable_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
+                    if(is_passive[i]) W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = 1e-10;
+                    else W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
                 }
             }
 
-            hrp::dmatrix a = supportJ.transpose() * select_matrix * D * supportJ / dt;
+            hrp::dmatrix a = (supportJ.transpose() * select_matrix * D * supportJ).array() / dt;
             hrp::dvector b = supportJ.transpose() * select_matrix * D * Tinv * d_support_foot;
             for(size_t i=0; i < m_robot->numJoints(); i++){
                 if(ik_enable_joint_states[i]){
@@ -974,29 +1036,51 @@ public:
             }
             for(size_t i=0; i < m_robot->numJoints(); i++){
                 if(ik_enable_joint_states[i]){
-                    taumin[6+ik_enable_joint_map[i]]=(mcs_passive_torquedirection[i]>0)?0:- m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                    taumax[6+ik_enable_joint_map[i]]=(mcs_passive_torquedirection[i]<0)?0:+ m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
+                    taumin[6+ik_enable_joint_map[i]]=(is_passive[i]&&mcs_passive_torquedirection[i]>0)?0:- m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
+                    taumax[6+ik_enable_joint_map[i]]=(is_passive[i]&&mcs_passive_torquedirection[i]<0)?0:+ m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
                 }
             }
             hrp::dvector lbA = taumin - b;
             hrp::dvector ubA = taumax - b;
-            hrp::dvector A = a;
+            hrp::dmatrix A = a;
             
             As.push_back(A);
             lbAs.push_back(lbA);
             ubAs.push_back(ubA);
+
+            if(debug){
+                std::cerr << "torque" << std::endl;
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "a" << std::endl;
+                std::cerr << a << std::endl;
+                std::cerr << "b" << std::endl;
+                std::cerr << b << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << a.transpose() * W * a <<std::endl;
+                std::cerr << "taumin" << std::endl;
+                std::cerr << taumin << std::endl;
+                std::cerr << "taumax" << std::endl;
+                std::cerr << taumax << std::endl;
+                std::cerr << "A" << std::endl;
+                std::cerr << A << std::endl;
+                std::cerr << "lbA" << std::endl;
+                std::cerr << lbA << std::endl;
+                std::cerr << "ubA" << std::endl;
+                std::cerr << ubA << std::endl;
+            }
         }
         /*****************************************************************/
         //wrench
-        {
-            hrp::dmatrix W = hrp::dmatrix::Identity(6*support_eef.size(),6*support_eef.size());
+        if(support_eef.size()>0){
+            hrp::dmatrix W = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
             for (size_t i = 0; i < support_eef.size(); i++){
                 for(size_t j = 0 ; j < 6; j++){
                     W(6*i+j,6*i+j) = support_eef[i]->ee_forcemoment_distribution_weight[j];
                 }
             }
 
-            hrp::dmatrix a = - select_matrix * D * supportJ / dt;
+            hrp::dmatrix a = - (select_matrix * D * supportJ).array() / dt;
             hrp::dvector b = - select_matrix * D * Tinv * d_support_foot;
             hrp::dvector c = b;
             for(size_t i = 0; i < support_eef.size(); i++){
@@ -1012,9 +1096,19 @@ public:
                 hrp::dvector lb;
                 hrp::dvector ub;
                 support_eef[i]->getContactConstraint(C,lb,ub);
-                As.push_back(C * a.block<6,1>(i*6,0));
+                As.push_back(C * a.block(i*6,0,6,a.cols()));
                 lbAs.push_back(lb-C*b.block<6,1>(i*6,0));
                 ubAs.push_back(ub-C*b.block<6,1>(i*6,0));
+
+                if(debug){
+                    std::cerr << "C" << std::endl;
+                    std::cerr << C << std::endl;
+                    std::cerr << "lb" << std::endl;
+                    std::cerr << lb << std::endl;
+                    std::cerr << "ub" << std::endl;
+                    std::cerr << ub << std::endl;
+                }
+
             }
 
             hrp::dmatrix G/*act_cogorigin系,cogまわり<->eef系,eefまわり*/ = hrp::dmatrix::Zero(6,6*support_eef.size());//grasp_matrix
@@ -1024,9 +1118,24 @@ public:
                 G.block<3,3>(3,6*i+3) = support_eef[i]->act_R_origin/*act_cogorigin系*/;
             }
             As.push_back(G*a);
-            lbAs.push_back(-G*c);
+            lbAs.push_back((-G*c).array());
             ubAs.push_back(-G*c);
             
+            if(debug){
+                std::cerr << "wrench" << std::endl;
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "a" << std::endl;
+                std::cerr << a << std::endl;
+                std::cerr << "b" << std::endl;
+                std::cerr << b << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << a.transpose() * W * a <<std::endl;
+                std::cerr << "c" << std::endl;
+                std::cerr << c << std::endl;
+                std::cerr << "G" << std::endl;
+                std::cerr << G << std::endl;
+            }
         }
 
         /*****************************************************************/
@@ -1050,20 +1159,37 @@ public:
                 }
             }
 
-            hrp::dmatrix W = hrp::dmatrix::Identity(3,3);
+            hrp::dmatrix W = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                W(i,i) = centroid_weight;
+                W(i,i) = centroid_weight[i];
             }
 
             H += CM_J.transpose() * W * CM_J;
-            g += - delta_cog * W * CM_J;
+            g += - delta_cog.transpose() * W * CM_J;
+
+            if(debug){
+                std::cerr << "centroid" << std::endl;
+                std::cerr << "tmp_d_cog" << std::endl;
+                std::cerr << tmp_d_cog << std::endl;
+                std::cerr << "target_cog" << std::endl;
+                std::cerr << target_cog << std::endl;
+                std::cerr << "delta_cog" << std::endl;
+                std::cerr << delta_cog << std::endl;
+                std::cerr << "CM_J" << std::endl;
+                std::cerr << CM_J << std::endl;
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr <<CM_J.transpose() * W * CM_J <<std::endl;
+
+            }
 
         }
         
         /*****************************************************************/
         //support eef
-        {
-            hrp::dmatrix W = hrp::dmatrix::Identity(6*support_eef.size(),6*support_eef.size());
+        if(support_eef.size()>0){
+            hrp::dmatrix W = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
             for (size_t i = 0; i < support_eef.size(); i++){
                 W(6*i+3,6*i+3) = support_eef[i]->rot_contact_weight;
                 W(6*i+4,6*i+4) = support_eef[i]->rot_contact_weight;
@@ -1082,11 +1208,27 @@ public:
 
             H += a.transpose() * W * a;
             g += b.transpose() * W * a;
+
+            if(debug){
+                std::cerr << "support eef" << std::endl;
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "delta_support_eef" << std::endl;
+                std::cerr << delta_support_eef << std::endl;
+                std::cerr << "a" << std::endl;
+                std::cerr << a << std::endl;
+                std::cerr << "b" << std::endl;
+                std::cerr << b << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr <<a.transpose() * W * a <<std::endl;
+
+            }
+
         }
         /*****************************************************************/
         //interact eef
-        {
-            hrp::dmatrix W = hrp::dmatrix::Identity(6*interact_eef.size(),6*interact_eef.size());
+        if(interact_eef.size()>0){
+            hrp::dmatrix W = hrp::dmatrix::Zero(6*interact_eef.size(),6*interact_eef.size());
             for (size_t i = 0; i < interact_eef.size(); i++){
                 for(size_t j = 0; j < 3; j++){
                     W(6*i+j,6*i+j) = interact_eef[i]->pos_interact_weight;
@@ -1121,6 +1263,20 @@ public:
             H += a.transpose() * W * a;
             g += b.transpose() * W * a;
 
+            if(debug){
+                std::cerr << "interact eef" << std::endl;
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "delta_interact_eef" << std::endl;
+                std::cerr << delta_interact_eef << std::endl;
+                std::cerr << "a" << std::endl;
+                std::cerr << a << std::endl;
+                std::cerr << "b" << std::endl;
+                std::cerr << b << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr <<a.transpose() * W * a <<std::endl;
+
+            }
         }
         /*****************************************************************/
         //reference q
@@ -1142,7 +1298,17 @@ public:
             reference_q *= dt / reference_time_const;
 
             H += W;
-            g += - reference_q * W;
+            g += - reference_q.transpose() * W;
+
+            if(debug){
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "reference_q" << std::endl;
+                std::cerr << reference_q << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << W <<std::endl;
+
+            }
         }
         /*****************************************************************/
         //min-max
@@ -1151,8 +1317,8 @@ public:
             hrp::dvector l = hrp::dvector::Zero(6+ik_enable_joint_num);
 
             for(size_t i = 0 ; i < 6; i++){
-                ub[i] = 1e10;
-                lb[i] = -1e10;
+                u[i] = 1e10;
+                l[i] = -1e10;
             }
             for(size_t i = 0 ; i < m_robot->numJoints(); i++){
                 if(ik_enable_joint_states[i]){
@@ -1197,7 +1363,7 @@ public:
                             min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * dt);
                         }else{
                             max = std::min(max,m_robot->joint(i)->uvlimit * dt);
-                            min = std::min(min,m_robot->joint(i)->lvlimit * dt);
+                            min = std::max(min,m_robot->joint(i)->lvlimit * dt);
                         }
                     }
                     
@@ -1208,7 +1374,40 @@ public:
 
             ub = u;
             lb = l;
+
+            if(debug){
+                std::cerr << "u" << std::endl;
+                std::cerr << u << std::endl;
+                std::cerr << "l" << std::endl;
+                std::cerr << l << std::endl;
+            }
+
         }
+
+        if(debug){
+            std::cerr << "H" << std::endl;
+            std::cerr << H << std::endl;
+            std::cerr << "g" << std::endl;
+            std::cerr << g << std::endl;
+            std::cerr << "A" << std::endl;
+            for(size_t i=0; i < As.size(); i++){
+                std::cerr  << As[i] << std::endl;
+            }
+            std::cerr << "lbA" << std::endl;
+            for(size_t i=0; i < lbAs.size(); i++){
+                std::cerr  << lbAs[i] << std::endl;
+            }
+            std::cerr << "ubA" << std::endl;
+            for(size_t i=0; i < ubAs.size(); i++){
+                std::cerr  << ubAs[i] << std::endl;
+            }
+            std::cerr << "lb" << std::endl;
+            std::cerr << lb << std::endl;
+            std::cerr << "ub" << std::endl;
+            std::cerr << ub << std::endl;
+
+        }
+
         
         /*****************************************************************/
 
@@ -1256,7 +1455,7 @@ public:
             }
             
             qpOASES::Options options;
-            //options.enableFlippingBounds = qpOASES::BT_FALSE;
+            options.enableFlippingBounds = qpOASES::BT_TRUE;
             options.initialStatusBounds = qpOASES::ST_INACTIVE;
             options.numRefinementSteps = 1;
             options.enableCholeskyRefactorisation = 1;
@@ -1371,20 +1570,27 @@ public:
         }
 
         
-        
+        if(debug){
+            std::cerr << "qp_solved" << std::endl;
+            std::cerr << qp_solved << std::endl;
+            std::cerr << "command_dq" << std::endl;
+            std::cerr << command_dq << std::endl;
+        }
+
 
 
 
 
         /*****************************************************************/
-
-        m_robot->rootLink()->p/*refworld系*/ += transition_smooth_gain * command_dq.block<3,1>(0,0);
-        hrp::Matrix33 dR/*refworld系*/;
-        hrp::calcRodrigues(dR,command_dq.block<3,1>(3,0).normalized(),transition_smooth_gain*command_dq.block<3,1>(3,0).norm());
-        m_robot->rootLink()->R/*refworld系*/ = dR/*refworld系*/ * m_robot->rootLink()->R/*refworld系*/;
-        for(int j=0; j < m_robot->numJoints(); ++j){
-            if(ik_enable_joint_states[j]){
-                m_robot->joint(j)->q += transition_smooth_gain * command_dq[6+ik_enable_joint_map[j]];
+        if(qp_solved){
+            m_robot->rootLink()->p/*refworld系*/ += transition_smooth_gain * command_dq.block<3,1>(0,0);
+            hrp::Matrix33 dR/*refworld系*/;
+            hrp::calcRodrigues(dR,command_dq.block<3,1>(3,0).normalized(),transition_smooth_gain*command_dq.block<3,1>(3,0).norm());
+            m_robot->rootLink()->R/*refworld系*/ = dR/*refworld系*/ * m_robot->rootLink()->R/*refworld系*/;
+            for(int j=0; j < m_robot->numJoints(); ++j){
+                if(ik_enable_joint_states[j]){
+                    m_robot->joint(j)->q += transition_smooth_gain * command_dq[6+ik_enable_joint_map[j]];
+                }
             }
         }
         m_robot->calcForwardKinematics();
@@ -1400,8 +1606,20 @@ public:
 
             endeffector[i]->d_foot_pos/*eef系*/ = endeffector[i]->ref_R.transpose() * (endeffector[i]->cur_p - endeffector[i]->ref_p);
             endeffector[i]->d_foot_rpy/*eef系*/ = hrp::rpyFromRot(endeffector[i]->ref_R.transpose() * endeffector[i]->cur_R);
+
+            if(debug){
+                std::cerr << "d_foot_pos" << std::endl;
+                std::cerr << endeffector[i]->d_foot_pos << std::endl;
+                std::cerr << "d_foot_rpy" << std::endl;
+                std::cerr << endeffector[i]->d_foot_rpy << std::endl;
+            }
+
         }
         
+        if(debug){
+            std::cerr << "d_cog" << std::endl;
+            std::cerr << d_cog << std::endl;
+        }
 
 
 
@@ -1506,8 +1724,12 @@ public:
         
         reference_time_const = i_stp.reference_time_const;
         std::cerr << "[" << instance_name << "]  reference_time_const = " << reference_time_const << std::endl;
-       
-        centroid_weight = i_stp.centroid_weight;
+
+        if(i_stp.centroid_weight.length()==3){
+            for(size_t i=0; i < 3; i++){
+                centroid_weight[i] = i_stp.centroid_weight[i];
+            }
+        }
         reference_weight = i_stp.reference_weight;
         std::cerr << "[" << instance_name << "]  centroid_weight = " << centroid_weight << std::endl;
         std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
@@ -1533,31 +1755,6 @@ public:
         std::cerr << "[" << instance_name << "]  mcs_equality_weight = [" ;
         for(size_t i = 0 ; i < 6; i++){
             std::cerr<< mcs_equality_weight[i] << ", ";
-        }
-        std::cerr << "]" <<std::endl;
-
-        if(i_stp.mcs_leq_joint.length()!=mcs_leq_joint.size()){
-            std::cerr << "[" << instance_name << "] set mcs_leq_joint failed. mcs_leq_joint size: " << i_stp.mcs_leq_joint.length() << ", joints: " << mcs_leq_joint.size() <<std::endl;
-        }else{
-            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-                mcs_leq_joint[i] = i_stp.mcs_leq_joint[i];
-            }
-        }
-        if(i_stp.mcs_geq_joint.length()!=mcs_geq_joint.size()){
-            std::cerr << "[" << instance_name << "] set mcs_geq_joint failed. mcs_geq_joint size: " << i_stp.mcs_geq_joint.length() << ", joints: " << mcs_geq_joint.size() <<std::endl;
-        }else{
-            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-                mcs_geq_joint[i] = i_stp.mcs_geq_joint[i];
-            }
-        }
-        std::cerr << "[" << instance_name << "]  mcs_leq_joint = [" ;
-        for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-            std::cerr<< mcs_leq_joint[i] << ", ";
-        }
-        std::cerr << "]" <<std::endl;
-        std::cerr << "[" << instance_name << "]  mcs_geq_joint = [" ;
-        for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-            std::cerr<< mcs_geq_joint[i] << ", ";
         }
         std::cerr << "]" <<std::endl;
 
@@ -1596,7 +1793,11 @@ public:
         i_stp.mcs_sync2activetime = sync2activetime;
         i_stp.mcs_sync2referencetime = sync2referencetime;
         i_stp.reference_time_const = reference_time_const;
-        i_stp.centroid_weight = centroid_weight;
+
+        i_stp.centroid_weight.length(3);
+        for(size_t i =0; i < 3; i++){
+            i_stp.centroid_weight[i] = centroid_weight[i];
+        }
         i_stp.reference_weight = reference_weight;
 
         i_stp.mcs_eeparams.length(eefnum);
@@ -1605,13 +1806,9 @@ public:
         }
 
         i_stp.mcs_joint_torque_distribution_weight.length(m_robot->numJoints());
-        i_stp.mcs_leq_joint.length(m_robot->numJoints());
-        i_stp.mcs_geq_joint.length(m_robot->numJoints());
         i_stp.mcs_passive_torquedirection.length(m_robot->numJoints());
         for (size_t i = 0; i < m_robot->numJoints(); i++) {
             i_stp.mcs_joint_torque_distribution_weight[i] = mcs_joint_torque_distribution_weight[i];
-            i_stp.mcs_leq_joint[i] = mcs_leq_joint[i];
-            i_stp.mcs_geq_joint[i] = mcs_geq_joint[i];
             i_stp.mcs_passive_torquedirection[i] = mcs_passive_torquedirection[i];
         }
         i_stp.mcs_equality_weight.length(6);
@@ -1621,7 +1818,7 @@ public:
     }
 
     void setPassiveJoint(const char *i_jname){
-        hrp::Link const *l = NULL;
+        const hrp::Link *l = NULL;
         if ((l = const_robot->link(i_jname))){
             if(!is_passive[l->jointId]){
                 if(!is_reference[l->jointId]){
@@ -1647,7 +1844,7 @@ public:
     }
     
     void setReferenceJoint(const char *i_jname){
-        hrp::Link const *l = NULL;
+        const hrp::Link *l = NULL;
         if ((l = const_robot->link(i_jname))){
             if(!is_reference[l->jointId]){
                 if(!is_passive[l->jointId]){
@@ -1672,7 +1869,7 @@ public:
     }
     
     void setActiveJoint(const char *i_jname){
-        hrp::Link const *l = NULL;
+        const hrp::Link *l = NULL;
         if ((l = const_robot->link(i_jname))){
             if(is_passive[l->jointId]){
                 is_reference[l->jointId] = false;
@@ -1781,13 +1978,11 @@ private:
     double mcs_passive_vel;
     double sync2activetime;
     double sync2referencetime;
-    double centroid_weight;
+    hrp::Vector3 centroid_weight;
     double reference_time_const;
     double reference_weight;
     std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
 
-    std::vector<bool> mcs_leq_joint;//numJoints,Ftw < 0 only joint
-    std::vector<bool> mcs_geq_joint;//numJoints,Ftw > 0 only joint
     std::vector<double> mcs_passive_torquedirection;
     hrp::dvector6 mcs_equality_weight;//等式制約に対する重み
     

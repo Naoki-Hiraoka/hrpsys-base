@@ -290,17 +290,13 @@ module OpenHRP
       /// reference time const [s]
       double reference_time_const;
       /// centroid weight
-      double centroid_weight;
+      sequence<double, 3> centroid_weight;
       /// reference weight
       double reference_weight;
       /// Sequence of all joint torque distribution weight
       sequence<double> mcs_joint_torque_distribution_weight;
       /// Sequence of equality constraint weight
       sequence<double, 6> mcs_equality_weight;
-      /// Sequence of Ftw < 0 only joint
-      sequence<boolean> mcs_leq_joint;
-      /// Sequence of Ftw > 0 only joint
-      sequence<boolean> mcs_geq_joint;
       /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
       sequence<double> mcs_passive_torquedirection;        
       /// Sequence of all end-effector params
