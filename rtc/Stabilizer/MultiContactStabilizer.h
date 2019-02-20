@@ -444,7 +444,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(true)
+    MultiContactStabilizer() : debug(true),qpdebug(true)
     {
     }
 
@@ -830,7 +830,19 @@ public:
         }
 
 
-        
+        //debug
+        struct timeval s, e;
+        if(debug){
+            gettimeofday(&s, NULL);
+        }
+        hrp::dvector acttau;
+        hrp::dvector nexttaua;
+        hrp::dvector nexttaub;
+        hrp::dvector actwrench;
+        hrp::dvector nextwrencha;
+        hrp::dvector nextwrenchb;
+        hrp::dvector targetcom;
+        hrp::dvector nextcoma;
 
         /**************************************************************/
         
@@ -1058,6 +1070,8 @@ public:
                 std::cerr << b << std::endl;
                 std::cerr << "H" << std::endl;
                 std::cerr << a.transpose() * W * a <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << b.transpose() * W * a <<std::endl;
                 std::cerr << "taumin" << std::endl;
                 std::cerr << taumin << std::endl;
                 std::cerr << "taumax" << std::endl;
@@ -1068,6 +1082,10 @@ public:
                 std::cerr << lbA << std::endl;
                 std::cerr << "ubA" << std::endl;
                 std::cerr << ubA << std::endl;
+
+                nexttaua = a;
+                nexttaub = b;
+                acttau = b - supportJ.transpose() * select_matrix * D * Tinv * d_support_foot;
             }
         }
         /*****************************************************************/
@@ -1118,7 +1136,7 @@ public:
                 G.block<3,3>(3,6*i+3) = support_eef[i]->act_R_origin/*act_cogorigin系*/;
             }
             As.push_back(G*a);
-            lbAs.push_back((-G*c).array());
+            lbAs.push_back(-G*c);
             ubAs.push_back(-G*c);
             
             if(debug){
@@ -1131,10 +1149,17 @@ public:
                 std::cerr << b << std::endl;
                 std::cerr << "H" << std::endl;
                 std::cerr << a.transpose() * W * a <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << b.transpose() * W * a <<std::endl;
                 std::cerr << "c" << std::endl;
                 std::cerr << c << std::endl;
                 std::cerr << "G" << std::endl;
                 std::cerr << G << std::endl;
+
+                nextwrencha = a;
+                nextwrenchb = b;
+                actwrench = b - c;
+
             }
         }
 
@@ -1148,7 +1173,7 @@ public:
             }
             hrp::Vector3 target_cog/*refworld系*/ = ref_cog/*refworld系*/ + tmp_d_cog/*refworld系*/;
             hrp::Vector3 delta_cog = target_cog/*refworld系*/ - cur_cog/*refworld系*/;
-
+            
             hrp::dmatrix tmp_CM_J;
             m_robot->calcCMJacobian(NULL,tmp_CM_J);//CM_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順
             hrp::dmatrix CM_J=hrp::dmatrix::Zero(3,6+ik_enable_joint_num);
@@ -1158,15 +1183,15 @@ public:
                     CM_J.block<3,1>(0,6+ik_enable_joint_map[i]) = tmp_CM_J.block<3,1>(0,i);
                 }
             }
-
+            
             hrp::dmatrix W = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
                 W(i,i) = centroid_weight[i];
             }
-
+            
             H += CM_J.transpose() * W * CM_J;
             g += - delta_cog.transpose() * W * CM_J;
-
+            
             if(debug){
                 std::cerr << "centroid" << std::endl;
                 std::cerr << "tmp_d_cog" << std::endl;
@@ -1181,11 +1206,13 @@ public:
                 std::cerr << W << std::endl;
                 std::cerr << "H" << std::endl;
                 std::cerr <<CM_J.transpose() * W * CM_J <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << - delta_cog.transpose() * W * CM_J <<std::endl;
 
+                targetcom = delta_cog;
+                nextcoma = CM_J;
             }
-
         }
-        
         /*****************************************************************/
         //support eef
         if(support_eef.size()>0){
@@ -1221,6 +1248,9 @@ public:
                 std::cerr << b << std::endl;
                 std::cerr << "H" << std::endl;
                 std::cerr <<a.transpose() * W * a <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << b.transpose() * W * a <<std::endl;
+
 
             }
 
@@ -1275,6 +1305,8 @@ public:
                 std::cerr << b << std::endl;
                 std::cerr << "H" << std::endl;
                 std::cerr <<a.transpose() * W * a <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << b.transpose() * W * a <<std::endl;
 
             }
         }
@@ -1307,6 +1339,8 @@ public:
                 std::cerr << reference_q << std::endl;
                 std::cerr << "H" << std::endl;
                 std::cerr << W <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << - reference_q.transpose() * W <<std::endl;
 
             }
         }
@@ -1408,6 +1442,10 @@ public:
 
         }
 
+        if(debug){
+            gettimeofday(&e, NULL);
+            std::cerr << "before QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+        }
         
         /*****************************************************************/
 
@@ -1479,7 +1517,7 @@ public:
             }
             if (!is_initial) {
                 example->setOptions( options );
-                int nWSR = 1000;
+                int nWSR = 100;
                 
                 //debug
                 struct timeval s, e;
@@ -1526,7 +1564,7 @@ public:
                 //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
                 sqp_map[tmp_pair]=example;
                 example->setOptions( options );
-                int nWSR = 1000;
+                int nWSR = 100;
                 
                 //debug
                 struct timeval s, e;
@@ -1575,18 +1613,37 @@ public:
             std::cerr << qp_solved << std::endl;
             std::cerr << "command_dq" << std::endl;
             std::cerr << command_dq << std::endl;
+
+            std::cerr << "acttau" << std::endl;
+            std::cerr << acttau << std::endl;
+            std::cerr << "nexttau" << std::endl;
+            std::cerr << nexttaub + nexttaua * command_dq << std::endl;
+
+            std::cerr << "actwrench" << std::endl;
+            std::cerr << actwrench << std::endl;
+            std::cerr << "nextwrench" << std::endl;
+            std::cerr << nextwrenchb + nextwrencha * command_dq << std::endl;
+
+            std::cerr << "targetcom" << std::endl;
+            std::cerr << targetcom << std::endl;
+            std::cerr << "nextcom" << std::endl;
+            std::cerr << nextcoma * command_dq << std::endl;
+            
         }
-
-
+        
+        
 
 
 
         /*****************************************************************/
         if(qp_solved){
-            m_robot->rootLink()->p/*refworld系*/ += transition_smooth_gain * command_dq.block<3,1>(0,0);
-            hrp::Matrix33 dR/*refworld系*/;
-            hrp::calcRodrigues(dR,command_dq.block<3,1>(3,0).normalized(),transition_smooth_gain*command_dq.block<3,1>(3,0).norm());
-            m_robot->rootLink()->R/*refworld系*/ = dR/*refworld系*/ * m_robot->rootLink()->R/*refworld系*/;
+            hrp::Vector3 dp = command_dq.block<3,1>(0,0).array() * transition_smooth_gain;
+            m_robot->rootLink()->p/*refworld系*/ += dp;
+            if(command_dq.block<3,1>(3,0).norm()>0){
+                hrp::Matrix33 dR/*refworld系*/;
+                hrp::calcRodrigues(dR,command_dq.block<3,1>(3,0).normalized(),transition_smooth_gain * (command_dq.block<3,1>(3,0).norm()));
+                m_robot->rootLink()->R/*refworld系*/ = dR/*refworld系*/ * m_robot->rootLink()->R/*refworld系*/;
+            }
             for(int j=0; j < m_robot->numJoints(); ++j){
                 if(ik_enable_joint_states[j]){
                     m_robot->joint(j)->q += transition_smooth_gain * command_dq[6+ik_enable_joint_map[j]];
@@ -1688,7 +1745,7 @@ public:
             endeffector[i]->d_foot_rpy1=hrp::Vector3::Zero();
         }
     }
-
+    
     void setParameter(const OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
         //is_ik_enableは変えてはいけない
         mcs_k1 = i_stp.mcs_k1;
@@ -1875,7 +1932,7 @@ public:
                 is_reference[l->jointId] = false;
                 is_passive[l->jointId] = false;
                 prevpassive[l->jointId] = true;
-                sync2activecnt[l->jointId] = sync2activetime;
+                            sync2activecnt[l->jointId] = sync2activetime;
                 sync2referencecnt[l->jointId] = 0.0;
             }
             if(is_reference[l->jointId]){
@@ -1891,7 +1948,7 @@ public:
         }
         return;
     }
-    
+        
 private:
     hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         hrp::Vector3 mlog;
@@ -1921,7 +1978,7 @@ private:
     //次のループで今回の値を使用するような変数は，refworld系かactworld系で保管すること.origin系は原点が不連続に移動する.
 
     //config
-    bool debug;
+    bool debug,qpdebug;
     std::string instance_name;
     double dt;
     size_t eefnum;
@@ -1988,7 +2045,7 @@ private:
     
     std::vector<bool> is_passive;
     std::vector<bool> is_reference;
-};
+    };
 
 
 #endif /* MULTICONTACTSTABILIZER_H */
