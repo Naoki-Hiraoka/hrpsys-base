@@ -836,13 +836,14 @@ public:
             gettimeofday(&s, NULL);
         }
         hrp::dvector acttau;
-        hrp::dvector nexttaua;
+        hrp::dmatrix nexttaua;
         hrp::dvector nexttaub;
         hrp::dvector actwrench;
-        hrp::dvector nextwrencha;
+        hrp::dmatrix nextwrencha;
         hrp::dvector nextwrenchb;
+        hrp::dmatrix wrenchG;
         hrp::dvector targetcom;
-        hrp::dvector nextcoma;
+        hrp::dmatrix nextcoma;
 
         /**************************************************************/
         
@@ -1159,7 +1160,7 @@ public:
                 nextwrencha = a;
                 nextwrenchb = b;
                 actwrench = b - c;
-
+                wrenchG = G;
             }
         }
 
@@ -1379,9 +1380,7 @@ public:
                     else if(is_reference[i]){
                         double reference_vel=0;
                         if(sync2referencecnt[i]>0.0){
-                            double now = 1/(1+exp(-9.19*((1.0 - sync2referencecnt[i]/sync2referencetime - 0.5))));
-                            double next = 1/(1+exp(-9.19*((1.0 - (sync2referencecnt[i]-dt)/sync2referencetime - 0.5))));
-                            reference_vel = (next-now)/(1-now) * (qrefv[i] - m_robot->joint(i)->q);
+                            reference_vel = (dt / sync2referencetime * 9.19) * 1/(1+exp(-9.19*((1.0 - sync2referencecnt[i]/sync2referencetime - 0.5)))) * (qrefv[i] - m_robot->joint(i)->q);
                         }else{
                             reference_vel = qrefv[i] - m_robot->joint(i)->q;
                         }
@@ -1483,7 +1482,7 @@ public:
                 for (size_t i = 0; i < As.size(); i++) {
                     for(size_t j = 0; j < As[i].rows() ; j++){
                         for(size_t k = 0; k < state_len; k++){ 
-                            qp_A[state_len*inequality_idx + j] = As[i](j,k);
+                            qp_A[state_len*inequality_idx + k] = As[i](j,k);
                         }
                         qp_lbA[inequality_idx] = lbAs[i][j];
                         qp_ubA[inequality_idx] = ubAs[i][j];
@@ -1491,9 +1490,52 @@ public:
                     }
                 }
             }
+
+            if(debug){
+                std::cerr << "qp_H" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    for(size_t j = 0; j < state_len; j++){ 
+                        std::cerr << qp_H[i*state_len + j] << " ";
+                    }
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_g" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    std::cerr << qp_g[i] << " ";
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_A" <<std::endl;
+                for (size_t i = 0; i < inequality_len; i++) {
+                    for(size_t j = 0; j < state_len; j++){ 
+                        std::cerr << qp_A[i*state_len + j]<< " ";
+                    }
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_lbA" <<std::endl;
+                for (size_t i = 0; i < inequality_len; i++) {
+                    std::cerr << qp_lbA[i]<< " ";
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_ubA" <<std::endl;
+                for (size_t i = 0; i < inequality_len; i++) {
+                    std::cerr << qp_ubA[i]<< " ";
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_lb" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    std::cerr << qp_lb[i]<< " ";
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_ub" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    std::cerr << qp_ub[i]<< " ";
+                    std::cerr << std::endl;
+                }
+
+            }
             
             qpOASES::Options options;
-            options.enableFlippingBounds = qpOASES::BT_TRUE;
+            //options.enableFlippingBounds = qpOASES::BT_TRUE;
             options.initialStatusBounds = qpOASES::ST_INACTIVE;
             options.numRefinementSteps = 1;
             options.enableCholeskyRefactorisation = 1;
@@ -1623,7 +1665,10 @@ public:
             std::cerr << actwrench << std::endl;
             std::cerr << "nextwrench" << std::endl;
             std::cerr << nextwrenchb + nextwrencha * command_dq << std::endl;
-
+            std::cerr << "Ga"  << std::endl;
+            std::cerr << wrenchG * nextwrencha << std::endl;
+            std::cerr << "wrenchG"  << std::endl;
+            std::cerr << wrenchG * nextwrencha * command_dq << std::endl;
             std::cerr << "targetcom" << std::endl;
             std::cerr << targetcom << std::endl;
             std::cerr << "nextcom" << std::endl;
