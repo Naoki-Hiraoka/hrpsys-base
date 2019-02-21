@@ -1416,7 +1416,7 @@ public:
                     }else{
                         if(prevpassive[i]){
                             if(m_robot->joint(i)->q > ulimit[i]) max = std::min(max,0.0);
-                            if(m_robot->joint(i)->q > llimit[i]) min = std::max(min,0.0);
+                            if(m_robot->joint(i)->q < llimit[i]) min = std::max(min,0.0);
                         }
                         if(sync2activecnt[i]>0.0){
                             max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * dt);
@@ -2013,7 +2013,7 @@ public:
                 is_reference[l->jointId] = false;
                 is_passive[l->jointId] = false;
                 prevpassive[l->jointId] = true;
-                            sync2activecnt[l->jointId] = sync2activetime;
+                sync2activecnt[l->jointId] = sync2activetime;
                 sync2referencecnt[l->jointId] = 0.0;
             }
             if(is_reference[l->jointId]){
