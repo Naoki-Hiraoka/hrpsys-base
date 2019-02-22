@@ -1311,7 +1311,7 @@ public:
                 delta_interact_eef.block<3,1>(i*6+3,0) = matrix_logEx(interact_eef[i]->cur_R.transpose() * target_R);
                 
                 if(interact_eef[i]->ref_contact_state){
-                    delta_interact_eef[i*6+2] = interact_eef[i]->z_contact_vel*dt;
+                    delta_interact_eef[i*6+2] = - interact_eef[i]->z_contact_vel*dt;
                 }
             }
 
