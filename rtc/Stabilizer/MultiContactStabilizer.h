@@ -881,8 +881,8 @@ public:
         for(size_t i = 0 ; i < m_robot->numJoints() ; i++){
             if (joint_limit_tables.find(m_robot->joint(i)->name) != joint_limit_tables.end()) {
                 std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(i)->name);
-                llimit[i] = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
-                ulimit[i] = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
+                llimit[i] = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q) + 0.001;//今回のqpの結果超えることを防ぐため、少しマージン
+                ulimit[i] = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q) - 0.001;
             }else{
                 llimit[i] = m_robot->joint(i)->llimit;
                 ulimit[i] = m_robot->joint(i)->ulimit;
