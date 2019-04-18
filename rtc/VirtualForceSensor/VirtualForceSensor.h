@@ -140,6 +140,8 @@ class VirtualForceSensor
   // <rtc-template block="outport_declare">
   std::vector<TimedDoubleSeq> m_force;
   std::vector<OutPort<TimedDoubleSeq> *> m_forceOut;
+    std::vector<TimedDoubleSeq> m_offforce;
+  std::vector<OutPort<TimedDoubleSeq> *> m_offforceOut;
   TimedDoubleSeq m_extforce;
   OutPort<TimedDoubleSeq> m_extforceOut;
     
@@ -209,8 +211,6 @@ class VirtualForceSensor
   hrp::dvector dqprev;
   hrp::Matrix33 baseRprev;
   hrp::Vector3 basewprev;
-  hrp::Vector3 cog_Pprev;
-  hrp::Vector3 cog_Lprev;
 
   hrp::Vector3 extforceOffset;
   hrp::Vector3 extmomentOffset;
@@ -220,12 +220,10 @@ class VirtualForceSensor
   size_t extforce_offset_calib_counter;
   size_t max_extforce_offset_calib_counter;
     
-  std::vector<hrp::JointPathExPtr> jpe_v; 
+  std::vector<hrp::JointPathExPtr> jpe_v;
 
   coil::Mutex m_mutex;
-    
-  bool calcRawVirtualForce(std::string sensorName, hrp::dvector &outputForce);
-  
+
 };
 
 

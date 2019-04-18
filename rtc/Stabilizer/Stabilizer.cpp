@@ -216,7 +216,8 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   }
 
   // load virtual force sensors
-  readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
+  // TODO
+  // readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
   int nvforce = m_vfs.size();
   for (unsigned int i=0; i<nvforce; ++i) {
       for ( std::map<std::string, hrp::VirtualForceSensorParam>::iterator it = m_vfs.begin(); it != m_vfs.end(); it++ ) {

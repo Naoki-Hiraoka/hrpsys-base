@@ -495,10 +495,11 @@ class HrpsysConfigurator(object):
             for sen in filter(lambda x: x.type == "Force", self.sensors):
                 connectPorts(self.rmfo.port("off_" + sen.name), self.vs.port(sen.name))
             #  virtual force sensors
-            if self.ic:
-                for vfp in filter(lambda x: str.find(x, 'v') >= 0 and
-                                  str.find(x, 'sensor') >= 0, self.vs.ports.keys()):
-                    connectPorts(self.vs.port(vfp), self.ic.port(vfp))
+            # TODO
+            #if self.ic:
+            #    for vfp in filter(lambda x: str.find(x, 'v') >= 0 and
+            #                      str.find(x, 'sensor') >= 0, self.vs.ports.keys()):
+            #        connectPorts(self.vs.port(vfp), self.ic.port(vfp))
         # connection for co
         if self.co:
             connectPorts(self.rh.port("q"), self.co.port("qCurrent"))
@@ -848,8 +849,9 @@ class HrpsysConfigurator(object):
         Get list of force sensor names. Returns existence force sensors and virtual force sensors. self.sensors and virtual force sensors are assumed.
         '''
         ret = map (lambda x : x.name, filter(lambda x: x.type == "Force", self.sensors))
-        if self.vs != None:
-            ret += filter(lambda x: str.find(x, 'v') >= 0 and str.find(x, 'sensor') >= 0, self.vs.ports.keys())
+        # TODO
+        #if self.vs != None:
+        #    ret += filter(lambda x: str.find(x, 'v') >= 0 and str.find(x, 'sensor') >= 0, self.vs.ports.keys())
         return ret
 
     def connectLoggerPort(self, artc, sen_name, log_name=None):

@@ -125,7 +125,8 @@ RTC::ReturnCode_t ImpedanceController::onInitialize()
         fsensor_names.push_back(m_robot->sensor(hrp::Sensor::FORCE, i)->name);
     }
     // load virtual force sensors
-    readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
+    // TOD0!
+    // readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
     unsigned int nvforce = m_vfs.size();
     for (unsigned int i=0; i<nvforce; i++){
         for ( std::map<std::string, hrp::VirtualForceSensorParam>::iterator it = m_vfs.begin(); it != m_vfs.end(); it++ ) {
