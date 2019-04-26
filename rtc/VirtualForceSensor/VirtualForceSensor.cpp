@@ -498,7 +498,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             }
         }
         for (size_t i = 0; i < state_len; i++) {
-            qp_g[i] = g(0,i);
+            qp_g[i] = g(i,0);
             //qp_lb[i] = lb[i];
             //qp_ub[i] = ub[i];
         }
