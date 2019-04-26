@@ -642,6 +642,19 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
                     m_force[i].tm = tm; // put timestamp
                     m_forceOut[i]->write();
                 }
+
+                //offset
+                if((*it).second.max_offset_calib_counter > 0){// while calibrating
+                    (*it).second.forceOffset_sum/*sensor系*/ += virtual_wrench.block<3,1>(i*6,0)/*sensor系*/;
+                    (*it).second.momentOffset_sum/*sensor系,sensor周り*/ += virtual_wrench.block<3,1>(i*6+3,0)/*sensor系,sensor周り*/;
+
+                    (*it).second.offset_calib_counter--;
+                    if ((*it).second.offset_calib_counter == 0){
+                        (*it).second.forceOffset/*sensor系*/ = (*it).second.forceOffset_sum / (*it).second.max_offset_calib_counter;
+                        (*it).second.momentOffset/*sensor系, 重心周り*/ = (*it).second.momentOffset_sum / (*it).second.max_offset_calib_counter;
+                        sem_post(&((*it).second.wait_sem));
+                    }
+                }
                 virtual_wrench.block<3,1>(i*6,0) -= (*it).second.forceOffset;
                 virtual_wrench.block<3,1>(i*6+3,0) -= (*it).second.momentOffset;
                 for (size_t j = 0; j < 3; j++){
