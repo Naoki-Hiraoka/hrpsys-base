@@ -33,6 +33,8 @@
 
 #include <semaphore.h>
 
+#include <qpOASES.hpp>
+
 // Service implementation headers
 // <rtc-template block="service_impl_h">
 
@@ -224,6 +226,7 @@ class VirtualForceSensor
 
   coil::Mutex m_mutex;
 
+  std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> > sqp_map;
 };
 
 

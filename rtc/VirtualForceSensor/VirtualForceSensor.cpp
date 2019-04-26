@@ -11,11 +11,10 @@
 #include <rtm/CorbaNaming.h>
 #include <hrpModel/ModelLoaderUtil.h>
 #include <hrpUtil/MatrixSolvers.h>
-#include <qpOASES.hpp>
 
 typedef coil::Guard<coil::Mutex> Guard;
 
-#define VS_DEBUG true
+#define VS_DEBUG false
 
 // Module specification
 // <rtc-template block="module_spec">
@@ -401,22 +400,22 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         std::cout << Tvirtual <<std::endl;
     }
 
-    //virtual sensor入力を推定する
+
     //USE_QPOASES を ON にすること
     bool qp_solved=false;
-    hrp::dvector virtual_wrench(6 * m_sensors.size())/*sensor系,sensor周り*/;
+    hrp::dvector virtual_wrench=hrp::dvector::Zero(6 * m_sensors.size())/*sensor系,sensor周り*/;
     if(m_sensors.size()!=0){
-        size_t state_len = 6 * m_sensors.size();
-        size_t inequality_len = 11 * m_sensors.size();
-        qpOASES::real_t* H = new qpOASES::real_t[state_len * state_len];// 0.5 xt H x + xt g が目的関数であることに注意
-        qpOASES::real_t* A = new qpOASES::real_t[inequality_len * state_len];
-        qpOASES::real_t* g = new qpOASES::real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
-        qpOASES::real_t* ub = NULL;
-        qpOASES::real_t* lb = NULL;
-        qpOASES::real_t* ubA = new qpOASES::real_t[inequality_len];
-        qpOASES::real_t* lbA = new qpOASES::real_t[inequality_len];
+        /****************************************************************/
+        //virtual sensor入力を推定する
+        hrp::dmatrix H = hrp::dmatrix::Zero(6 * m_sensors.size(),6 * m_sensors.size());
+        hrp::dmatrix g = hrp::dmatrix::Zero(1,6 * m_sensors.size());
+        std::vector<hrp::dmatrix> As;
+        std::vector<hrp::dvector> lbAs;
+        std::vector<hrp::dvector> ubAs;
+        hrp::dvector lb;
+        hrp::dvector ub;
 
-        hrp::dmatrix J = hrp::dmatrix::Zero(state_len,m_robot->numJoints());
+        hrp::dmatrix J = hrp::dmatrix::Zero(6 * m_sensors.size(),m_robot->numJoints());
         {
             std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
             for (size_t i = 0 ; i < m_sensors.size(); i++){
@@ -434,92 +433,191 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             }
         }
 
-        hrp::dmatrix JJt = J * J.transpose();
-        for (size_t i = 0; i < state_len; i++){
-            for (size_t j = 0; j < state_len; j++){
-                H[i*state_len+j] = JJt(i,j);
-            }
-        }
-        hrp::dvector JTvirtual = J * Tvirtual;
-        for (size_t i = 0; i < state_len; i++){
-            g[i] = JTvirtual[i];
-        }
+        H = J * J.transpose();
+        g = - J * Tvirtual;
 
         {
-            for (size_t i =0; i < state_len * inequality_len; i++){
-                A[i] = 0.0;
-            }
+            hrp::dmatrix A = hrp::dmatrix::Zero(11 * m_sensors.size(),6 * m_sensors.size());
             std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
             for (size_t i = 0 ; i < m_sensors.size(); i++ ){
-                A[(i*11+0)*state_len + (i*6+2)] = 1;
-                A[(i*11+1)*state_len + (i*6+0)] = -1;
-                A[(i*11+1)*state_len + (i*6+2)] = (*it).second.friction_coefficient;
-                A[(i*11+2)*state_len + (i*6+0)] = 1;
-                A[(i*11+2)*state_len + (i*6+2)] = (*it).second.friction_coefficient;
-                A[(i*11+3)*state_len + (i*6+1)] = -1;
-                A[(i*11+3)*state_len + (i*6+2)] = (*it).second.friction_coefficient;
-                A[(i*11+4)*state_len + (i*6+1)] = 1;
-                A[(i*11+4)*state_len + (i*6+2)] = (*it).second.friction_coefficient;
-                A[(i*11+5)*state_len + (i*6+3)] = -1;
-                A[(i*11+5)*state_len + (i*6+2)] = (*it).second.upper_cop_y_margin;
-                A[(i*11+6)*state_len + (i*6+3)] = 1;
-                A[(i*11+6)*state_len + (i*6+2)] = (*it).second.lower_cop_y_margin;
-                A[(i*11+7)*state_len + (i*6+4)] = -1;
-                A[(i*11+7)*state_len + (i*6+2)] = (*it).second.lower_cop_x_margin;
-                A[(i*11+8)*state_len + (i*6+4)] = 1;
-                A[(i*11+8)*state_len + (i*6+2)] = (*it).second.upper_cop_x_margin;
-                A[(i*11+9)*state_len + (i*6+5)] = -1;
-                A[(i*11+9)*state_len + (i*6+2)] = (*it).second.rotation_friction_coefficient;
-                A[(i*11+10)*state_len + (i*6+5)] = 1;
-                A[(i*11+10)*state_len + (i*6+2)] = (*it).second.rotation_friction_coefficient;
+                A(i*11+0,i*6+2) = 1;
+                A(i*11+1,i*6+0) = -1;
+                A(i*11+1,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+2,i*6+0) = 1;
+                A(i*11+2,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+3,i*6+1) = -1;
+                A(i*11+3,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+4,i*6+1) = 1;
+                A(i*11+4,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+5,i*6+3) = -1;
+                A(i*11+5,i*6+2) = (*it).second.upper_cop_y_margin;
+                A(i*11+6,i*6+3) = 1;
+                A(i*11+6,i*6+2) = (*it).second.lower_cop_y_margin;
+                A(i*11+7,i*6+4) = -1;
+                A(i*11+7,i*6+2) = (*it).second.lower_cop_x_margin;
+                A(i*11+8,i*6+4) = 1;
+                A(i*11+8,i*6+2) = (*it).second.upper_cop_x_margin;
+                A(i*11+9,i*6+5) = -1;
+                A(i*11+9,i*6+2) = (*it).second.rotation_friction_coefficient;
+                A(i*11+10,i*6+5) = 1;
+                A(i*11+10,i*6+2) = (*it).second.rotation_friction_coefficient;
                 it++;
+            }
+            if(VS_DEBUG){
+                std::cerr << "A" <<std::endl;
+                std::cerr << A <<std::endl;
+            }
+            As.push_back(A);
+        }
+        {
+            hrp::dvector lbA = hrp::dvector::Zero(m_sensors.size() * 11);
+            hrp::dvector ubA = hrp::dvector::Zero(m_sensors.size() * 11);
+            for (size_t i = 0; i < m_sensors.size() * 11; i++){
+                lbA[i] = 0.0;
+                ubA[i] = 1e10;
+            }
+            lbAs.push_back(lbA);
+            ubAs.push_back(ubA);
+        }
+
+        /*****************************************************************/
+        
+        size_t state_len = 6 * m_sensors.size();
+        size_t inequality_len = 11 * m_sensors.size();
+        qpOASES::real_t* qp_H = new qpOASES::real_t[state_len * state_len];// 0.5 xt H x + xt g が目的関数であることに注意
+        qpOASES::real_t* qp_A = new qpOASES::real_t[inequality_len * state_len];
+        qpOASES::real_t* qp_g = new qpOASES::real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
+        qpOASES::real_t* qp_ub = NULL;
+        qpOASES::real_t* qp_lb = NULL;
+        qpOASES::real_t* qp_ubA = new qpOASES::real_t[inequality_len];
+        qpOASES::real_t* qp_lbA = new qpOASES::real_t[inequality_len];
+
+        for (size_t i = 0; i < state_len; i++) {
+            for(size_t j = 0; j < state_len; j++){ 
+                qp_H[i*state_len + j] = H(i,j);
+            }
+        }
+        for (size_t i = 0; i < state_len; i++) {
+            qp_g[i] = g(0,i);
+            //qp_lb[i] = lb[i];
+            //qp_ub[i] = ub[i];
+        }
+        {
+            size_t inequality_idx = 0; 
+            for (size_t i = 0; i < As.size(); i++) {
+                for(size_t j = 0; j < As[i].rows() ; j++){
+                    for(size_t k = 0; k < state_len; k++){ 
+                        qp_A[state_len*inequality_idx + k] = As[i](j,k);
+                    }
+                    qp_lbA[inequality_idx] = lbAs[i][j];
+                    qp_ubA[inequality_idx] = ubAs[i][j];
+                    inequality_idx++;
+                }
             }
         }
 
-        for (size_t i = 0; i < inequality_len; i++){
-            lbA[i] = 0.0;
-            ubA[i] = 1e10;
-        }
-        
-        qpOASES::QProblem example( state_len ,inequality_len);
         qpOASES::Options options;
-        //options.enableFlippingBounds = qpOASES::BT_FALSE;
+        //options.enableFlippingBounds = qpOASES::BT_TRUE;
         options.initialStatusBounds = qpOASES::ST_INACTIVE;
         options.numRefinementSteps = 1;
         options.enableCholeskyRefactorisation = 1;
-        //options.printLevel = qpOASES::PL_HIGH;
-        options.printLevel = qpOASES::PL_NONE;
-        example.setOptions( options );
-        /* Solve first QP. */
-        //高速化のためSQPしたいTODO
-        int nWSR = 1000;qpOASES::real_t* tmp = NULL;
-        qpOASES::returnValue status = example.init( H,g,A,lb,ub,lbA,/*ubA*/tmp, nWSR,0);
-        if(qpOASES::getSimpleStatus(status)==0){
-            qp_solved=true;
-            qpOASES::real_t* xOpt = new qpOASES::real_t[state_len];
-            example.getPrimalSolution( xOpt );
-            for(size_t i=0; i<state_len;i++){
-                virtual_wrench[i]=xOpt[i];
-            }
-            if(VS_DEBUG){
-                std::cerr << "QP solved" <<std::endl;
-                std::cout << "virtual wrench" <<std::endl;
-                std::cout << virtual_wrench <<std::endl;
-            }
-            delete[] xOpt;
+        if(VS_DEBUG){
+            options.printLevel = qpOASES::PL_HIGH;
+        }else{
+            options.printLevel = qpOASES::PL_NONE;
         }
-        delete[] H;
-        delete[] A;
-        delete[] g;
-        delete[] ub;
-        delete[] lb;
-        delete[] ubA;
-        delete[] lbA;
+            
+        //copied from eus_qpoases
+        boost::shared_ptr<qpOASES::SQProblem> example;
+        std::pair<int, int> tmp_pair(state_len, inequality_len);
+        bool is_initial = true;
+        bool internal_error = false;
+        {
+            std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
+            is_initial = (it == sqp_map.end());
+            if(!is_initial){
+                example = it->second;
+            }
+        }
+        if (!is_initial) {
+            example->setOptions( options );
+            int nWSR = 100;
+            
+            qpOASES::returnValue status = example->hotstart( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
+            
+            if(qpOASES::getSimpleStatus(status)==0){
+                if(VS_DEBUG){
+                    std::cerr << "hotstart qp_solved" <<std::endl;
+                }
+                
+                qp_solved=true;
+                qpOASES::real_t* xOpt = new qpOASES::real_t[state_len];
+                example->getPrimalSolution( xOpt );
+                for(size_t i=0; i<state_len;i++){
+                    virtual_wrench[i]=xOpt[i];
+                }
+                delete[] xOpt;
+            }else{
+                if(VS_DEBUG){
+                    std::cerr << "hotstart qp fail" <<std::endl;
+                }
+                // Delete unsolved sqp
+                sqp_map.erase(tmp_pair);
+                if(qpOASES::getSimpleStatus(status)==-1){
+                    if(VS_DEBUG){
+                        std::cerr << "hotstart qp internal error" <<std::endl;
+                    }
+                    internal_error = true;
+                }
+            }
+        }
+        
+        if(is_initial || internal_error){
+            example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, qpOASES::HST_UNKNOWN));
+            //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
+            sqp_map[tmp_pair]=example;
+            example->setOptions( options );
+            int nWSR = 100;
+            
+            qpOASES::returnValue status = example->init( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
+            
+            if(qpOASES::getSimpleStatus(status)==0){
+                if(VS_DEBUG){
+                    std::cerr << "initial qp_solved" <<std::endl;
+                }
+                
+                qp_solved=true;
+                qpOASES::real_t* xOpt = new qpOASES::real_t[state_len];
+                example->getPrimalSolution( xOpt );
+                for(size_t i=0; i<state_len;i++){
+                    virtual_wrench[i]=xOpt[i];
+                }
+                delete[] xOpt;
+            }else{
+                if(VS_DEBUG){
+                    std::cerr << "initial qp fail" <<std::endl;
+                }
+                // Delete unsolved sqp
+                sqp_map.erase(tmp_pair);
+            }
+        }
+        delete[] qp_H;
+        delete[] qp_A;
+        delete[] qp_g;
+        delete[] qp_ub;
+        delete[] qp_lb;
+        delete[] qp_ubA;
+        delete[] qp_lbA;
     }else{
         qp_solved=true;
     }
 
     if(qp_solved){
+        if(VS_DEBUG){
+            std::cerr << "virtual_wrench" <<std::endl;
+            std::cerr << virtual_wrench <<std::endl;
+        }
+        
         hrp::dvector6 ext_wrench/*actworld系,cogまわり*/ = hrp::dvector6::Zero();
         ext_wrench.block<3,1>(0,0)/*actworld系*/ = Tvirtual.block<3,1>(0,0)/*actworld系*/;
         ext_wrench.block<3,1>(3,0)/*actworld系,cogまわり*/ = Tvirtual.block<3,1>(3,0)/*actworld系,原点周り*/ + (-CM/*actworld系*/).cross(Tvirtual.block<3,1>(0,0)/*actworld系*/);
