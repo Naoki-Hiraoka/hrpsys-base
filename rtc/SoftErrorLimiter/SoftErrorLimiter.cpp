@@ -174,7 +174,20 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
           coil::stringTo(hardware_pgains[i], hardware_pgains_params[i].c_str());
       }
   }
-  
+
+  // read ignored joint
+  m_joint_mask.resize(m_robot->numJoints(), false);
+  coil::vstring ijoints = coil::split(prop["mask_joint_limit"], ",");
+  for(int i = 0; i < ijoints.size(); i++) {
+      hrp::Link *lk = m_robot->link(std::string(ijoints[i]));
+      if((!!lk) && (lk->jointId >= 0)) {
+          std::cout << "[" << m_profile.instance_name << "] "
+                    << "disable ErrorLimit, joint : " << ijoints[i]
+                    << " (id = " << lk->jointId << ")" << std::endl;
+          m_joint_mask[lk->jointId] = true;
+      }
+  }
+
   return RTC::RTC_OK;
 }
 
@@ -306,6 +319,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
 
     // Velocity limitation for reference joint angles
     for ( unsigned int i = 0; i < m_qRef.data.length(); i++ ){
+      if(m_joint_mask[i]) continue;
       // Determin total upper-lower limit considering velocity, position, and error limits.
       // e.g.,
       //  total lower limit = max (vel, pos, err) <= severest lower limit

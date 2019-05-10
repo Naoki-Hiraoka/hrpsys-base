@@ -1,28 +1,25 @@
-
 // -*- C++ -*-
 /*!
- * @file  CameraImageViewer.h
- * @brief null component
+ * @file  ColorExtractor.h
+ * @brief rotate image component
  * @date  $Date$
  *
  * $Id$
  */
 
-#ifndef NULL_COMPONENT_H
-#define NULL_COMPONENT_H
+#ifndef COLOR_EXTRACTOR_H
+#define COLOR_EXTRACTOR_H
 
 #include <rtm/idl/BasicDataType.hh>
-#include <rtm/idl/InterfaceDataTypes.hh>
+#include <rtm/idl/ExtendedDataTypes.hh>
+#include "hrpsys/idl/Img.hh"
 #include <rtm/Manager.h>
 #include <rtm/DataFlowComponentBase.h>
 #include <rtm/CorbaPort.h>
-#include "hrpsys/idl/Img.hh"
 #include <rtm/DataInPort.h>
 #include <rtm/DataOutPort.h>
 #include <rtm/idl/BasicDataTypeSkel.h>
-#include <rtm/idl/InterfaceDataTypesSkel.h>
 #include <cv.h>
-#include <highgui.h>
 
 // Service implementation headers
 // <rtc-template block="service_impl_h">
@@ -37,9 +34,9 @@
 using namespace RTC;
 
 /**
-   \brief sample RT component which has one data input port and one data output port
+   \brief RT component which resize an input image
  */
-class CameraImageViewer
+class ColorExtractor
   : public RTC::DataFlowComponentBase
 {
  public:
@@ -47,11 +44,11 @@ class CameraImageViewer
      \brief Constructor
      \param manager pointer to the Manager
   */
-  CameraImageViewer(RTC::Manager* manager);
+  ColorExtractor(RTC::Manager* manager);
   /**
      \brief Destructor
   */
-  virtual ~CameraImageViewer();
+  virtual ~ColorExtractor();
 
   // The initialize action (on CREATED->ALIVE transition)
   // formaer rtc_init_entry()
@@ -108,18 +105,21 @@ class CameraImageViewer
   
   // </rtc-template>
 
-  Img::TimedCameraImage m_image;
-  CameraImage m_imageOld;
+  Img::TimedCameraImage m_original;
 
   // DataInPort declaration
   // <rtc-template block="inport_declare">
-  InPort<Img::TimedCameraImage> m_imageIn;
-  InPort<CameraImage> m_imageOldIn;
+  InPort<Img::TimedCameraImage> m_originalIn;
   
   // </rtc-template>
 
+  Img::TimedCameraImage m_result;
+  RTC::TimedPoint2D m_pos;
+
   // DataOutPort declaration
   // <rtc-template block="outport_declare">
+  OutPort<Img::TimedCameraImage> m_resultOut;
+  OutPort<RTC::TimedPoint2D> m_posOut;
   
   // </rtc-template>
 
@@ -139,15 +139,16 @@ class CameraImageViewer
   // </rtc-template>
 
  private:
-    IplImage* m_cvImage;
-    int m_depthBits;
-    int dummy;
+  IplImage *m_img;
+  int m_minPixels;
+  std::vector<int> m_rgbRegion;
+  int dummy;
 };
 
 
 extern "C"
 {
-  void CameraImageViewerInit(RTC::Manager* manager);
+  void ColorExtractorInit(RTC::Manager* manager);
 };
 
-#endif // NULL_COMPONENT_H
+#endif // COLOR_EXTRACTOR_H

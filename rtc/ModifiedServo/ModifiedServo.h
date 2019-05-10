@@ -1,28 +1,27 @@
-
 // -*- C++ -*-
 /*!
- * @file  CameraImageViewer.h
- * @brief null component
- * @date  $Date$
+ * @file  ModifiedServo.h
+ * @brief ModifiedServo component
+ * @date  $Date$ 
  *
- * $Id$
+ * $Id$ 
  */
 
-#ifndef NULL_COMPONENT_H
-#define NULL_COMPONENT_H
+#ifndef MODIFIEDSERVO_H
+#define MODIFIEDSERVO_H
 
-#include <rtm/idl/BasicDataType.hh>
-#include <rtm/idl/InterfaceDataTypes.hh>
+#include <rtm/idl/BasicDataTypeSkel.h>
 #include <rtm/Manager.h>
 #include <rtm/DataFlowComponentBase.h>
 #include <rtm/CorbaPort.h>
-#include "hrpsys/idl/Img.hh"
+#include <rtm/CorbaNaming.h>
 #include <rtm/DataInPort.h>
 #include <rtm/DataOutPort.h>
-#include <rtm/idl/BasicDataTypeSkel.h>
-#include <rtm/idl/InterfaceDataTypesSkel.h>
-#include <cv.h>
-#include <highgui.h>
+
+#include <hrpUtil/EigenTypes.h>
+#include <hrpModel/ModelLoaderUtil.h>
+#include <hrpModel/Body.h>
+#include <hrpModel/Link.h>
 
 // Service implementation headers
 // <rtc-template block="service_impl_h">
@@ -36,25 +35,14 @@
 
 using namespace RTC;
 
-/**
-   \brief sample RT component which has one data input port and one data output port
- */
-class CameraImageViewer
-  : public RTC::DataFlowComponentBase
+class ModifiedServo  : public RTC::DataFlowComponentBase
 {
  public:
-  /**
-     \brief Constructor
-     \param manager pointer to the Manager
-  */
-  CameraImageViewer(RTC::Manager* manager);
-  /**
-     \brief Destructor
-  */
-  virtual ~CameraImageViewer();
+  ModifiedServo(RTC::Manager* manager);
+  ~ModifiedServo();
 
   // The initialize action (on CREATED->ALIVE transition)
-  // formaer rtc_init_entry()
+  // formaer rtc_init_entry() 
   virtual RTC::ReturnCode_t onInitialize();
 
   // The finalize action (on ALIVE->END transition)
@@ -92,7 +80,7 @@ class CameraImageViewer
   // The reset action that is invoked resetting
   // This is same but different the former rtc_init_entry()
   // virtual RTC::ReturnCode_t onReset(RTC::UniqueId ec_id);
-
+  
   // The state update action that is invoked after onExecute() action
   // no corresponding operation exists in OpenRTm-aist-0.2.0
   // virtual RTC::ReturnCode_t onStateUpdate(RTC::UniqueId ec_id);
@@ -108,46 +96,66 @@ class CameraImageViewer
   
   // </rtc-template>
 
-  Img::TimedCameraImage m_image;
-  CameraImage m_imageOld;
-
   // DataInPort declaration
   // <rtc-template block="inport_declare">
-  InPort<Img::TimedCameraImage> m_imageIn;
-  InPort<CameraImage> m_imageOldIn;
-  
+  TimedDoubleSeq m_tauRef;
+  InPort<TimedDoubleSeq> m_tauRefIn;
+  TimedDoubleSeq m_qRef;
+  InPort<TimedDoubleSeq> m_qRefIn;
+  TimedDoubleSeq m_q;
+  InPort<TimedDoubleSeq> m_qIn;
+  TimedBooleanSeq m_torqueMode;
+  InPort<TimedBooleanSeq> m_torqueModeIn;
+
   // </rtc-template>
 
   // DataOutPort declaration
   // <rtc-template block="outport_declare">
-  
+  TimedDoubleSeq m_tau;
+  OutPort<TimedDoubleSeq> m_tauOut;
+
   // </rtc-template>
 
   // CORBA Port declaration
   // <rtc-template block="corbaport_declare">
-  
+
   // </rtc-template>
 
   // Service declaration
   // <rtc-template block="service_declare">
-  
+
   // </rtc-template>
 
   // Consumer declaration
   // <rtc-template block="consumer_declare">
-  
+
   // </rtc-template>
 
  private:
-    IplImage* m_cvImage;
-    int m_depthBits;
-    int dummy;
+
+  void readGainFile();
+
+  hrp::BodyPtr m_robot;
+  
+  double dt;      // sampling time of the controller
+  double ref_dt;  // sampling time of reference angles
+  double step;    // current interpolation step
+  double nstep;   // number of steps to interpolate references
+
+  size_t dof;
+
+  std::string gain_fname;
+  std::ifstream gain;
+
+  hrp::dvector Pgain, Dgain;
+  hrp::dvector q_old, qRef_old;
 };
 
 
 extern "C"
 {
-  void CameraImageViewerInit(RTC::Manager* manager);
+  DLL_EXPORT void ModifiedServoInit(RTC::Manager* manager);
 };
 
-#endif // NULL_COMPONENT_H
+#endif // MODIFIEDSERVO_H
+
