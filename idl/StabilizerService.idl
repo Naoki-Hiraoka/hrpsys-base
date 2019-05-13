@@ -144,6 +144,8 @@ module OpenHRP
         double pos_interact_weight;
         /// interact weight
         double rot_interact_weight;
+        /// whether the end effector is used for limb IK.
+        boolean is_ik_enable;
     };
             
     /**

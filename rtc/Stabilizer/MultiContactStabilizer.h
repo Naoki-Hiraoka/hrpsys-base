@@ -54,6 +54,7 @@ public:
                    moment_gain(hrp::Matrix33::Zero()),
                    pos_interact_weight(1e-6),
                    rot_interact_weight(1e-6),
+                   is_ik_enable(false),
                    
                    ref_p(hrp::Vector3::Zero()),
                    ref_R(hrp::Matrix33::Identity()),
@@ -323,6 +324,8 @@ public:
         rot_interact_weight = i_ccp.rot_interact_weight;
         std::cerr << "[" << instance_name << "]  rot_interact_weight = " << rot_interact_weight << std::endl;
 
+        is_ik_enable = i_ccp.is_ik_enable;
+        std::cerr << "[" << instance_name << "]  is_ik_enable = " << is_ik_enable << std::endl;
     }
 
     void getParameter(OpenHRP::StabilizerService::EndEffectorParam& i_ccp){
@@ -373,6 +376,7 @@ public:
         }
         i_ccp.pos_interact_weight = pos_interact_weight;
         i_ccp.rot_interact_weight = rot_interact_weight;
+        i_ccp.is_ik_enable = is_ik_enable;
     }
 
     //サービスコールで設定
@@ -405,6 +409,7 @@ public:
     hrp::Matrix33 moment_gain;
     double pos_interact_weight;
     double rot_interact_weight;
+    bool is_ik_enable;
     
     //.configで設定
     std::string link_name; // Name of end link
@@ -785,8 +790,7 @@ public:
         return false;
     }
 
-    void calcMultiContactControl(const std::vector<bool>& is_ik_enable,
-                                 hrp::BodyPtr& m_robot/*refworld系*/,
+    void calcMultiContactControl(hrp::BodyPtr& m_robot/*refworld系*/,
                                  const std::vector<std::string>& ee_names,
                                  std::vector<int> ik_loop_count,
                                  hrp::Vector3& log_current_base_pos/*refworld系*/,
@@ -797,13 +801,11 @@ public:
                                  std::vector<hrp::Vector3>& log_d_foot_rpy/*eef系,eefまわり*/,
                                  hrp::Vector3& log_d_cog_pos/*refworld系*/
                                  ) {
-        
-        
         const hrp::Vector3 gravity(0, 0, 9.80665);
 
         std::vector<boost::shared_ptr<EndEffector> > ik_enable_eef;
         for(size_t i = 0; i < eefnum;i++){
-            if(is_ik_enable[i])ik_enable_eef.push_back(endeffector[i]);
+            if(endeffector[i]->is_ik_enable)ik_enable_eef.push_back(endeffector[i]);
         }
         std::vector<bool> ik_enable_joint_states(m_robot->numJoints(),false);
         for(size_t i = 0; i < ik_enable_eef.size(); i++){
@@ -822,11 +824,11 @@ public:
         
         std::vector<boost::shared_ptr<EndEffector> > support_eef;
         for(size_t i = 0; i < eefnum;i++){
-            if(endeffector[i]->act_contact_state && is_ik_enable[i])support_eef.push_back(endeffector[i]);
+            if(endeffector[i]->act_contact_state && endeffector[i]->is_ik_enable)support_eef.push_back(endeffector[i]);
         }
         std::vector<boost::shared_ptr<EndEffector> > interact_eef;
         for(size_t i = 0; i < eefnum;i++){
-            if(!(endeffector[i]->act_contact_state) && is_ik_enable[i])interact_eef.push_back(endeffector[i]);
+            if(!(endeffector[i]->act_contact_state) && endeffector[i]->is_ik_enable)interact_eef.push_back(endeffector[i]);
         }
 
         if(debug){
@@ -1783,14 +1785,14 @@ public:
                 log_d_foot_pos[i] = endeffector[i]->d_foot_pos;
                 log_d_foot_rpy[i] = endeffector[i]->d_foot_rpy;
                 
-                if(is_ik_enable[i] && endeffector[i]->act_contact_state){
+                if(endeffector[i]->is_ik_enable && endeffector[i]->act_contact_state){
                     log_cur_force_eef[i] = endeffector[i]->cur_force_eef/*eef系*/;
                     log_cur_moment_eef[i] = endeffector[i]->cur_moment_eef/*eef系*/;
                     if(endeffector[i]->act_outside_upper_xcop_state) log_cur_moment_eef[i][1] = - endeffector[i]->act_force_eef[2] * endeffector[i]->upper_cop_x_margin;
                     if(endeffector[i]->act_outside_lower_xcop_state) log_cur_moment_eef[i][1] = - endeffector[i]->act_force_eef[2] * endeffector[i]->lower_cop_x_margin;
                     if(endeffector[i]->act_outside_upper_ycop_state) log_cur_moment_eef[i][0] = endeffector[i]->act_force_eef[2] * endeffector[i]->upper_cop_y_margin;
                     if(endeffector[i]->act_outside_lower_ycop_state) log_cur_moment_eef[i][0] = endeffector[i]->act_force_eef[2] * endeffector[i]->lower_cop_y_margin;
-                }else if(is_ik_enable[i] && endeffector[i]->ref_contact_state){
+                }else if(endeffector[i]->is_ik_enable && endeffector[i]->ref_contact_state){
                     log_cur_force_eef[i] = endeffector[i]->ref_force_eef/*eef系*/;
                     log_cur_force_eef[i][2] = endeffector[i]->contact_decision_threshold;
                     log_cur_moment_eef[i] = endeffector[i]->ref_moment_eef/*eef系*/;
@@ -1841,7 +1843,6 @@ public:
     }
     
     void setParameter(const OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
-        //is_ik_enableは変えてはいけない
         mcs_k1 = i_stp.mcs_k1;
         mcs_k2 = i_stp.mcs_k2;
         mcs_k3 = i_stp.mcs_k3;

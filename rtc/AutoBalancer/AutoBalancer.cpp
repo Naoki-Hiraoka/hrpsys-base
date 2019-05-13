@@ -244,6 +244,22 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
       for (size_t i = 0; i < num; i++) m_controlSwingSupportTime.data[i] = 1.0;
       for (size_t i = 0; i < num; i++) m_toeheelRatio.data[i] = rats::no_using_toe_heel_ratio;
     }
+
+    coil::vstring contact_end_effectors_str = coil::split(prop["contact_end_effectors"], ",");
+    size_t cee_prop_num = 10;
+    if (contact_end_effectors_str.size() > 0) {
+      contact_states_index_map.clear();
+      size_t num = contact_end_effectors_str.size()/cee_prop_num;
+      for (size_t i = 0; i < num; i++) {
+        std::string ee_name;
+        coil::stringTo(ee_name, end_effectors_str[i*cee_prop_num].c_str());
+        contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
+      }
+      m_contactStates.data.length(num);
+      m_controlSwingSupportTime.data.length(num);
+      for (size_t i = 0; i < num; i++) m_controlSwingSupportTime.data[i] = 1.0;
+    }
+
     std::vector<hrp::Vector3> leg_pos;
     if (leg_offset_str.size() > 0) {
       hrp::Vector3 leg_offset;
@@ -837,9 +853,9 @@ void AutoBalancer::getOutputParametersForIDLE ()
     if (m_optionalData.data.length() >= contact_states_index_map.size()*2) {
         // current optionalData is contactstates x limb and controlSwingSupportTime x limb
         //   If contactStates in optionalData is 1.0, m_contactStates is true. Otherwise, false.
-        for ( std::map<std::string, ABCIKparam>::iterator it = ikp.begin(); it != ikp.end(); it++ ) {
-            m_contactStates.data[contact_states_index_map[it->first]] = isOptionalDataContact(it->first);
-            m_controlSwingSupportTime.data[contact_states_index_map[it->first]] = m_optionalData.data[contact_states_index_map[it->first]+contact_states_index_map.size()];
+        for ( size_t i = 0 ; i < contact_states_index_map.size(); i++) {
+            m_contactStates.data[i] = (std::fabs(m_optionalData.data[i]-1.0)<0.1)?true:false;
+            m_controlSwingSupportTime.data[i] = m_optionalData.data[i+contact_states_index_map.size()];
         }
         // If two feet have no contact, force set double support contact
         if ( !m_contactStates.data[contact_states_index_map["rleg"]] && !m_contactStates.data[contact_states_index_map["lleg"]] ) {

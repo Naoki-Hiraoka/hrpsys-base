@@ -1766,8 +1766,7 @@ void Stabilizer::calcEEForceMomentControl() {
         }
         std::vector<hrp::Vector3> d_foot_pos(stikp.size());
         std::vector<hrp::Vector3> d_foot_rpy(stikp.size());
-        multicontactstabilizer.calcMultiContactControl(is_ik_enable,
-                                                       m_robot,
+        multicontactstabilizer.calcMultiContactControl(m_robot,
                                                        ee_names,
                                                        ik_loop_count,
                                                        current_base_pos,
