@@ -188,6 +188,7 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   basewprev = hrp::Vector3::Zero();
   extforceOffset = hrp::Vector3::Zero();
   extmomentOffset = hrp::Vector3::Zero();
+  exttorqueOffset = hrp::dvector::Zero(m_robot->numJoints());
   extforce_offset_calib_counter = 0;
   sem_init(&extforce_wait_sem, 0, 0);
   for (size_t i = 0; i < m_robot->numSensors(hrp::Sensor::FORCE); i++){
@@ -385,15 +386,18 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
     if(extforce_offset_calib_counter > 0){// while calibrating
         extforceOffset_sum/*basecoords系*/ += basecoords_R/*actworld系*/.transpose() * Tvirtual.block<3,1>(0,0)/*actworld系*/;
         extmomentOffset_sum/*basecoords系, 重心周り*/ += basecoords_R/*actworld系*/.transpose() * (Tvirtual.block<3,1>(3,0)/*actworld系,原点周り*/ + (-CM/*actworld系*/).cross(Tvirtual.block<3,1>(0,0)/*actworld系*/));
+        exttorqueOffset_sum += Tvirtual.block(6,0,m_robot->numJoints(),1);
         extforce_offset_calib_counter--;
         if (extforce_offset_calib_counter == 0){
             extforceOffset/*basecoords系*/ = extforceOffset_sum / max_extforce_offset_calib_counter;
             extmomentOffset/*basecoords系, 重心周り*/ = extmomentOffset_sum / max_extforce_offset_calib_counter;
+            exttorqueOffset = exttorqueOffset_sum / max_extforce_offset_calib_counter;
             sem_post(&extforce_wait_sem);
         }
     }
     Tvirtual.block<3,1>(0,0)/*actworld系*/ -= basecoords_R/*actworld系*/ * extforceOffset/*basecoords系*/;
     Tvirtual.block<3,1>(3,0)/*actworld系,原点周り*/ -= basecoords_R/*actworld系*/ * extmomentOffset/*basecoords系, 重心周り*/ + CM/*actworld系*/.cross(basecoords_R/*actworld系*/ * extforceOffset/*basecoords系*/);
+    Tvirtual.block(6,0,m_robot->numJoints(),1) -= exttorqueOffset;
 
     if(VS_DEBUG){
         std::cout << "off Tvirtual" <<std::endl;
@@ -803,6 +807,7 @@ bool VirtualForceSensor::removeExternalForceOffset(const double tm)
       max_extforce_offset_calib_counter = static_cast<size_t>(tm/m_dt);
       extforceOffset_sum = hrp::Vector3::Zero();
       extmomentOffset_sum = hrp::Vector3::Zero();
+      exttorqueOffset_sum = hrp::dvector::Zero(m_robot->numJoints());
       extforce_offset_calib_counter = max_extforce_offset_calib_counter;
   }
 

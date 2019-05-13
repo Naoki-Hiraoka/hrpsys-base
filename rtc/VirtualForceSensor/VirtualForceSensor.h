@@ -216,8 +216,10 @@ class VirtualForceSensor
 
   hrp::Vector3 extforceOffset;
   hrp::Vector3 extmomentOffset;
+  hrp::dvector exttorqueOffset;
   hrp::Vector3 extforceOffset_sum;
   hrp::Vector3 extmomentOffset_sum;
+  hrp::dvector exttorqueOffset_sum;
   sem_t extforce_wait_sem;
   size_t extforce_offset_calib_counter;
   size_t max_extforce_offset_calib_counter;
