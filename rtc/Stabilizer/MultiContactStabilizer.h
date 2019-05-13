@@ -513,6 +513,9 @@ public:
         qrefv = hrp::dvector::Zero(m_robot->numJoints());
         ref_root_p = hrp::Vector3::Zero();
         ref_root_R = hrp::Matrix33::Identity();
+        prev_qrefv = hrp::dvector::Zero(m_robot->numJoints());
+        prev_ref_root_p = hrp::Vector3::Zero();
+        prev_ref_root_R = hrp::Matrix33::Identity();
         ref_cog = hrp::Vector3::Zero();
         ref_total_force = hrp::Vector3::Zero();
         ref_total_moment = hrp::Vector3::Zero();
@@ -591,6 +594,9 @@ public:
 
         //Pg Pgdot Fg hg Ngの目標値を受け取る
         transition_smooth_gain = _transition_smooth_gain;
+        prev_qrefv = qrefv;
+        prev_ref_root_p/*refworld系*/ = ref_root_p/*refworld系*/;
+        prev_ref_root_R/*refworld系*/ = ref_root_R/*refworld系*/;
         qrefv = _qrefv;
         ref_root_p/*refworld系*/ = _ref_root_p/*refworld系*/;
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
@@ -1345,17 +1351,24 @@ public:
             for (size_t i = 0; i < 6+ik_enable_joint_num; i++){
                 W(i,i) = reference_weight;
             }
-            
+
             hrp::dvector reference_q = hrp::dvector::Zero(6+ik_enable_joint_num);
-            reference_q.block<3,1>(0,0) = ref_root_p/*refworld系*/ - m_robot->rootLink()->p/*refworld系*/;
-            reference_q.block<3,1>(3,0) = matrix_logEx( ref_root_R/*refworld系*/ * m_robot->rootLink()->R.transpose()/*refworld系*/);
+            reference_q.block<3,1>(0,0) = ref_root_p/*refworld系*/ - prev_ref_root_p/*refworld系*/;
+            reference_q.block<3,1>(3,0) = matrix_logEx( ref_root_R/*refworld系*/ * prev_ref_root_R.transpose()/*refworld系*/);
             for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
                 if(ik_enable_joint_states[j]){
-                    reference_q[6+ik_enable_joint_map[j]] = qrefv[j] - m_robot->joint(j)->q;
+                    reference_q[6+ik_enable_joint_map[j]] = qrefv[j] - prev_qrefv[j];
                 }
             }
-
-            reference_q *= dt / reference_time_const;
+            
+            reference_q.block<3,1>(0,0) += (ref_root_p/*refworld系*/ - (m_robot->rootLink()->p/*refworld系*/ + reference_q.block<3,1>(0,0))) * dt / reference_time_const;
+            hrp::Matrix33 dR/*refworld系*/ = ref_root_R/*refworld系*/ * prev_ref_root_R.transpose()/*refworld系*/;
+            reference_q.block<3,1>(3,0) += matrix_logEx( ref_root_R/*refworld系*/ * (dR * m_robot->rootLink()->R).transpose()/*refworld系*/) * dt / reference_time_const;
+            for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
+                if(ik_enable_joint_states[j]){
+                    reference_q[6+ik_enable_joint_map[j]] += (qrefv[j] - (m_robot->joint(j)->q + reference_q[6+ik_enable_joint_map[j]])) * dt / reference_time_const;
+                }
+            }
 
             H += W;
             g += - reference_q.transpose() * W;
@@ -1809,7 +1822,7 @@ public:
         qcurv = qrefv;
         cur_root_p = ref_root_p;
         cur_root_R = ref_root_R;
-        
+
         for(size_t i=0; i < prevpassive.size(); i++){
             prevpassive[i] = false;
             sync2activecnt[i] = 0.0;
@@ -2084,6 +2097,9 @@ private:
     hrp::dvector qrefv;//目標のq
     hrp::Vector3 ref_root_p/*refworld系*/;
     hrp::Matrix33 ref_root_R/*refworld系*/;
+    hrp::dvector prev_qrefv;//前回の目標のq
+    hrp::Vector3 prev_ref_root_p/*前回のrefworld系*/;
+    hrp::Matrix33 prev_ref_root_R/*前回のrefworld系*/;
     
     hrp::Vector3 ref_cog/*refworld系*/;
     hrp::Vector3 ref_total_force/*refworld系*/;
