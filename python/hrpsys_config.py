@@ -2197,19 +2197,22 @@ dr=0, dp=0, dw=0, tm=10, wait=True):
         if not abc_limbs:
             abc_limbs = map(lambda x: x[0], filter(lambda x : re.match(".*(leg|arm)", x[0]), self.Groups))
         # Start controllers
-        for limb in ic_limbs:
-            self.ic_svc.startImpedanceControllerNoWait(limb)
+        if self.ic:
+            for limb in ic_limbs:
+                self.ic_svc.startImpedanceControllerNoWait(limb)
         if is_legged_robot:
             self.startAutoBalancer(abc_limbs)
             self.startStabilizer()
-        for limb in ic_limbs:
-            self.ic_svc.waitImpedanceControllerTransition(limb)
+        if self.ic:
+            for limb in ic_limbs:
+                self.ic_svc.waitImpedanceControllerTransition(limb)
         # Print
         if is_legged_robot:
             print(self.configurator_name + "  Start AutoBalancer = "+str(abc_limbs))
             print(self.configurator_name + "  Start Stabilizer")
-        if len(ic_limbs) != 0:
-            print(self.configurator_name + "  Start ImpedanceController = "+str(ic_limbs))
+        if self.ic:
+            if len(ic_limbs) != 0:
+                print(self.configurator_name + "  Start ImpedanceController = "+str(ic_limbs))
 
     def stopDefaultUnstableControllers (self, ic_limbs=[]):
         '''!@brief
@@ -2226,18 +2229,21 @@ dr=0, dp=0, dw=0, tm=10, wait=True):
         # Stop controllers
         if is_legged_robot:
             self.stopStabilizer()
-        for limb in ic_limbs:
-            self.ic_svc.stopImpedanceControllerNoWait(limb)
+        if self.ic:
+            for limb in ic_limbs:
+                self.ic_svc.stopImpedanceControllerNoWait(limb)
         if is_legged_robot:
             self.stopAutoBalancer()
-        for limb in ic_limbs:
-            self.ic_svc.waitImpedanceControllerTransition(limb)
+        if self.ic:
+            for limb in ic_limbs:
+                self.ic_svc.waitImpedanceControllerTransition(limb)
         # Print
         if is_legged_robot:
             print(self.configurator_name + "  Stop AutoBalancer")
             print(self.configurator_name + "  Stop Stabilizer")
-        if len(ic_limbs) != 0:
-            print(self.configurator_name + "  Stop ImpedanceController = "+str(ic_limbs))
+        if self.ic:
+            if len(ic_limbs) != 0:
+                print(self.configurator_name + "  Stop ImpedanceController = "+str(ic_limbs))
 
     def setFootSteps(self, footstep, overwrite_fs_idx = 0):
         '''!@brief
