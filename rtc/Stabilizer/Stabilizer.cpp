@@ -216,13 +216,15 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   }
 
   // load virtual force sensors
-  // TODO
-  // readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
+  readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
   int nvforce = m_vfs.size();
   for (unsigned int i=0; i<nvforce; ++i) {
       for ( std::map<std::string, hrp::VirtualForceSensorParam>::iterator it = m_vfs.begin(); it != m_vfs.end(); it++ ) {
           if (it->second.id == i) {
               force_sensor_names.push_back(it->first);
+              hrp::Sensor* sensor= m_robot->createSensor(it->second.link,hrp::Sensor::FORCE, it->second.id + npforce, it->first);
+              sensor->localPos = it->second.localPos;
+              sensor->localR = it->second.localR;
           }
       }
   }
@@ -343,6 +345,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       std::cerr << "[" << m_profile.instance_name << "]   offset_pos = " << ikp.localp.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "    [", "]")) << "[m]" << std::endl;
       prev_act_force_z.push_back(0.0);
     }
+
     m_contactStates.data.length(num);
     m_toeheelRatio.data.length(num);
     m_will_fall_counter.resize(num);
@@ -635,9 +638,13 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
   for (size_t i = 0; i < m_limbCOPOffsetIn.size(); ++i) {
     if ( m_limbCOPOffsetIn[i]->isNew() ) {
       m_limbCOPOffsetIn[i]->read();
-      //stikp[i].localCOPPos = stikp[i].localp + stikp[i].localR * hrp::Vector3(m_limbCOPOffset[i].data.x, m_limbCOPOffset[i].data.y, m_limbCOPOffset[i].data.z);
-      stikp[i].localCOPPos = stikp[i].localp + stikp[i].localR * hrp::Vector3(m_limbCOPOffset[i].data.x, 0, m_limbCOPOffset[i].data.z);
     }
+  }
+  for(size_t i = 0 ; i < stikp.size(); i++){
+      if ( m_limbCOPOffsetIn[i]->isNew() ) {
+          //stikp[i].localCOPPos = stikp[i].localp + stikp[i].localR * hrp::Vector3(m_limbCOPOffset[i].data.x, m_limbCOPOffset[i].data.y, m_limbCOPOffset[i].data.z);
+          stikp[i].localCOPPos = stikp[i].localp + stikp[i].localR * hrp::Vector3(m_limbCOPOffset[i].data.x, 0, m_limbCOPOffset[i].data.z);
+      }
   }
   if (m_qRefSeqIn.isNew()) {
     m_qRefSeqIn.read();
@@ -899,22 +906,19 @@ void Stabilizer::getActualParameters ()
           qactv[i] = m_robot->joint(i)->q;
           acttauv[i]=m_acttau.data[i];
       }
-      std::vector<hrp::Vector3> act_force_world(stikp.size());
-      std::vector<hrp::Vector3> act_moment_world(stikp.size());
-      for (size_t i = 0;i<stikp.size();i++){
-          hrp::Link* target = m_robot->link(stikp[i].target_name);
-          hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(stikp[i].sensor_name);
-          act_force_world[i] = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[0], m_wrenches[i].data[1], m_wrenches[i].data[2]);
-          hrp::Vector3 sensor_moment/*センサまわり*/ = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[3], m_wrenches[i].data[4], m_wrenches[i].data[5]);
-          act_moment_world[i]/*eefまわり*/ = ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * stikp[i].localp + target->p)).cross(act_force_world[i]) + sensor_moment;
+      std::vector<hrp::Vector3> act_force_sen(m_wrenches.size());
+      std::vector<hrp::Vector3> act_moment_sen(m_wrenches.size());
+      for (size_t i = 0;i<m_wrenches.size();i++){
+          act_force_sen[i] = hrp::Vector3(m_wrenches[i].data[0], m_wrenches[i].data[1], m_wrenches[i].data[2]);
+          act_moment_sen[i] = hrp::Vector3(m_wrenches[i].data[3], m_wrenches[i].data[4], m_wrenches[i].data[5]);
       }
 
       on_ground = multicontactstabilizer.getActualParameters(m_robot,
                                                              qactv,
                                                              m_robot->rootLink()->p/*Zero*/,
                                                              m_robot->rootLink()->R/*actworld系*/,
-                                                             act_force_world/*actworld系*/,
-                                                             act_moment_world/*actworld系,eefまわり*/,
+                                                             act_force_sen/*sensor系*/,
+                                                             act_moment_sen/*sensor系,sensorまわり*/,
                                                              act_contact_states,
                                                              contact_decision_threshold,
                                                              act_cog/*refworld系*/,
@@ -1310,12 +1314,14 @@ void Stabilizer::getTargetParameters ()
       // Calc swing support limb gain param
       calcSwingSupportLimbGain();
 
-      std::vector<hrp::Vector3> ref_force_world(stikp.size());
-      std::vector<hrp::Vector3> ref_moment_world(stikp.size());
+      std::vector<hrp::Vector3> ref_force_world(m_ref_wrenches.size());
+      std::vector<hrp::Vector3> ref_moment_world(m_ref_wrenches.size());
       std::vector<double> swing_support_gains(stikp.size());
-      for (size_t i = 0; i < stikp.size() ;i++){
+      for (size_t i = 0; i < m_ref_wrenches.size() ;i++){
           ref_force_world[i] = hrp::Vector3(m_ref_wrenches[i].data[0], m_ref_wrenches[i].data[1], m_ref_wrenches[i].data[2]);
           ref_moment_world[i] = hrp::Vector3(m_ref_wrenches[i].data[3], m_ref_wrenches[i].data[4], m_ref_wrenches[i].data[5]);
+      }
+      for(size_t i = 0; i < stikp.size(); i++){
           swing_support_gains[i] = stikp[i].swing_support_gain;
       }
 

@@ -646,7 +646,7 @@ public:
     }
 
     //on_groundかを返す
-    bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*actworld系*/, const std::vector <hrp::Vector3>& _act_moment/*actworld系,eefまわり*/, std::vector<bool>& act_contact_states, const double& contact_decision_threshold, hrp::Vector3& log_act_cog/*refworld系*/, hrp::Vector3& log_act_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_act_base_rpy/*world系*/,const hrp::dvector& _acttauv) {
+    bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*sensor系*/, const std::vector <hrp::Vector3>& _act_moment/*sensor系,sensorまわり*/, std::vector<bool>& act_contact_states, const double& contact_decision_threshold, hrp::Vector3& log_act_cog/*refworld系*/, hrp::Vector3& log_act_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_act_base_rpy/*world系*/,const hrp::dvector& _acttauv) {
         if(debug){
             std::cerr << "getActualParameters start" << std::endl;
         }
@@ -660,17 +660,6 @@ public:
         act_root_R/*actworld系*/ = _act_root_R/*原点不明,actworld系*/;
         act_root_p/*actworld系*/ = _act_root_p/*actworld系*/;
 
-        for (int i = 0; i < eefnum;i++){
-            hrp::Link* target/*actworld系*/ = m_robot->link(endeffector[i]->link_name);
-            endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
-            endeffector[i]->act_R/*actworld系*/ = target->R * endeffector[i]->localR;
-            endeffector[i]->act_force/*actworld系*/ = _act_force[i]/*原点不明,actworld系*/;
-            endeffector[i]->act_moment/*actworld系,eefまわり*/ = _act_moment[i]/*原点不明,actworld系,eefまわり*/;
-            endeffector[i]->act_force_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force/*actworld系*/;
-            endeffector[i]->act_moment_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
-            endeffector[i]->isContact();
-        }
-
         for ( int i = 0;i< m_robot->numJoints();i++){
             m_robot->joint(i)->q = qactv[i];
         }
@@ -678,6 +667,19 @@ public:
         m_robot->rootLink()->R/*actworld系*/ = act_root_R/*actworld系*/;
         m_robot->calcForwardKinematics();
         act_cog/*actworld系*/ = m_robot->calcCM();
+
+        for (int i = 0; i < eefnum;i++){
+            hrp::Link* target/*actworld系*/ = m_robot->link(endeffector[i]->link_name);
+            endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
+            endeffector[i]->act_R/*actworld系*/ = target->R * endeffector[i]->localR;
+            hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(endeffector[i]->sensor_name);
+            endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force[i]/*sensor系*/;
+            endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment[i]/*sensor系,sensorまわり*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
+            endeffector[i]->act_force_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force/*actworld系*/;
+            endeffector[i]->act_moment_eef/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
+            endeffector[i]->isContact();
+        }
+
         act_total_force/*actworld系*/ = hrp::Vector3::Zero();
         act_total_moment/*actworld系,cogまわり*/ = hrp::Vector3::Zero();
         for (size_t i = 0; i < eefnum;i++){
