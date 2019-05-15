@@ -793,8 +793,6 @@ public:
     }
 
     void calcMultiContactControl(hrp::BodyPtr& m_robot/*refworld系*/,
-                                 const std::vector<std::string>& ee_names,
-                                 std::vector<int> ik_loop_count,
                                  hrp::Vector3& log_current_base_pos/*refworld系*/,
                                  hrp::Vector3& log_current_base_rpy/*refworld系*/,
                                  std::vector<hrp::Vector3>& log_cur_force_eef/*eef系,eefまわり*/,

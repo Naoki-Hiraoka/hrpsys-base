@@ -336,6 +336,8 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       act_moment_eef.push_back(hrp::Vector3::Zero());
       current_force_eef.push_back(hrp::Vector3::Zero());
       current_moment_eef.push_back(hrp::Vector3::Zero());
+      d_foot_pos.push_back(hrp::Vector3::Zero());
+      d_foot_rpy.push_back(hrp::Vector3::Zero());
       contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
       is_ik_enable.push_back( (ee_name.find("leg") != std::string::npos ? true : false) ); // Hands ik => disabled, feet ik => enabled, by default
       is_feedback_control_enable.push_back( (ee_name.find("leg") != std::string::npos ? true : false) ); // Hands feedback control => disabled, feet feedback control => enabled, by default
@@ -349,6 +351,28 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
     m_contactStates.data.length(num);
     m_toeheelRatio.data.length(num);
     m_will_fall_counter.resize(num);
+
+    coil::vstring contact_end_effectors_str = coil::split(prop["contact_end_effectors"], ",");
+    size_t cee_prop_num = 10;
+    if (contact_end_effectors_str.size() > 0) {
+        size_t ceenum = contact_end_effectors_str.size()/cee_prop_num;
+        m_contactStates.data.length(ceenum);
+        m_controlSwingSupportTime.data.length(ceenum);
+        for (size_t i = 0; i < ceenum; i++){
+            m_contactStates.data[i] = false;
+            m_controlSwingSupportTime.data[i] = 1.0;
+        }
+        for (size_t i = end_effectors_str.size()/prop_num; i < ceenum; i++){
+            ref_force_eef.push_back(hrp::Vector3::Zero());
+            ref_moment_eef.push_back(hrp::Vector3::Zero());
+            act_force_eef.push_back(hrp::Vector3::Zero());
+            act_moment_eef.push_back(hrp::Vector3::Zero());
+            current_force_eef.push_back(hrp::Vector3::Zero());
+            current_moment_eef.push_back(hrp::Vector3::Zero());
+            d_foot_pos.push_back(hrp::Vector3::Zero());
+            d_foot_rpy.push_back(hrp::Vector3::Zero());
+        }
+    }
   }
 
   std::vector<std::pair<hrp::Link*, hrp::Link*> > interlocking_joints;
@@ -508,10 +532,10 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   m_originActZmp.data.x = m_originActZmp.data.y = m_originActZmp.data.z = 0.0;
   m_originActCog.data.x = m_originActCog.data.y = m_originActCog.data.z = 0.0;
   m_originActCogVel.data.x = m_originActCogVel.data.y = m_originActCogVel.data.z = 0.0;
-  m_allRefWrench.data.length(stikp.size() * 6); // 6 is wrench dim
-  m_allActWrench.data.length(stikp.size() * 6); // 6 is wrench dim
-  m_allCurrentWrench.data.length(stikp.size() * 6); // 6 is wrench dim
-  m_allEEComp.data.length(stikp.size() * 6); // 6 is pos+rot dim
+  m_allRefWrench.data.length(m_contactStates.data.length() * 6); // 6 is wrench dim
+  m_allActWrench.data.length(m_contactStates.data.length() * 6); // 6 is wrench dim
+  m_allCurrentWrench.data.length(m_contactStates.data.length() * 6); // 6 is wrench dim
+  m_allEEComp.data.length(m_contactStates.data.length() * 6); // 6 is pos+rot dim
   m_debugData.data.length(1); m_debugData.data[0] = 0.0;
   current_base_pos = hrp::Vector3::Zero();
   current_base_rpy = hrp::Vector3::Zero();
@@ -638,14 +662,13 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
   for (size_t i = 0; i < m_limbCOPOffsetIn.size(); ++i) {
     if ( m_limbCOPOffsetIn[i]->isNew() ) {
       m_limbCOPOffsetIn[i]->read();
-    }
-  }
-  for(size_t i = 0 ; i < stikp.size(); i++){
-      if ( m_limbCOPOffsetIn[i]->isNew() ) {
+      if(i < stikp.size()){
           //stikp[i].localCOPPos = stikp[i].localp + stikp[i].localR * hrp::Vector3(m_limbCOPOffset[i].data.x, m_limbCOPOffset[i].data.y, m_limbCOPOffset[i].data.z);
           stikp[i].localCOPPos = stikp[i].localp + stikp[i].localR * hrp::Vector3(m_limbCOPOffset[i].data.x, 0, m_limbCOPOffset[i].data.z);
       }
+    }
   }
+
   if (m_qRefSeqIn.isNew()) {
     m_qRefSeqIn.read();
     is_seq_interpolating = true;
@@ -756,7 +779,7 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_originActCogOut.write();
       m_originActCogVel.tm = m_qRef.tm;
       m_originActCogVelOut.write();
-      for (size_t i = 0; i < stikp.size(); i++) {
+      for (size_t i = 0; i < m_contactStates.data.length(); i++) {
           for (size_t j = 0; j < 3; j++) {
               m_allRefWrench.data[6*i+j] = ref_force_eef[i](j);
               m_allRefWrench.data[6*i+j+3] = ref_moment_eef[i](j);
@@ -765,8 +788,8 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
               m_allCurrentWrench.data[6*i+j] = current_force_eef[i](j);
               m_allCurrentWrench.data[6*i+j+3] = current_moment_eef[i](j);
               
-              m_allEEComp.data[6*i+j] = stikp[i].d_foot_pos(j);
-              m_allEEComp.data[6*i+j+3] = stikp[i].d_foot_rpy(j);
+              m_allEEComp.data[6*i+j] = d_foot_pos[i](j);
+              m_allEEComp.data[6*i+j+3] = d_foot_rpy[i](j);
           }
       }
       m_allRefWrench.tm = m_qRef.tm;
@@ -1038,6 +1061,7 @@ void Stabilizer::getActualParameters ()
           ee_name.push_back(ikp.ee_name);
           limb_gains.push_back(ikp.swing_support_gain);
           tmp_ref_force.push_back(hrp::Vector3(foot_origin_rot * ref_force[i]));
+          //tmp_ref_moment.push_back(hrp::Vector3(foot_origin_rot * ref_moment[i]));
           tmp_ref_moment.push_back(hrp::Vector3(foot_origin_rot * ref_moment[i]  + ((target->R * ikp.localp + target->p) - (target->R * ikp.localCOPPos + target->p)).cross(foot_origin_rot * ref_force[i])));
           rel_ee_pos.push_back(foot_origin_rot.transpose() * (ee_pos.back() - foot_origin_pos));
           rel_ee_rot.push_back(foot_origin_rot.transpose() * ee_rot.back());
@@ -1316,13 +1340,15 @@ void Stabilizer::getTargetParameters ()
 
       std::vector<hrp::Vector3> ref_force_world(m_ref_wrenches.size());
       std::vector<hrp::Vector3> ref_moment_world(m_ref_wrenches.size());
-      std::vector<double> swing_support_gains(stikp.size());
+      std::vector<bool> ref_contact_states_cee(m_contactStates.data.length());
+      std::vector<double> swing_support_gains_cee(m_contactStates.data.length());
       for (size_t i = 0; i < m_ref_wrenches.size() ;i++){
           ref_force_world[i] = hrp::Vector3(m_ref_wrenches[i].data[0], m_ref_wrenches[i].data[1], m_ref_wrenches[i].data[2]);
           ref_moment_world[i] = hrp::Vector3(m_ref_wrenches[i].data[3], m_ref_wrenches[i].data[4], m_ref_wrenches[i].data[5]);
       }
-      for(size_t i = 0; i < stikp.size(); i++){
-          swing_support_gains[i] = stikp[i].swing_support_gain;
+      for(size_t i = 0; i < m_contactStates.data.length(); i++){
+          ref_contact_states_cee[i] = m_contactStates.data[i];
+          swing_support_gains_cee[i] = m_controlSwingSupportTime.data[i];
       }
 
       multicontactstabilizer.getTargetParameters(m_robot,
@@ -1332,8 +1358,8 @@ void Stabilizer::getTargetParameters ()
                                                  target_root_R/*refworld系*/,
                                                  ref_force_world/*refworld系*/,
                                                  ref_moment_world/*refworld系,eefまわり*/,
-                                                 ref_contact_states,
-                                                 swing_support_gains,
+                                                 ref_contact_states_cee,
+                                                 swing_support_gains_cee,
                                                  ref_cog/*refworld系*/,
                                                  ref_cogvel/*refworld系*/,
                                                  ref_force_eef/*eef系*/,
@@ -1764,17 +1790,7 @@ void Stabilizer::calcEEForceMomentControl() {
 
     // stabilizer loop
     if(st_algorithm == OpenHRP::StabilizerService::MCS){
-        std::vector<std::string> ee_names(stikp.size());
-        std::vector<int> ik_loop_count(stikp.size());
-        for(size_t i =0;i<stikp.size();i++){
-            ee_names[i] = stikp[i].ee_name;
-            ik_loop_count[i] = stikp[i].ik_loop_count;
-        }
-        std::vector<hrp::Vector3> d_foot_pos(stikp.size());
-        std::vector<hrp::Vector3> d_foot_rpy(stikp.size());
         multicontactstabilizer.calcMultiContactControl(m_robot,
-                                                       ee_names,
-                                                       ik_loop_count,
                                                        current_base_pos,
                                                        current_base_rpy,
                                                        current_force_eef,
@@ -1782,10 +1798,6 @@ void Stabilizer::calcEEForceMomentControl() {
                                                        d_foot_pos,
                                                        d_foot_rpy,
                                                        d_cog_pos);
-        for(size_t i = 0 ; i < stikp.size(); i++){
-            stikp[i].d_foot_pos = d_foot_pos[i];
-            stikp[i].d_foot_rpy = d_foot_rpy[i];
-        }
         return;
     }
     
@@ -1901,6 +1913,11 @@ void Stabilizer::calcEEForceMomentControl() {
                                                  stikp[i].localR);
           }
         }
+      }
+
+      for(size_t i = 0 ; i < stikp.size(); i++){
+          d_foot_pos[i] = stikp[i].d_foot_pos;
+          d_foot_rpy[i] = stikp[i].d_foot_rpy;
       }
 }
 

@@ -249,15 +249,18 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
     size_t cee_prop_num = 10;
     if (contact_end_effectors_str.size() > 0) {
       contact_states_index_map.clear();
-      size_t num = contact_end_effectors_str.size()/cee_prop_num;
-      for (size_t i = 0; i < num; i++) {
+      size_t ceenum = contact_end_effectors_str.size()/cee_prop_num;
+      for (size_t i = 0; i < ceenum; i++) {
         std::string ee_name;
         coil::stringTo(ee_name, end_effectors_str[i*cee_prop_num].c_str());
         contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
       }
-      m_contactStates.data.length(num);
-      m_controlSwingSupportTime.data.length(num);
-      for (size_t i = 0; i < num; i++) m_controlSwingSupportTime.data[i] = 1.0;
+      m_contactStates.data.length(ceenum);
+      m_controlSwingSupportTime.data.length(ceenum);
+      for (size_t i = end_effectors_str.size()/prop_num; i < ceenum; i++){
+          m_contactStates.data[i] = false;
+          m_controlSwingSupportTime.data[i] = 1.0;
+      }
     }
 
     std::vector<hrp::Vector3> leg_pos;
