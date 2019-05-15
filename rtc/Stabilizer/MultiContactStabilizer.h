@@ -84,6 +84,7 @@ public:
                    act_outside_upper_ycop_state(true),
                    act_outside_lower_ycop_state(true)
     {
+        contact_type = SURFACE;
         ee_forcemoment_distribution_weight << 1e-10,1e-10,1e-10,1e-4,1e-4,1e-10;
         return;
     }
@@ -96,127 +97,202 @@ public:
         }else{
             act_contact_state = (act_force_eef[2] > min_fz) && ref_contact_state;
         }
-        if(act_contact_state){
-            if(act_outside_upper_xcop_state){
-                if(-act_moment_eef[1]/act_force_eef[2] < upper_cop_x_margin)act_outside_upper_xcop_state=false;
+        switch(contact_type) {
+        case SURFACE:
+            if(act_contact_state){
+                if(act_outside_upper_xcop_state){
+                    if(-act_moment_eef[1]/act_force_eef[2] < upper_cop_x_margin)act_outside_upper_xcop_state=false;
+                }else{
+                    if(-act_moment_eef[1]/act_force_eef[2] > outside_upper_cop_x_margin) act_outside_upper_xcop_state=true;
+                }
+                if(act_outside_lower_xcop_state){
+                    if(-act_moment_eef[1]/act_force_eef[2] > lower_cop_x_margin)act_outside_lower_xcop_state=false;
+                }else{
+                    if(-act_moment_eef[1]/act_force_eef[2] < outside_lower_cop_x_margin) act_outside_lower_xcop_state=true;
+                }
+                if(act_outside_upper_ycop_state){
+                    if(act_moment_eef[0]/act_force_eef[2] < upper_cop_y_margin)act_outside_upper_ycop_state=false;
+                }else{
+                    if(act_moment_eef[0]/act_force_eef[2] > outside_upper_cop_y_margin) act_outside_upper_ycop_state=true;
+                }
+                if(act_outside_lower_ycop_state){
+                    if(act_moment_eef[0]/act_force_eef[2] > lower_cop_y_margin)act_outside_lower_ycop_state=false;
+                }else{
+                    if(act_moment_eef[0]/act_force_eef[2] < outside_lower_cop_y_margin) act_outside_lower_ycop_state=true;
+                }
             }else{
-                if(-act_moment_eef[1]/act_force_eef[2] > outside_upper_cop_x_margin) act_outside_upper_xcop_state=true;
+                act_outside_upper_xcop_state = true;
+                act_outside_upper_ycop_state = true;
+                act_outside_lower_xcop_state = true;
+                act_outside_lower_ycop_state = true;
             }
-            if(act_outside_lower_xcop_state){
-                if(-act_moment_eef[1]/act_force_eef[2] > lower_cop_x_margin)act_outside_lower_xcop_state=false;
-            }else{
-                if(-act_moment_eef[1]/act_force_eef[2] < outside_lower_cop_x_margin) act_outside_lower_xcop_state=true;
-            }
-            if(act_outside_upper_ycop_state){
-                if(act_moment_eef[0]/act_force_eef[2] < upper_cop_y_margin)act_outside_upper_ycop_state=false;
-            }else{
-                if(act_moment_eef[0]/act_force_eef[2] > outside_upper_cop_y_margin) act_outside_upper_ycop_state=true;
-            }
-            if(act_outside_lower_ycop_state){
-                if(act_moment_eef[0]/act_force_eef[2] > lower_cop_y_margin)act_outside_lower_ycop_state=false;
-            }else{
-                if(act_moment_eef[0]/act_force_eef[2] < outside_lower_cop_y_margin) act_outside_lower_ycop_state=true;
-            }
-        }else{
-            act_outside_upper_xcop_state = true;
-            act_outside_upper_ycop_state = true;
-            act_outside_lower_xcop_state = true;
-            act_outside_lower_ycop_state = true;
+            break;
+        case POINT:
+            act_outside_upper_xcop_state = false;
+            act_outside_upper_ycop_state = false;
+            act_outside_lower_xcop_state = false;
+            act_outside_lower_ycop_state = false;
+            break;
+        default:
+            break;
         }
         return act_contact_state;
     }
 
     void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb, hrp::dvector& ub){
-        int constraint_num = 7;
-        if(!act_outside_upper_xcop_state)constraint_num++;
-        if(!act_outside_lower_xcop_state)constraint_num++;
-        if(!act_outside_upper_ycop_state)constraint_num++;
-        if(!act_outside_lower_ycop_state)constraint_num++;
-        C = hrp::dmatrix::Zero(constraint_num,6);
-        lb = hrp::dvector::Zero(constraint_num);
-        ub = hrp::dvector::Zero(constraint_num);
+        switch(contact_type) {
+        case SURFACE:
+            {
+                int constraint_num = 7;
+                if(!act_outside_upper_xcop_state)constraint_num++;
+                if(!act_outside_lower_xcop_state)constraint_num++;
+                if(!act_outside_upper_ycop_state)constraint_num++;
+                if(!act_outside_lower_ycop_state)constraint_num++;
+                C = hrp::dmatrix::Zero(constraint_num,6);
+                lb = hrp::dvector::Zero(constraint_num);
+                ub = hrp::dvector::Zero(constraint_num);
 
-        int constraint_idx = 0;
+                int constraint_idx = 0;
 
-        //垂直抗力
-        C(constraint_idx,2)=1;
-        lb[constraint_idx] = min_fz;
-        ub[constraint_idx] = max_fz;
-        constraint_idx++;
+                //垂直抗力
+                C(constraint_idx,2)=1;
+                lb[constraint_idx] = min_fz;
+                ub[constraint_idx] = max_fz;
+                constraint_idx++;
 
-        //x摩擦
-        C(constraint_idx,0)=-1;
-        C(constraint_idx,2)= friction_coefficient;
-        lb[constraint_idx] = 0;
-        ub[constraint_idx] = 1e10;
-        constraint_idx++;
+                //x摩擦
+                C(constraint_idx,0)=-1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
         
-        C(constraint_idx,0)= 1;
-        C(constraint_idx,2)= friction_coefficient;
-        lb[constraint_idx] = 0;
-        ub[constraint_idx] = 1e10;
-        constraint_idx++;
+                C(constraint_idx,0)= 1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
 
-        //y摩擦
-        C(constraint_idx,1)=-1;
-        C(constraint_idx,2)= friction_coefficient;
-        lb[constraint_idx] = 0;
-        ub[constraint_idx] = 1e10;
-        constraint_idx++;
-        C(constraint_idx,1)= 1;
-        C(constraint_idx,2)= friction_coefficient;
-        lb[constraint_idx] = 0;
-        ub[constraint_idx] = 1e10;
-        constraint_idx++;
+                //y摩擦
+                C(constraint_idx,1)=-1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+                C(constraint_idx,1)= 1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
 
-        //xCOP
-        if(!act_outside_upper_xcop_state){
-            C(constraint_idx,4)= 1;
-            C(constraint_idx,2)= upper_cop_x_margin;
-            lb[constraint_idx] = 0;
-            ub[constraint_idx] = 1e10;
-            constraint_idx++;
-        }
-        if(!act_outside_lower_xcop_state){
-            C(constraint_idx,4)= -1;
-            C(constraint_idx,2)= -lower_cop_x_margin;
-            lb[constraint_idx] = 0;
-            ub[constraint_idx] = 1e10;
-            constraint_idx++;
+                //xCOP
+                if(!act_outside_upper_xcop_state){
+                    C(constraint_idx,4)= 1;
+                    C(constraint_idx,2)= upper_cop_x_margin;
+                    lb[constraint_idx] = 0;
+                    ub[constraint_idx] = 1e10;
+                    constraint_idx++;
+                }
+                if(!act_outside_lower_xcop_state){
+                    C(constraint_idx,4)= -1;
+                    C(constraint_idx,2)= -lower_cop_x_margin;
+                    lb[constraint_idx] = 0;
+                    ub[constraint_idx] = 1e10;
+                    constraint_idx++;
+                }
+
+                //yCOP
+                if(!act_outside_upper_ycop_state){
+                    C(constraint_idx,3)= -1;
+                    C(constraint_idx,2)= upper_cop_y_margin;
+                    lb[constraint_idx] = 0;
+                    ub[constraint_idx] = 1e10;
+                    constraint_idx++;
+                }
+                if(!act_outside_lower_ycop_state){
+                    C(constraint_idx,3)= 1;
+                    C(constraint_idx,2)= -lower_cop_y_margin;
+                    lb[constraint_idx] = 0;
+                    ub[constraint_idx] = 1e10;
+                    constraint_idx++;
+                }
+
+                //回転摩擦
+                C(constraint_idx,5)= -1;
+                C(constraint_idx,2)= rotation_friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+                C(constraint_idx,5)= 1;
+                C(constraint_idx,2)= rotation_friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+            }
+            break;
+        case POINT:
+            {
+                int constraint_num = 5;
+                C = hrp::dmatrix::Zero(constraint_num,6);
+                lb = hrp::dvector::Zero(constraint_num);
+                ub = hrp::dvector::Zero(constraint_num);
+
+                int constraint_idx = 0;
+
+                //垂直抗力
+                C(constraint_idx,2)=1;
+                lb[constraint_idx] = min_fz;
+                ub[constraint_idx] = max_fz;
+                constraint_idx++;
+
+                //x摩擦
+                C(constraint_idx,0)=-1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+        
+                C(constraint_idx,0)= 1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+
+                //y摩擦
+                C(constraint_idx,1)=-1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+                C(constraint_idx,1)= 1;
+                C(constraint_idx,2)= friction_coefficient;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+            }
+            break;
+        default: break;
         }
 
-        //yCOP
-        if(!act_outside_upper_ycop_state){
-            C(constraint_idx,3)= -1;
-            C(constraint_idx,2)= upper_cop_y_margin;
-            lb[constraint_idx] = 0;
-            ub[constraint_idx] = 1e10;
-            constraint_idx++;
-        }
-        if(!act_outside_lower_ycop_state){
-            C(constraint_idx,3)= 1;
-            C(constraint_idx,2)= -lower_cop_y_margin;
-            lb[constraint_idx] = 0;
-            ub[constraint_idx] = 1e10;
-            constraint_idx++;
-        }
-
-        //回転摩擦
-        C(constraint_idx,5)= -1;
-        C(constraint_idx,2)= rotation_friction_coefficient;
-        lb[constraint_idx] = 0;
-        ub[constraint_idx] = 1e10;
-        constraint_idx++;
-        C(constraint_idx,5)= 1;
-        C(constraint_idx,2)= rotation_friction_coefficient;
-        lb[constraint_idx] = 0;
-        ub[constraint_idx] = 1e10;
-        constraint_idx++;
 
         return;
     }
     
     void setParameter(const OpenHRP::StabilizerService::EndEffectorParam& i_ccp,std::string instance_name){
+        switch(i_ccp.contact_type) {
+        case OpenHRP::StabilizerService::SURFACE:
+            contact_type = SURFACE;
+            std::cerr << "[" << instance_name << "]  " << name <<  " contact_type = SURFACE" << std::endl;
+            break;
+        case OpenHRP::StabilizerService::POINT:
+            contact_type = POINT;
+            std::cerr << "[" << instance_name << "]  " << name <<  " contact_type = POINT" << std::endl;
+            break;
+        default:
+            std::cerr << "[" << instance_name << "]  " << name <<  " contact_type = " << contact_type << std::endl;
+            break;
+        }
+
         friction_coefficient = i_ccp.friction_coefficient;
         std::cerr << "[" << instance_name << "]  " << name <<  " friction_coefficient = " << friction_coefficient << std::endl;
         
@@ -329,6 +405,12 @@ public:
     }
 
     void getParameter(OpenHRP::StabilizerService::EndEffectorParam& i_ccp){
+        switch(contact_type) {
+        case SURFACE: i_ccp.contact_type = OpenHRP::StabilizerService::SURFACE; break;
+        case POINT: i_ccp.contact_type = OpenHRP::StabilizerService::POINT; break;
+        default: break;
+        }
+
         i_ccp.friction_coefficient = friction_coefficient;
         i_ccp.rotation_friction_coefficient = rotation_friction_coefficient;
         i_ccp.upper_cop_x_margin = upper_cop_x_margin;
@@ -380,6 +462,10 @@ public:
     }
 
     //サービスコールで設定
+    enum ContactType {
+        SURFACE,//
+        POINT//rot_damping_gain,rot_interact_weightを0にせよ
+    } contact_type;
     double friction_coefficient;
     double rotation_friction_coefficient;
     double upper_cop_x_margin;
@@ -398,8 +484,8 @@ public:
     hrp::Vector3 pos_time_const;
     hrp::Vector3 rot_damping_gain;
     hrp::Vector3 rot_time_const;
-    double pos_compensation_limit;
-    double rot_compensation_limit;
+    double pos_compensation_limit;//not used
+    double rot_compensation_limit;//not used
     double z_contact_vel;
     double rot_contact_vel;
     double z_contact_weight;
@@ -469,9 +555,10 @@ public:
             size_t prop_num = 10;
             size_t num = end_effectors_str.size()/prop_num;
             for (size_t i = 0; i < num; i++) {
-                std::string name, link_name;
+                std::string name, link_name, sensor_name;
                 coil::stringTo(name, end_effectors_str[i*prop_num].c_str());
                 coil::stringTo(link_name, end_effectors_str[i*prop_num+1].c_str());
+                coil::stringTo(sensor_name, end_effectors_str[i*prop_num+2].c_str());
                 boost::shared_ptr<EndEffector> eef(new EndEffector());
                 for (size_t j = 0; j < 3; j++) {
                     coil::stringTo(eef->localp(j), end_effectors_str[i*prop_num+3+j].c_str());
@@ -483,19 +570,9 @@ public:
                 eef->localR = Eigen::AngleAxis<double>(tmpv[3], hrp::Vector3(tmpv[0], tmpv[1], tmpv[2])).toRotationMatrix(); // rotation in VRML is represented by axis + angle
                 eef->link_name = link_name;
                 eef->name = name;
-                {
-                    bool is_ee_exists = false;
-                    for (size_t j = 0; j < m_robot->numSensors(hrp::Sensor::FORCE); j++) {
-                        hrp::Sensor* sensor = m_robot->sensor(hrp::Sensor::FORCE, j);
-                        hrp::Link* alink = m_robot->link(eef->link_name);
-                        while (alink != NULL && alink->name != m_robot->rootLink()->name && !is_ee_exists) {
-                            if ( alink->name == sensor->link->name ) {
-                                is_ee_exists = true;
-                                eef->sensor_name = sensor->name;
-                            }
-                            alink = alink->parent;
-                        }
-                    }
+                eef->sensor_name = sensor_name;
+                if(!(m_robot->sensor<hrp::ForceSensor>(sensor_name))){
+                    std::cerr << "[" << instance_name << "] End Effector [" << name << "] no such sensor named " << sensor_name << std::endl;
                 }
                 eef->jpe = hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->link(link_name), dt, false, instance_name));
                 endeffector.push_back(eef);

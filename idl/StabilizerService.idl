@@ -84,12 +84,17 @@ module OpenHRP
         unsigned short ik_loop_count;
     };
 
+    enum ContactType {
+        SURFACE,
+        POINT
+    };
 
     /**
      * @enum EndEffector
      * @brief EndEfector
      */
     struct EndEffectorParam {
+        ContactType contact_type;
         double friction_coefficient;
         double rotation_friction_coefficient;
         double upper_cop_x_margin;
