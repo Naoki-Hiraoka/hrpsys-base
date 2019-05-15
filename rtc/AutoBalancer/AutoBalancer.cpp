@@ -252,7 +252,7 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
       size_t ceenum = contact_end_effectors_str.size()/cee_prop_num;
       for (size_t i = 0; i < ceenum; i++) {
         std::string ee_name;
-        coil::stringTo(ee_name, end_effectors_str[i*cee_prop_num].c_str());
+        coil::stringTo(ee_name, contact_end_effectors_str[i*cee_prop_num].c_str());
         contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
       }
       m_contactStates.data.length(ceenum);
@@ -262,7 +262,6 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
           m_controlSwingSupportTime.data[i] = 1.0;
       }
     }
-
     std::vector<hrp::Vector3> leg_pos;
     if (leg_offset_str.size() > 0) {
       hrp::Vector3 leg_offset;
@@ -860,10 +859,10 @@ void AutoBalancer::getOutputParametersForIDLE ()
             m_controlSwingSupportTime.data[i] = m_optionalData.data[i+contact_states_index_map.size()];
         }
         // If two feet have no contact, force set double support contact
-        if ( !m_contactStates.data[contact_states_index_map["rleg"]] && !m_contactStates.data[contact_states_index_map["lleg"]] ) {
-            m_contactStates.data[contact_states_index_map["rleg"]] = true;
-            m_contactStates.data[contact_states_index_map["lleg"]] = true;
-        }
+        // if ( !m_contactStates.data[contact_states_index_map["rleg"]] && !m_contactStates.data[contact_states_index_map["lleg"]] ) {
+        //     m_contactStates.data[contact_states_index_map["rleg"]] = true;
+        //     m_contactStates.data[contact_states_index_map["lleg"]] = true;
+        // }
     }
     for ( std::map<std::string, ABCIKparam>::iterator it = ikp.begin(); it != ikp.end(); it++ ) {
         size_t idx = contact_states_index_map[it->first];

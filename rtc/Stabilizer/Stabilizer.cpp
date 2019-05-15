@@ -511,11 +511,11 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
     m_actContactStates.data[i] = false;
     act_contact_states.push_back(false);
     eef_contact_decision_threshold.push_back(25.0);
-    toeheel_ratio.push_back(1.0);
   }
-  m_COPInfo.data.length(m_contactStates.data.length()*3); // nx, ny, fz for each end-effectors
+  m_COPInfo.data.length(m_toeheelRatio.data.length()*3); // nx, ny, fz for each end-effectors
   for (size_t i = 0; i < m_COPInfo.data.length(); i++) {
       m_COPInfo.data[i] = 0.0;
+      toeheel_ratio.push_back(1.0);
   }
   transition_time = 2.0;
   foot_origin_offset[0] = hrp::Vector3::Zero();
