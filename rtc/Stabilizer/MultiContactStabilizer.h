@@ -865,14 +865,23 @@ public:
         // 前回の出力へ.関係ないjointは今回のref値へ
         m_robot->rootLink()->R = cur_root_R/*refworld系*/;
         m_robot->rootLink()->p = cur_root_p/*refworld系*/;
-        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
-            m_robot->joint(i)->q = qrefv[i];
-        }
-        for (size_t i = 0; i < ik_enable_eef.size(); i++) {
-            //optional_weight_vectorが0のjointも，一度curにする．optional_weight_vectorを変えた時に値が飛ぶため.reference_gainで追従する->応答が遅いことに注意
-            for ( int j = 0; j < ik_enable_eef[i]->jpe->numJoints(); j++ ){
-                const int idx = ik_enable_eef[i]->jpe->joint(j)->jointId;
-                m_robot->joint(idx)->q = qcurv[idx];
+        for (size_t i = 0; i < m_robot->numJoints(); i++) {
+            if(ik_enable_joint_states[i]){
+                m_robot->joint(i)->q = qcurv[i];
+            }else{
+                m_robot->joint(i)->q = qcurv[i] + (qrefv[i]- prev_qrefv[i]);
+                m_robot->joint(i)->q += (qrefv[i] - m_robot->joint(i)->q) * dt / reference_time_const;
+
+                double llimit, ulimit;
+                if (joint_limit_tables.find(m_robot->joint(i)->name) != joint_limit_tables.end()) {
+                    std::map<std::string, hrp::JointLimitTable>::iterator it = joint_limit_tables.find(m_robot->joint(i)->name);
+                    llimit = it->second.getLlimit(m_robot->joint(it->second.getTargetJointId())->q);
+                    ulimit = it->second.getUlimit(m_robot->joint(it->second.getTargetJointId())->q);
+                }else{
+                    llimit = m_robot->joint(i)->llimit;
+                    ulimit = m_robot->joint(i)->ulimit;
+                }
+                m_robot->joint(i)->q = std::max(std::min(m_robot->joint(i)->q,ulimit),llimit);
             }
         }
         m_robot->calcForwardKinematics();
