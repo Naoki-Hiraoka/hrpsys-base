@@ -960,6 +960,9 @@ void Stabilizer::getActualParameters ()
           m_robot->calcForwardKinematics();
       }
       copy (ref_contact_states.begin(), ref_contact_states.end(), prev_ref_contact_states.begin());
+      for (size_t i = 0; i < act_contact_states.size(); i++) {
+          m_actContactStates.data[i] = act_contact_states[i];
+      }
 
       return;
   }

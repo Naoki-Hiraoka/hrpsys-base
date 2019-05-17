@@ -750,18 +750,20 @@ public:
             endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
             endeffector[i]->act_R/*actworld系*/ = target->R * endeffector[i]->localR;
             hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(endeffector[i]->sensor_name);
-            endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force[i]/*sensor系*/;
-            endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment[i]/*sensor系,sensorまわり*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
+            endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force[sensor->id]/*sensor系*/;
+            endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment[sensor->id]/*sensor系,sensorまわり*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
             endeffector[i]->act_force_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force/*actworld系*/;
             endeffector[i]->act_moment_eef/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
-            endeffector[i]->isContact();
+            act_contact_states[i] = endeffector[i]->isContact();
         }
 
         act_total_force/*actworld系*/ = hrp::Vector3::Zero();
         act_total_moment/*actworld系,cogまわり*/ = hrp::Vector3::Zero();
         for (size_t i = 0; i < eefnum;i++){
-            act_total_force/*actworld系*/ += endeffector[i]->act_force/*actworld系*/;
-            act_total_moment/*actworld系,cogまわり*/ += (endeffector[i]->act_p/*actworld系*/-act_cog/*actworld系*/).cross(endeffector[i]->act_force/*actworld系*/) + endeffector[i]->act_moment/*actworld系,eefまわり*/;
+            if(endeffector[i]->is_ik_enable){
+                act_total_force/*actworld系*/ += endeffector[i]->act_force/*actworld系*/;
+                act_total_moment/*actworld系,cogまわり*/ += (endeffector[i]->act_p/*actworld系*/-act_cog/*actworld系*/).cross(endeffector[i]->act_force/*actworld系*/) + endeffector[i]->act_moment/*actworld系,eefまわり*/;
+            }
         }
 
         std::vector<boost::shared_ptr<EndEffector> > act_contact_eef;
