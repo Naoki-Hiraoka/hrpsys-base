@@ -539,7 +539,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(false),qpdebug(false)
+    MultiContactStabilizer() : debug(false),qpdebug(false), debugloop(false), debugloopnum(0)
     {
     }
 
@@ -667,10 +667,20 @@ public:
         qcurv = _qcurv;
         cur_root_p/*refworld系*/ = m_robot->rootLink()->p/*refworld系*/;
         cur_root_R/*refworld系*/ = m_robot->rootLink()->R/*refworld系*/;
+
+        if(debug){
+            if(debugloopnum % 250 == 0){
+                debugloop = true;
+                debugloopnum = 0;
+            }else{
+                debugloop = false;
+            }
+            debugloopnum++;
+        }
     }
 
     void getTargetParameters(hrp::BodyPtr& m_robot, const double& _transition_smooth_gain, const hrp::dvector& _qrefv, const hrp::Vector3& _ref_root_p/*refworld系*/, const hrp::Matrix33& _ref_root_R/*refworld系*/, const std::vector <hrp::Vector3>& _ref_force/*refworld系*/, const std::vector <hrp::Vector3>& _ref_moment/*refworld系,eefまわり*/, const std::vector<bool>& _ref_contact_states, const std::vector<double>& _swing_support_gains, hrp::Vector3& log_ref_cog/*refworld系*/, hrp::Vector3& log_ref_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_ref_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_ref_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_ref_base_pos/*world系*/, hrp::Vector3& log_ref_base_rpy/*world系*/) {
-        if(debug){
+        if(debugloop){
             std::cerr << "getTargetParameters start" << std::endl;
         }
 
@@ -716,7 +726,7 @@ public:
         log_ref_base_pos = ref_root_p/*refworld系*/;
         log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
 
-        if(debug){
+        if(debugloop){
             std::cerr << "getTargetParameters end" << std::endl;
         }
 
@@ -724,7 +734,7 @@ public:
 
     //on_groundかを返す
     bool getActualParameters(hrp::BodyPtr& m_robot, const hrp::dvector& _qactv, const hrp::Vector3& _act_root_p/*actworld系*/, const hrp::Matrix33& _act_root_R/*actworld系*/, const std::vector <hrp::Vector3>& _act_force/*sensor系*/, const std::vector <hrp::Vector3>& _act_moment/*sensor系,sensorまわり*/, std::vector<bool>& act_contact_states, const double& contact_decision_threshold, hrp::Vector3& log_act_cog/*refworld系*/, hrp::Vector3& log_act_cogvel/*refworld系*/, std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/, std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/, hrp::Vector3& log_act_base_rpy/*world系*/,const hrp::dvector& _acttauv) {
-        if(debug){
+        if(debugloop){
             std::cerr << "getActualParameters start" << std::endl;
         }
 
@@ -812,7 +822,7 @@ public:
                 act_cogorigin_yaw += d_act_cogorigin[3];
                 act_cogorigin_R/*actworld系*/ = hrp::rotFromRpy(hrp::Vector3(0.0,0.0,act_cogorigin_yaw));
 
-                if(debug){
+                if(debugloop){
                     std::cerr << "J" << std::endl;
                     std::cerr << J << std::endl;
                     std::cerr << "error" << std::endl;
@@ -847,7 +857,7 @@ public:
         }
         log_act_base_rpy = hrp::rpyFromRot(act_cogorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
         
-        if(debug){
+        if(debugloop){
             std::cerr << "act_root_R" <<std::endl;
             std::cerr << act_root_R <<std::endl;
             std::cerr << "act_cog" <<std::endl;
@@ -910,7 +920,7 @@ public:
             if(!(endeffector[i]->act_contact_state) && endeffector[i]->is_ik_enable)interact_eef.push_back(endeffector[i]);
         }
 
-        if(debug){
+        if(debugloop){
             std::cerr << "support_eef" << std::endl;
             for(size_t i = 0; i < support_eef.size(); i++){
                 std::cerr << support_eef[i]->name << std::endl;
@@ -924,7 +934,7 @@ public:
 
         //debug
         struct timeval s, e;
-        if(debug){
+        if(debugloop){
             gettimeofday(&s, NULL);
         }
         hrp::dvector acttau;
@@ -997,7 +1007,7 @@ public:
             }
         }
 
-        if(debug){
+        if(debugloop){
             std::cerr << "prevpassive" << std::endl;
             for(size_t i = 0; i < prevpassive.size(); i++){
                 std::cerr << prevpassive[i] ;
@@ -1104,7 +1114,7 @@ public:
             }
         }
 
-        if(debug){
+        if(debugloop){
             std::cerr << "select_matrix" << std::endl;
             std::cerr << select_matrix << std::endl;
             std::cerr << "select_matrix_bar" << std::endl;
@@ -1171,7 +1181,7 @@ public:
             lbAs.push_back(lbA);
             ubAs.push_back(ubA);
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "torque" << std::endl;
                 std::cerr << "W" << std::endl;
                 std::cerr << W << std::endl;
@@ -1229,7 +1239,7 @@ public:
                 lbAs.push_back(lb-C*b.block<6,1>(i*6,0));
                 ubAs.push_back(ub-C*b.block<6,1>(i*6,0));
 
-                if(debug){
+                if(debugloop){
                     std::cerr << "C" << std::endl;
                     std::cerr << C << std::endl;
                     std::cerr << "lb" << std::endl;
@@ -1250,7 +1260,7 @@ public:
             lbAs.push_back(-G*c);
             ubAs.push_back(-G*c);
             
-            if(debug){
+            if(debugloop){
                 std::cerr << "wrench" << std::endl;
                 std::cerr << "W" << std::endl;
                 std::cerr << W << std::endl;
@@ -1316,7 +1326,7 @@ public:
             H += CM_J.transpose() * W * CM_J;
             g += - delta_cog.transpose() * W * CM_J;
             
-            if(debug){
+            if(debugloop){
                 std::cerr << "centroid" << std::endl;
                 std::cerr << "tmp_d_cog" << std::endl;
                 std::cerr << tmp_d_cog << std::endl;
@@ -1360,7 +1370,7 @@ public:
             H += a.transpose() * W * a;
             g += b.transpose() * W * a;
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "support eef" << std::endl;
                 std::cerr << "W" << std::endl;
                 std::cerr << W << std::endl;
@@ -1417,7 +1427,7 @@ public:
             H += a.transpose() * W * a;
             g += b.transpose() * W * a;
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "interact eef" << std::endl;
                 std::cerr << "W" << std::endl;
                 std::cerr << W << std::endl;
@@ -1463,7 +1473,7 @@ public:
             H += W;
             g += - reference_q.transpose() * W;
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "W" << std::endl;
                 std::cerr << W << std::endl;
                 std::cerr << "reference_q" << std::endl;
@@ -1538,7 +1548,7 @@ public:
             ub = u;
             lb = l;
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "u" << std::endl;
                 std::cerr << u << std::endl;
                 std::cerr << "l" << std::endl;
@@ -1547,7 +1557,7 @@ public:
 
         }
 
-        if(debug){
+        if(debugloop){
             std::cerr << "H" << std::endl;
             std::cerr << H << std::endl;
             std::cerr << "g" << std::endl;
@@ -1571,7 +1581,7 @@ public:
 
         }
 
-        if(debug){
+        if(debugloop){
             gettimeofday(&e, NULL);
             std::cerr << "before QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
         }
@@ -1621,7 +1631,7 @@ public:
                 }
             }
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "qp_H" <<std::endl;
                 for (size_t i = 0; i < state_len; i++) {
                     for(size_t j = 0; j < state_len; j++){ 
@@ -1669,7 +1679,7 @@ public:
             options.initialStatusBounds = qpOASES::ST_INACTIVE;
             options.numRefinementSteps = 1;
             options.enableCholeskyRefactorisation = 1;
-            if(debug){
+            if(debugloop){
                 options.printLevel = qpOASES::PL_HIGH;
             }else{
                 options.printLevel = qpOASES::PL_NONE;
@@ -1691,21 +1701,21 @@ public:
                 example->setOptions( options );
                 int nWSR = 100;
                 
-                //debug
+                //debugloop
                 struct timeval s, e;
-                if(debug){
+                if(debugloop){
                     gettimeofday(&s, NULL);
                 }
                 
                 qpOASES::returnValue status = example->hotstart( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
                 
-                if(debug){
+                if(debugloop){
                     gettimeofday(&e, NULL);
                     std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
                 }
                 
                 if(qpOASES::getSimpleStatus(status)==0){
-                    if(debug){
+                    if(debugloop){
                         std::cerr << "hotstart qp_solved" <<std::endl;
                     }
                     
@@ -1717,13 +1727,13 @@ public:
                     }
                     delete[] xOpt;
                 }else{
-                    if(debug){
+                    if(debugloop){
                         std::cerr << "hotstart qp fail" <<std::endl;
                     }
                     // Delete unsolved sqp
                     sqp_map.erase(tmp_pair);
                     if(qpOASES::getSimpleStatus(status)==-1){
-                        if(debug){
+                        if(debugloop){
                             std::cerr << "hotstart qp internal error" <<std::endl;
                         }
                         internal_error = true;
@@ -1740,18 +1750,18 @@ public:
                 
                 //debug
                 struct timeval s, e;
-                if(debug){
+                if(debugloop){
                     gettimeofday(&s, NULL);
                 }
                 qpOASES::returnValue status = example->init( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
                 
-                if(debug){
+                if(debugloop){
                     gettimeofday(&e, NULL);
                     std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
                 }
                 
                 if(qpOASES::getSimpleStatus(status)==0){
-                    if(debug){
+                    if(debugloop){
                         std::cerr << "initial qp_solved" <<std::endl;
                     }
                     
@@ -1763,7 +1773,7 @@ public:
                     }
                     delete[] xOpt;
                 }else{
-                    if(debug){
+                    if(debugloop){
                         std::cerr << "initial qp fail" <<std::endl;
                     }
                     // Delete unsolved sqp
@@ -1782,7 +1792,7 @@ public:
 
         if(!qp_solved)std::cerr << "qp fail" <<std::endl;
         
-        if(debug){
+        if(debugloop){
             std::cerr << "qp_solved" << std::endl;
             std::cerr << qp_solved << std::endl;
             std::cerr << "command_dq" << std::endl;
@@ -1844,7 +1854,7 @@ public:
             endeffector[i]->d_foot_pos/*eef系*/ = endeffector[i]->ref_R.transpose() * (endeffector[i]->cur_p - endeffector[i]->ref_p);
             endeffector[i]->d_foot_rpy/*eef系*/ = hrp::rpyFromRot(endeffector[i]->ref_R.transpose() * endeffector[i]->cur_R);
 
-            if(debug){
+            if(debugloop){
                 std::cerr << "d_foot_pos" << std::endl;
                 std::cerr << endeffector[i]->d_foot_pos << std::endl;
                 std::cerr << "d_foot_rpy" << std::endl;
@@ -1853,7 +1863,7 @@ public:
 
         }
         
-        if(debug){
+        if(debugloop){
             std::cerr << "d_cog" << std::endl;
             std::cerr << d_cog << std::endl;
         }
@@ -2161,7 +2171,8 @@ private:
     //次のループで今回の値を使用するような変数は，refworld系かactworld系で保管すること.origin系は原点が不連続に移動する.
 
     //config
-    bool debug,qpdebug;
+    bool debug,qpdebug,debugloop;
+    int debugloopnum;
     std::string instance_name;
     double dt;
     size_t eefnum;
