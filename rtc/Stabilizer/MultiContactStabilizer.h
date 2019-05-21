@@ -488,7 +488,7 @@ public:
     double rot_compensation_limit;//not used
     double z_contact_vel;
     double rot_contact_vel;
-    double z_contact_weight;
+    double z_contact_weight;//not used
     double rot_contact_weight;
     double M_p, D_p, K_p, M_r, D_r, K_r;
     hrp::Matrix33 force_gain;
@@ -2239,7 +2239,7 @@ private:
     std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
 
     std::vector<double> mcs_passive_torquedirection;
-    hrp::dvector6 mcs_equality_weight;//等式制約に対する重み
+    hrp::dvector6 mcs_equality_weight;//等式制約に対する重み//not used
     
     std::vector<bool> is_passive;
     std::vector<bool> is_reference;
