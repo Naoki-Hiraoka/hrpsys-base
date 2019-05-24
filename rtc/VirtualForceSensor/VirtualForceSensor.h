@@ -72,7 +72,9 @@ public:
     hrp::Vector3 sensor_moment;
     hrp::Vector3 off_sensor_force;
     hrp::Vector3 off_sensor_moment;
-    
+    boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > off_sensor_force_filter;
+    boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > off_sensor_moment_filter;
+
     VirtualForceSensorParam ()
         : wait_sem(),
           offset_calib_counter(0),

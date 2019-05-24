@@ -149,6 +149,8 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     coil::stringTo(p->lower_cop_x_margin, virtual_force_sensor[i*15+12].c_str());
     coil::stringTo(p->upper_cop_y_margin, virtual_force_sensor[i*15+13].c_str());
     coil::stringTo(p->lower_cop_y_margin, virtual_force_sensor[i*15+14].c_str());
+    p->off_sensor_force_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
+    p->off_sensor_moment_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
     m_sensors[name] = p;
     if ( m_sensors[name]->path->numJoints() == 0 ) {
       std::cerr << "[" << m_profile.instance_name << "] ERROR : Unknown link path " << m_sensors[name]->target_name  << std::endl;
@@ -172,12 +174,12 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     it++; i++;
   }
   
-  qCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  qCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   dqCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   ddqCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   basewFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
   basedwFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
-  tauFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  tauFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   qprev = hrp::dvector::Zero(m_robot->numJoints());
   dqprev = hrp::dvector::Zero(m_robot->numJoints());
   baseRprev = hrp::Matrix33::Identity();
@@ -283,7 +285,8 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
       m_robot->joint(i)->ddq = ddqCurrent[i];
     }
     hrp::Matrix33 baseR = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
-    hrp::Vector3 basew = rats::matrix_log( baseR * baseRprev.transpose() ) / m_dt;
+    //hrp::Vector3 basew = rats::matrix_log( baseR * baseRprev.transpose() ) / m_dt;
+    hrp::Vector3 basew = hrp::Vector3::Zero();
     basew = basewFilter->passFilter(basew);
     hrp::Vector3 basedw = (basew - basewprev) /m_dt;
     basedw = basedwFilter->passFilter(basedw);
@@ -659,8 +662,8 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             }
             
             if((*it).second->is_enable){
-                (*it).second->off_sensor_force = (*it).second->sensor_force - (*it).second->forceOffset;
-                (*it).second->off_sensor_moment = (*it).second->off_sensor_moment - (*it).second->momentOffset;
+                (*it).second->off_sensor_force = (*it).second->off_sensor_force_filter->passFilter( (*it).second->sensor_force - (*it).second->forceOffset);
+                (*it).second->off_sensor_moment = (*it).second->off_sensor_moment_filter->passFilter( (*it).second->off_sensor_moment - (*it).second->momentOffset);
             }else{
                 (*it).second->off_sensor_force = hrp::Vector3::Zero();
                 (*it).second->off_sensor_moment = hrp::Vector3::Zero();
@@ -879,6 +882,8 @@ bool VirtualForceSensor::stopEstimation(const std::string& sensorName)
       Guard guard(m_mutex);
       if ( m_sensors.find(sensorName) != m_sensors.end() ) {
           m_sensors[sensorName]->is_enable = false;
+          m_sensors[sensorName]->off_sensor_force_filter->reset(hrp::Vector3::Zero());
+          m_sensors[sensorName]->off_sensor_moment_filter->reset(hrp::Vector3::Zero());
       }else{
           is_valid_argument = false;
       }
