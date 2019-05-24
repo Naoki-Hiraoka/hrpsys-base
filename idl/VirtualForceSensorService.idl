@@ -26,6 +26,10 @@ module OpenHRP
     boolean removeExternalForceOffset(in double tm);
 
     boolean loadForceMomentOffsetParams(in string filename);
+
+    boolean startEstimation(in string sensorName);
+
+    boolean stopEstimation(in string sensorName);
   };
 };
 

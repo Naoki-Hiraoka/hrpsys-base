@@ -19,6 +19,8 @@ public:
   CORBA::Boolean removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& names, CORBA::Double tm);
   CORBA::Boolean removeExternalForceOffset(CORBA::Double tm);
   CORBA::Boolean loadForceMomentOffsetParams(const char *filename);
+  CORBA::Boolean startEstimation(const char *sensorName);
+  CORBA::Boolean stopEstimation(const char *sensorName);
   //
   void vfsensor(VirtualForceSensor *i_vfsensor);
 private:

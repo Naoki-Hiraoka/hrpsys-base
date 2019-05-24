@@ -47,6 +47,42 @@
 
 using namespace RTC;
 
+class VirtualForceSensorParam {
+public:
+    bool is_enable;
+    std::string target_name;
+    hrp::Vector3 p;
+    hrp::Matrix33 R;
+    hrp::Vector3 forceOffset;
+    hrp::Vector3 momentOffset;
+    hrp::Vector3 forceOffset_sum;
+    hrp::Vector3 momentOffset_sum;
+    hrp::JointPathExPtr path;
+    double friction_coefficient;
+    double rotation_friction_coefficient;
+    double upper_cop_x_margin;
+    double lower_cop_x_margin;
+    double upper_cop_y_margin;
+    double lower_cop_y_margin;
+    sem_t wait_sem;
+    size_t offset_calib_counter;
+    size_t max_offset_calib_counter;
+
+    hrp::Vector3 sensor_force;
+    hrp::Vector3 sensor_moment;
+    hrp::Vector3 off_sensor_force;
+    hrp::Vector3 off_sensor_moment;
+    
+    VirtualForceSensorParam ()
+        : wait_sem(),
+          offset_calib_counter(0),
+          sensor_force(hrp::Vector3::Zero()),
+          sensor_moment(hrp::Vector3::Zero())
+    {
+          sem_init(&wait_sem, 0, 0);
+      }
+};
+
 /**
    \brief sample RT component which has one data input port and one data output port
  */
@@ -117,7 +153,10 @@ class VirtualForceSensor
   bool removeExternalForceOffset(const double tm);
 
   bool loadForceMomentOffsetParams(const std::string& filename);
-    
+
+  bool startEstimation(const std::string& sensorName);
+
+  bool stopEstimation(const std::string& sensorName);
  protected:
   // Configuration variable declaration
   // <rtc-template block="config_declare">
@@ -144,8 +183,6 @@ class VirtualForceSensor
   std::vector<OutPort<TimedDoubleSeq> *> m_forceOut;
     std::vector<TimedDoubleSeq> m_offforce;
   std::vector<OutPort<TimedDoubleSeq> *> m_offforceOut;
-  TimedDoubleSeq m_extforce;
-  OutPort<TimedDoubleSeq> m_extforceOut;
     
   // </rtc-template>
 
@@ -172,33 +209,7 @@ class VirtualForceSensor
   // </rtc-template>
 
  private:
-  struct VirtualForceSensorParam {
-    std::string target_name;
-    hrp::Vector3 p;
-    hrp::Matrix33 R;
-    hrp::Vector3 forceOffset;
-    hrp::Vector3 momentOffset;
-    hrp::Vector3 forceOffset_sum;
-    hrp::Vector3 momentOffset_sum;
-    hrp::JointPathExPtr path;
-    double friction_coefficient;
-    double rotation_friction_coefficient;
-    double upper_cop_x_margin;
-    double lower_cop_x_margin;
-    double upper_cop_y_margin;
-    double lower_cop_y_margin;
-    sem_t wait_sem;
-    size_t offset_calib_counter;
-    size_t max_offset_calib_counter;
-
-    VirtualForceSensorParam ()
-        : wait_sem(),
-          offset_calib_counter(0)
-      {
-          sem_init(&wait_sem, 0, 0);
-      }
-  };
-  std::map<std::string, VirtualForceSensorParam> m_sensors;
+  std::map<std::string, boost::shared_ptr<VirtualForceSensorParam> > m_sensors;
   double m_dt;
   hrp::BodyPtr m_robot;
   unsigned int m_debugLevel;

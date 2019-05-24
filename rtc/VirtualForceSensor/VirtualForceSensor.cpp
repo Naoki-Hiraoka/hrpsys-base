@@ -42,7 +42,6 @@ VirtualForceSensor::VirtualForceSensor(RTC::Manager* manager)
     m_qCurrentIn("qCurrent", m_qCurrent),
     m_tauInIn("tauIn", m_tauIn),
     m_baseRpyIn("baseRpy", m_baseRpy),
-    m_extforceOut("extforce", m_extforce),
     m_VirtualForceSensorServicePort("VirtualForceSensorService"),
     // </rtc-template>
     m_debugLevel(0)
@@ -72,10 +71,6 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   addInPort("tauIn", m_tauInIn);
   addInPort("baseRpy", m_baseRpyIn);
 
-  // Set OutPort buffer
-  addOutPort("extforce", m_extforceOut);
-  m_extforce.data.length(6);
-  
   // Set service provider to Ports
   m_VirtualForceSensorServicePort.registerProvider("service0", "VirtualForceSensorService", m_service0);
   
@@ -132,30 +127,31 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   coil::vstring virtual_force_sensor = coil::split(prop["virtual_force_sensor"], ",");
   for(unsigned int i = 0; i < virtual_force_sensor.size()/15; i++ ){
     std::string name = virtual_force_sensor[i*15+0];
-    VirtualForceSensorParam p;
-    p.target_name = virtual_force_sensor[i*15+1];
+    boost::shared_ptr<VirtualForceSensorParam> p(new VirtualForceSensorParam());
+    p->is_enable = false;
+    p->target_name = virtual_force_sensor[i*15+1];
     hrp::dvector tr(7);
     for (int j = 0; j < 7; j++ ) {
       coil::stringTo(tr[j], virtual_force_sensor[i*15+2+j].c_str());
     }
-    p.p = hrp::Vector3(tr[0], tr[1], tr[2]);
-    p.R = Eigen::AngleAxis<double>(tr[6], hrp::Vector3(tr[3],tr[4],tr[5])).toRotationMatrix(); // rotation in VRML is represented by axis + angle
-    p.forceOffset = hrp::Vector3(0, 0, 0);
-    p.momentOffset = hrp::Vector3(0, 0, 0);
+    p->p = hrp::Vector3(tr[0], tr[1], tr[2]);
+    p->R = Eigen::AngleAxis<double>(tr[6], hrp::Vector3(tr[3],tr[4],tr[5])).toRotationMatrix(); // rotation in VRML is represented by axis + angle
+    p->forceOffset = hrp::Vector3(0, 0, 0);
+    p->momentOffset = hrp::Vector3(0, 0, 0);
     std::cerr << "[" << m_profile.instance_name << "] virtual force sensor : " << name << std::endl;
-    std::cerr << "[" << m_profile.instance_name << "]               target : " << p.target_name << std::endl;
-    std::cerr << "[" << m_profile.instance_name << "]                 T, R : " << p.p[0] << " " << p.p[1] << " " << p.p[2] << std::endl << p.R << std::endl;
-    //p.path = hrp::JointPathPtr(new hrp::JointPath(m_robot->link(p.base_name), m_robot->link(p.target_name)));
-    p.path = hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->link(p.target_name), m_dt, false, std::string(m_profile.instance_name)));
-    coil::stringTo(p.friction_coefficient, virtual_force_sensor[i*15+9].c_str());
-    coil::stringTo(p.rotation_friction_coefficient, virtual_force_sensor[i*15+10].c_str());
-    coil::stringTo(p.upper_cop_x_margin, virtual_force_sensor[i*15+11].c_str());
-    coil::stringTo(p.lower_cop_x_margin, virtual_force_sensor[i*15+12].c_str());
-    coil::stringTo(p.upper_cop_y_margin, virtual_force_sensor[i*15+13].c_str());
-    coil::stringTo(p.lower_cop_y_margin, virtual_force_sensor[i*15+14].c_str());
+    std::cerr << "[" << m_profile.instance_name << "]               target : " << p->target_name << std::endl;
+    std::cerr << "[" << m_profile.instance_name << "]                 T, R : " << p->p[0] << " " << p->p[1] << " " << p->p[2] << std::endl << p->R << std::endl;
+    //p->path = hrp::JointPathPtr(new hrp::JointPath(m_robot->link(p->base_name), m_robot->link(p->target_name)));
+    p->path = hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->link(p->target_name), m_dt, false, std::string(m_profile.instance_name)));
+    coil::stringTo(p->friction_coefficient, virtual_force_sensor[i*15+9].c_str());
+    coil::stringTo(p->rotation_friction_coefficient, virtual_force_sensor[i*15+10].c_str());
+    coil::stringTo(p->upper_cop_x_margin, virtual_force_sensor[i*15+11].c_str());
+    coil::stringTo(p->lower_cop_x_margin, virtual_force_sensor[i*15+12].c_str());
+    coil::stringTo(p->upper_cop_y_margin, virtual_force_sensor[i*15+13].c_str());
+    coil::stringTo(p->lower_cop_y_margin, virtual_force_sensor[i*15+14].c_str());
     m_sensors[name] = p;
-    if ( m_sensors[name].path->numJoints() == 0 ) {
-      std::cerr << "[" << m_profile.instance_name << "] ERROR : Unknown link path " << m_sensors[name].target_name  << std::endl;
+    if ( m_sensors[name]->path->numJoints() == 0 ) {
+      std::cerr << "[" << m_profile.instance_name << "] ERROR : Unknown link path " << m_sensors[name]->target_name  << std::endl;
       return RTC::RTC_ERROR;
     }
   }
@@ -165,7 +161,7 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   m_offforce.resize(nforce);
   m_offforceOut.resize(nforce);
   int i = 0;
-  std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
+  std::map<std::string, boost::shared_ptr<VirtualForceSensorParam> >::iterator it = m_sensors.begin();
   while ( it != m_sensors.end() ) {
     m_forceOut[i] = new OutPort<TimedDoubleSeq>((*it).first.c_str(), m_force[i]);
     m_force[i].data.length(6);
@@ -405,35 +401,45 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
     }
 
 
+    std::vector<boost::shared_ptr<VirtualForceSensorParam> > enable_sensors;
+    std::map<std::string, boost::shared_ptr<VirtualForceSensorParam> >::iterator it = m_sensors.begin();
+    for (size_t i = 0 ; i < m_sensors.size(); i++){
+        if((*it).second->is_enable){
+            enable_sensors.push_back((*it).second);
+        }else{
+            (*it).second->sensor_force = hrp::Vector3::Zero();
+            (*it).second->sensor_moment = hrp::Vector3::Zero();
+        }
+        it++;
+    }
+
     //USE_QPOASES を ON にすること
     bool qp_solved=false;
-    hrp::dvector virtual_wrench=hrp::dvector::Zero(6 * m_sensors.size())/*sensor系,sensor周り*/;
-    if(m_sensors.size()!=0){
+    hrp::dvector virtual_wrench=hrp::dvector::Zero(6 * enable_sensors.size())/*sensor系,sensor周り*/;
+    if(enable_sensors.size()!=0){
         /****************************************************************/
         //virtual sensor入力を推定する
-        hrp::dmatrix H = hrp::dmatrix::Zero(6 * m_sensors.size(),6 * m_sensors.size());
-        hrp::dmatrix g = hrp::dmatrix::Zero(1,6 * m_sensors.size());
+        hrp::dmatrix H = hrp::dmatrix::Zero(6 * enable_sensors.size(),6 * enable_sensors.size());
+        hrp::dmatrix g = hrp::dmatrix::Zero(1,6 * enable_sensors.size());
         std::vector<hrp::dmatrix> As;
         std::vector<hrp::dvector> lbAs;
         std::vector<hrp::dvector> ubAs;
         hrp::dvector lb;
         hrp::dvector ub;
 
-        hrp::dmatrix J = hrp::dmatrix::Zero(6 * m_sensors.size(),m_robot->numJoints());
+        hrp::dmatrix J = hrp::dmatrix::Zero(6 * enable_sensors.size(),m_robot->numJoints());
         {
-            std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
-            for (size_t i = 0 ; i < m_sensors.size(); i++){
+            for (size_t i = 0 ; i < enable_sensors.size(); i++){
                 hrp::dmatrix JJ;
-                (*it).second.path->calcJacobian(JJ, (*it).second.p);
-                hrp::Matrix33 senRt = (m_robot->link((*it).second.target_name)->R * (*it).second.R).transpose();
+                enable_sensors[i]->path->calcJacobian(JJ, enable_sensors[i]->p);
+                hrp::Matrix33 senRt = (m_robot->link(enable_sensors[i]->target_name)->R * enable_sensors[i]->R).transpose();
                 J.block<3,3>(i*6,0) = senRt;
-                J.block<3,3>(i*6,3) = senRt * - hrp::hat(m_robot->link((*it).second.target_name)->p + m_robot->link((*it).second.target_name)->R * (*it).second.p);
+                J.block<3,3>(i*6,3) = senRt * - hrp::hat(m_robot->link(enable_sensors[i]->target_name)->p + m_robot->link(enable_sensors[i]->target_name)->R * enable_sensors[i]->p);
                 J.block<3,3>(i*6+3,3) = senRt;
-                for (int j = 0; j < (*it).second.path->numJoints() ; j++){
-                    J.block<3,1>(i*6,6+(*it).second.path->joint(j)->jointId) = senRt * JJ.block<3,1>(0,j);
-                    J.block<3,1>(i*6+3,6+(*it).second.path->joint(j)->jointId) = senRt * JJ.block<3,1>(3,j);
+                for (int j = 0; j < enable_sensors[i]->path->numJoints() ; j++){
+                    J.block<3,1>(i*6,6+enable_sensors[i]->path->joint(j)->jointId) = senRt * JJ.block<3,1>(0,j);
+                    J.block<3,1>(i*6+3,6+enable_sensors[i]->path->joint(j)->jointId) = senRt * JJ.block<3,1>(3,j);
                 }
-                it++;
             }
         }
 
@@ -441,31 +447,29 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         g = - J * Tvirtual;
 
         {
-            hrp::dmatrix A = hrp::dmatrix::Zero(11 * m_sensors.size(),6 * m_sensors.size());
-            std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
-            for (size_t i = 0 ; i < m_sensors.size(); i++ ){
+            hrp::dmatrix A = hrp::dmatrix::Zero(11 * enable_sensors.size(),6 * enable_sensors.size());
+            for (size_t i = 0 ; i < enable_sensors.size(); i++ ){
                 A(i*11+0,i*6+2) = 1;
                 A(i*11+1,i*6+0) = -1;
-                A(i*11+1,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+1,i*6+2) = enable_sensors[i]->friction_coefficient;
                 A(i*11+2,i*6+0) = 1;
-                A(i*11+2,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+2,i*6+2) = enable_sensors[i]->friction_coefficient;
                 A(i*11+3,i*6+1) = -1;
-                A(i*11+3,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+3,i*6+2) = enable_sensors[i]->friction_coefficient;
                 A(i*11+4,i*6+1) = 1;
-                A(i*11+4,i*6+2) = (*it).second.friction_coefficient;
+                A(i*11+4,i*6+2) = enable_sensors[i]->friction_coefficient;
                 A(i*11+5,i*6+3) = -1;
-                A(i*11+5,i*6+2) = (*it).second.upper_cop_y_margin;
+                A(i*11+5,i*6+2) = enable_sensors[i]->upper_cop_y_margin;
                 A(i*11+6,i*6+3) = 1;
-                A(i*11+6,i*6+2) = (*it).second.lower_cop_y_margin;
+                A(i*11+6,i*6+2) = enable_sensors[i]->lower_cop_y_margin;
                 A(i*11+7,i*6+4) = -1;
-                A(i*11+7,i*6+2) = (*it).second.lower_cop_x_margin;
+                A(i*11+7,i*6+2) = enable_sensors[i]->lower_cop_x_margin;
                 A(i*11+8,i*6+4) = 1;
-                A(i*11+8,i*6+2) = (*it).second.upper_cop_x_margin;
+                A(i*11+8,i*6+2) = enable_sensors[i]->upper_cop_x_margin;
                 A(i*11+9,i*6+5) = -1;
-                A(i*11+9,i*6+2) = (*it).second.rotation_friction_coefficient;
+                A(i*11+9,i*6+2) = enable_sensors[i]->rotation_friction_coefficient;
                 A(i*11+10,i*6+5) = 1;
-                A(i*11+10,i*6+2) = (*it).second.rotation_friction_coefficient;
-                it++;
+                A(i*11+10,i*6+2) = enable_sensors[i]->rotation_friction_coefficient;
             }
             if(VS_DEBUG){
                 std::cerr << "A" <<std::endl;
@@ -474,9 +478,9 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             As.push_back(A);
         }
         {
-            hrp::dvector lbA = hrp::dvector::Zero(m_sensors.size() * 11);
-            hrp::dvector ubA = hrp::dvector::Zero(m_sensors.size() * 11);
-            for (size_t i = 0; i < m_sensors.size() * 11; i++){
+            hrp::dvector lbA = hrp::dvector::Zero(enable_sensors.size() * 11);
+            hrp::dvector ubA = hrp::dvector::Zero(enable_sensors.size() * 11);
+            for (size_t i = 0; i < enable_sensors.size() * 11; i++){
                 lbA[i] = 0.0;
                 ubA[i] = 1e10;
             }
@@ -486,8 +490,8 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
 
         /*****************************************************************/
         
-        size_t state_len = 6 * m_sensors.size();
-        size_t inequality_len = 11 * m_sensors.size();
+        size_t state_len = 6 * enable_sensors.size();
+        size_t inequality_len = 11 * enable_sensors.size();
         qpOASES::real_t* qp_H = new qpOASES::real_t[state_len * state_len];// 0.5 xt H x + xt g が目的関数であることに注意
         qpOASES::real_t* qp_A = new qpOASES::real_t[inequality_len * state_len];
         qpOASES::real_t* qp_g = new qpOASES::real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
@@ -621,65 +625,55 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             std::cerr << "virtual_wrench" <<std::endl;
             std::cerr << virtual_wrench <<std::endl;
         }
-        
-        hrp::dvector6 ext_wrench/*actworld系,cogまわり*/ = hrp::dvector6::Zero();
-        ext_wrench.block<3,1>(0,0)/*actworld系*/ = Tvirtual.block<3,1>(0,0)/*actworld系*/;
-        ext_wrench.block<3,1>(3,0)/*actworld系,cogまわり*/ = Tvirtual.block<3,1>(3,0)/*actworld系,原点周り*/ + (-CM/*actworld系*/).cross(Tvirtual.block<3,1>(0,0)/*actworld系*/);
-        {
-            std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
-            for (size_t i = 0 ; i < m_sensors.size(); i++){
-                hrp::Matrix33 sen_R = m_robot->link((*it).second.target_name)->R * (*it).second.R;
-                ext_wrench.block<3,1>(0,0)/*actworld系*/ -= sen_R * virtual_wrench.block<3,1>(i*6,0)/*sensor系*/;
-                ext_wrench.block<3,1>(3,0)/*actworld系,cogまわり*/ -= sen_R * virtual_wrench.block<3,1>(i*6+3,0)/*sensor系,sensor周り*/;
-                ext_wrench.block<3,1>(3,0)/*actworld系,cogまわり*/ -= ((m_robot->link((*it).second.target_name)->p + m_robot->link((*it).second.target_name)->R * (*it).second.p) - CM)/*world系*/.cross(sen_R * virtual_wrench.block<3,1>(i*6,0)/*sensor系*/);
-                it++;
-            }
-        }
 
-        Guard guard(m_mutex);
-        {
-            std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin();
-            for ( size_t i = 0; i < m_force.size(); i ++ ) {
-                for (size_t j = 0; j < 3; j++){
-                    m_force[i].data[j+0] = virtual_wrench[i*6+j+0];
-                    m_force[i].data[j+3] = virtual_wrench[i*6+j+3];
-                    m_force[i].tm = tm; // put timestamp
-                    m_forceOut[i]->write();
-                }
-
-                //offset
-                if((*it).second.max_offset_calib_counter > 0){// while calibrating
-                    (*it).second.forceOffset_sum/*sensor系*/ += virtual_wrench.block<3,1>(i*6,0)/*sensor系*/;
-                    (*it).second.momentOffset_sum/*sensor系,sensor周り*/ += virtual_wrench.block<3,1>(i*6+3,0)/*sensor系,sensor周り*/;
-
-                    (*it).second.offset_calib_counter--;
-                    if ((*it).second.offset_calib_counter == 0){
-                        (*it).second.forceOffset/*sensor系*/ = (*it).second.forceOffset_sum / (*it).second.max_offset_calib_counter;
-                        (*it).second.momentOffset/*sensor系, 重心周り*/ = (*it).second.momentOffset_sum / (*it).second.max_offset_calib_counter;
-                        sem_post(&((*it).second.wait_sem));
-                    }
-                }
-                virtual_wrench.block<3,1>(i*6,0) -= (*it).second.forceOffset;
-                virtual_wrench.block<3,1>(i*6+3,0) -= (*it).second.momentOffset;
-                for (size_t j = 0; j < 3; j++){
-                    m_offforce[i].data[j+0] = virtual_wrench[i*6+j+0];
-                    m_offforce[i].data[j+3] = virtual_wrench[i*6+j+3];
-                    m_offforce[i].tm = tm; // put timestamp
-                    m_offforceOut[i]->write();
-                }
-                it++;
-            }
-        }
-
-        ext_wrench.block<3,1>(0,0) -= extforceOffset;
-        ext_wrench.block<3,1>(3,0) -= extmomentOffset;
-        for (size_t i = 0; i < 6; i++){
-            m_extforce.data[i] = ext_wrench[i];
-        }
-        m_extforce.tm = tm;
-        m_extforceOut.write();
+        for(size_t i = 0 ; i < enable_sensors.size(); i++){
+            enable_sensors[i]->sensor_force = virtual_wrench.block<3,1>(i*6,0);
+            enable_sensors[i]->sensor_moment = virtual_wrench.block<3,1>(i*6+3,0);
+        }        
     }else{
         std::cerr << "[" << m_profile.instance_name << "] QP not solved" <<std::endl;
+    }
+
+    Guard guard(m_mutex);
+    {
+        std::map<std::string, boost::shared_ptr<VirtualForceSensorParam> >::iterator it = m_sensors.begin();
+        for ( size_t i = 0; i < m_force.size(); i ++ ) {
+            for (size_t j = 0; j < 3; j++){
+                m_force[i].data[j+0] = (*it).second->sensor_force[j];
+                m_force[i].data[j+3] = (*it).second->sensor_moment[j];
+            }
+            m_force[i].tm = tm; // put timestamp
+            m_forceOut[i]->write();
+            
+            //offset
+            if((*it).second->max_offset_calib_counter > 0){// while calibrating
+                (*it).second->forceOffset_sum/*sensor系*/ += (*it).second->sensor_force/*sensor系*/;
+                (*it).second->momentOffset_sum/*sensor系,sensor周り*/ += (*it).second->sensor_moment/*sensor系,sensor周り*/;
+                
+                (*it).second->offset_calib_counter--;
+                if ((*it).second->offset_calib_counter == 0){
+                    (*it).second->forceOffset/*sensor系*/ = (*it).second->forceOffset_sum / (*it).second->max_offset_calib_counter;
+                    (*it).second->momentOffset/*sensor系, 重心周り*/ = (*it).second->momentOffset_sum / (*it).second->max_offset_calib_counter;
+                    sem_post(&((*it).second->wait_sem));
+                }
+            }
+            
+            if((*it).second->is_enable){
+                (*it).second->off_sensor_force = (*it).second->sensor_force - (*it).second->forceOffset;
+                (*it).second->off_sensor_moment = (*it).second->off_sensor_moment - (*it).second->momentOffset;
+            }else{
+                (*it).second->off_sensor_force = hrp::Vector3::Zero();
+                (*it).second->off_sensor_moment = hrp::Vector3::Zero();
+            }
+            
+            for (size_t j = 0; j < 3; j++){
+                m_offforce[i].data[j+0] = (*it).second->off_sensor_force[j];
+                m_offforce[i].data[j+3] = (*it).second->off_sensor_moment[j];
+            }
+            m_offforce[i].tm = tm; // put timestamp
+            m_offforceOut[i]->write();
+            it++;
+        }
     }
     
   }
@@ -732,7 +726,7 @@ bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::Virtual
       Guard guard(m_mutex);
       if ( sensorNames.length() == 0 ) { // If no sensor names are specified, calibrate all sensors.
           std::cerr << "[" << m_profile.instance_name << "]   No sensor names are specified, calibrate all sensors = [";
-          for ( std::map<std::string, VirtualForceSensorParam>::iterator it = m_sensors.begin(); it != m_sensors.end(); it++ ) {
+          for ( std::map<std::string, boost::shared_ptr<VirtualForceSensorParam> >::iterator it = m_sensors.begin(); it != m_sensors.end(); it++ ) {
               valid_names.push_back(it->first);
               std::cerr << it->first << " ";
           }
@@ -741,7 +735,7 @@ bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::Virtual
           for (size_t i = 0; i < sensorNames.length(); i++) {
               std::string name(sensorNames[i]);
               if ( m_sensors.find(name) != m_sensors.end() ) {
-                  if ( m_sensors[name].offset_calib_counter == 0 ) {
+                  if ( m_sensors[name]->offset_calib_counter == 0 ) {
                       valid_names.push_back(name);
                   } else {
                       calibrating_names.push_back(name);
@@ -771,15 +765,15 @@ bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::Virtual
   {
       Guard guard(m_mutex);
       for (size_t i = 0; i < valid_names.size(); i++) {
-          m_sensors[valid_names[i]].max_offset_calib_counter = static_cast<int>(tm/m_dt);
-          m_sensors[valid_names[i]].forceOffset_sum = hrp::Vector3::Zero();
-          m_sensors[valid_names[i]].momentOffset_sum = hrp::Vector3::Zero();
-          m_sensors[valid_names[i]].offset_calib_counter = m_sensors[valid_names[i]].max_offset_calib_counter;
+          m_sensors[valid_names[i]]->max_offset_calib_counter = static_cast<int>(tm/m_dt);
+          m_sensors[valid_names[i]]->forceOffset_sum = hrp::Vector3::Zero();
+          m_sensors[valid_names[i]]->momentOffset_sum = hrp::Vector3::Zero();
+          m_sensors[valid_names[i]]->offset_calib_counter = m_sensors[valid_names[i]]->max_offset_calib_counter;
       }
   }
   //   Wait
   for (size_t i = 0; i < valid_names.size(); i++) {
-      sem_wait(&(m_sensors[valid_names[i]].wait_sem));
+      sem_wait(&(m_sensors[valid_names[i]]->wait_sem));
   }
   //   Print output force and offset after calib
   {
@@ -787,8 +781,8 @@ bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::Virtual
       std::cerr << "[" << m_profile.instance_name << "]   Calibrate done (calib time = " << tm << "[s])" << std::endl;
       for (size_t i = 0; i < valid_names.size(); i++) {
           std::cerr << "[" << m_profile.instance_name << "]     Calibrated offset [" << valid_names[i] << "], ";
-          std::cerr << "force_offset = " << m_sensors[valid_names[i]].forceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][N]")) << ", ";
-          std::cerr << "moment_offset = " << m_sensors[valid_names[i]].momentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][Nm]")) << std::endl;
+          std::cerr << "force_offset = " << m_sensors[valid_names[i]]->forceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][N]")) << ", ";
+          std::cerr << "moment_offset = " << m_sensors[valid_names[i]]->momentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][Nm]")) << std::endl;
       }
   }
   std::cerr << "[" << m_profile.instance_name << "] removeVirtualForceSensorOffset...done" << std::endl;
@@ -838,11 +832,11 @@ bool VirtualForceSensor::loadForceMomentOffsetParams(const std::string& filename
               for (size_t i = 0; i < 3; i++) ifs >> extmomentOffset(i);
               std::cerr << "[" << m_profile.instance_name << "]   " << tmps << "" << std::endl;
           } else if ( m_sensors.find(tmps) != m_sensors.end()) {
-              for (size_t i = 0; i < 3; i++) ifs >> m_sensors[tmps].forceOffset(i);
-              for (size_t i = 0; i < 3; i++) ifs >> m_sensors[tmps].momentOffset(i);
+              for (size_t i = 0; i < 3; i++) ifs >> m_sensors[tmps]->forceOffset(i);
+              for (size_t i = 0; i < 3; i++) ifs >> m_sensors[tmps]->momentOffset(i);
               std::cerr << "[" << m_profile.instance_name << "]   " << tmps << "" << std::endl;
-              std::cerr << "[" << m_profile.instance_name << "]   force_offset = " << m_sensors[tmps].forceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "]")) << "[N]" << std::endl;
-              std::cerr << "[" << m_profile.instance_name << "]   moment_offset = " << m_sensors[tmps].momentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "]")) << "[Nm]" << std::endl;
+              std::cerr << "[" << m_profile.instance_name << "]   force_offset = " << m_sensors[tmps]->forceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "]")) << "[N]" << std::endl;
+              std::cerr << "[" << m_profile.instance_name << "]   moment_offset = " << m_sensors[tmps]->momentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "]")) << "[Nm]" << std::endl;
           } else {
               std::cerr << "[" << m_profile.instance_name << "] no such (" << tmps << ")" << std::endl;
               return false;
@@ -856,6 +850,47 @@ bool VirtualForceSensor::loadForceMomentOffsetParams(const std::string& filename
   return true;
 };
 
+bool VirtualForceSensor::startEstimation(const std::string& sensorName)
+{
+  // Check argument validity
+  bool is_valid_argument = true;
+  {
+      Guard guard(m_mutex);
+      if ( m_sensors.find(sensorName) != m_sensors.end() ) {
+          m_sensors[sensorName]->is_enable = true;
+      }else{
+          is_valid_argument = false;
+      }
+  }
+  if (is_valid_argument){
+      std::cerr << "[" << m_profile.instance_name << "] startEstimation..." << sensorName << std::endl;
+      return true;
+  }else{
+      std::cerr << "[" << m_profile.instance_name << "]   Cannot startEstimation, invalid = " << sensorName << std::endl;
+      return false;
+  }
+}
+
+bool VirtualForceSensor::stopEstimation(const std::string& sensorName)
+{
+  // Check argument validity
+  bool is_valid_argument = true;
+  {
+      Guard guard(m_mutex);
+      if ( m_sensors.find(sensorName) != m_sensors.end() ) {
+          m_sensors[sensorName]->is_enable = false;
+      }else{
+          is_valid_argument = false;
+      }
+  }
+  if (is_valid_argument){
+      std::cerr << "[" << m_profile.instance_name << "] stopEstimation..." << sensorName << std::endl;
+      return true;
+  }else{
+      std::cerr << "[" << m_profile.instance_name << "]   Cannot stopEstimation, invalid = " << sensorName << std::endl;
+      return false;
+  }
+}
 
 extern "C"
 {

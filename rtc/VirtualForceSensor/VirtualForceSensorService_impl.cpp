@@ -26,6 +26,16 @@ CORBA::Boolean VirtualForceSensorService_impl::loadForceMomentOffsetParams(const
 	return m_vfsensor->loadForceMomentOffsetParams(std::string(filename));
 }
 
+CORBA::Boolean VirtualForceSensorService_impl::startEstimation(const char *sensorName)
+{
+	return m_vfsensor->startEstimation(std::string(sensorName));
+}
+
+CORBA::Boolean VirtualForceSensorService_impl::stopEstimation(const char *sensorName)
+{
+	return m_vfsensor->stopEstimation(std::string(sensorName));
+}
+
 void VirtualForceSensorService_impl::vfsensor(VirtualForceSensor *i_vfsensor)
 {
 	m_vfsensor = i_vfsensor;
