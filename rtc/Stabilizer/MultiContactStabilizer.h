@@ -120,18 +120,55 @@ public:
                 }else{
                     if(act_moment_eef[0]/act_force_eef[2] < outside_lower_cop_y_margin) act_outside_lower_ycop_state=true;
                 }
+
+                act_friction_coefficient = friction_coefficient;
+                act_rotation_friction_coefficient = rotation_friction_coefficient;
+                act_upper_cop_x_margin = upper_cop_x_margin;
+                act_lower_cop_x_margin = lower_cop_x_margin;
+                act_upper_cop_y_margin = upper_cop_y_margin;
+                act_lower_cop_y_margin = lower_cop_y_margin;
+                if(act_force_eef[2]>0){
+                    if(std::abs(act_force_eef[0])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[0]) / act_force_eef[2];
+                    if(std::abs(act_force_eef[1])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[1]) / act_force_eef[2];
+                    if(act_moment_eef[1]<-act_force_eef[2]*act_upper_cop_x_margin) act_upper_cop_x_margin = - act_moment_eef[1] / act_force_eef[2];
+                    if(act_moment_eef[1]>-act_force_eef[2]*act_lower_cop_x_margin) act_lower_cop_x_margin = - act_moment_eef[1] / act_force_eef[2];
+                    if(act_moment_eef[0]>act_force_eef[2]*act_upper_cop_y_margin) act_upper_cop_y_margin = act_moment_eef[0] / act_force_eef[2];
+                    if(act_moment_eef[0]<act_force_eef[2]*act_lower_cop_y_margin) act_lower_cop_y_margin = act_moment_eef[0] / act_force_eef[2];
+                    if(std::abs(act_moment_eef[2])>act_force_eef[2]*act_rotation_friction_coefficient) act_rotation_friction_coefficient = std::abs(act_moment_eef[2]) / act_force_eef[2];
+                }
             }else{
                 act_outside_upper_xcop_state = true;
                 act_outside_upper_ycop_state = true;
                 act_outside_lower_xcop_state = true;
                 act_outside_lower_ycop_state = true;
+                act_friction_coefficient = friction_coefficient;
+                act_rotation_friction_coefficient = rotation_friction_coefficient;
+                act_upper_cop_x_margin = upper_cop_x_margin;
+                act_lower_cop_x_margin = lower_cop_x_margin;
+                act_upper_cop_y_margin = upper_cop_y_margin;
+                act_lower_cop_y_margin = lower_cop_y_margin;
             }
             break;
         case POINT:
+            if(act_contact_state){
+                act_friction_coefficient = friction_coefficient;
+                if(act_force_eef[2]>0){
+                    if(std::abs(act_force_eef[0])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[0]) / act_force_eef[2];
+                    if(std::abs(act_force_eef[1])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[1]) / act_force_eef[2];
+                }
+            }else{
+                act_friction_coefficient = friction_coefficient;
+                act_rotation_friction_coefficient = rotation_friction_coefficient;
+            }
             act_outside_upper_xcop_state = false;
             act_outside_upper_ycop_state = false;
             act_outside_lower_xcop_state = false;
             act_outside_lower_ycop_state = false;
+            act_rotation_friction_coefficient = rotation_friction_coefficient;
+            act_upper_cop_x_margin = upper_cop_x_margin;
+            act_lower_cop_x_margin = lower_cop_x_margin;
+            act_upper_cop_y_margin = upper_cop_y_margin;
+            act_lower_cop_y_margin = lower_cop_y_margin;
             break;
         default:
             break;
@@ -277,7 +314,78 @@ public:
 
         return;
     }
-    
+
+    void getWrenchWeightforce(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue){
+        double coefvalue2 = std::pow(coefvalue,2);
+        H(i,i) += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],2) / std::pow(coefvalue,2);
+        H(2,i) += ee_forcemoment_distribution_weight[i] * -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
+        H(i,2) += ee_forcemoment_distribution_weight[i] * -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
+        H(2,2) += ee_forcemoment_distribution_weight[i] * 3.0 / std::pow(act_force_eef[2],4) / coefvalue2 * std::pow(actvalue,2);
+        g[i] += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],2) / coefvalue2 * actvalue;
+        g[2] += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],3) / coefvalue2 * std::pow(actvalue,2);
+    }
+
+    void getWrenchWeightmoment(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue, const double midpoint){
+        getWrenchWeightforce(H,g,i,actvalue,coefvalue);
+        double tmpcoef = std::pow(coefvalue,2)/midpoint;
+        H(i,i) += ee_forcemoment_distribution_weight[i] * 0.0;
+        H(2,i) += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],2) / tmpcoef;
+        H(i,2) += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],2) / tmpcoef;
+        H(2,2) += ee_forcemoment_distribution_weight[i] * -2.0 / std::pow(act_force_eef[2],3) / tmpcoef * actvalue;
+        g[i] += ee_forcemoment_distribution_weight[i] * -1.0 / act_force_eef[2] / tmpcoef;
+        g[2] += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],2) / tmpcoef * actvalue;
+    }
+
+    void getWrenchWeight(hrp::dmatrix& H, hrp::dvector& g){
+        H = hrp::dmatrix::Zero(6,6);
+        g = hrp::dvector::Zero(6);
+        switch(contact_type) {
+        case SURFACE:
+            {
+                //垂直抗力
+                H(2,2) += ee_forcemoment_distribution_weight[2] * 1.0 / std::pow(max_fz,2);
+                g[2] += ee_forcemoment_distribution_weight[2] * act_force_eef[2] / max_fz / max_fz;
+
+                //x摩擦
+                getWrenchWeightforce(H,g,0,act_force_eef[0],std::max(friction_coefficient,act_friction_coefficient/3.0));
+
+                //y摩擦
+                getWrenchWeightforce(H,g,1,act_force_eef[1],std::max(friction_coefficient,act_friction_coefficient/3.0));
+
+                //xCOP
+                if(!act_outside_upper_xcop_state && !act_outside_lower_xcop_state){
+                    getWrenchWeightmoment(H,g,4,act_moment_eef[1],std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0,std::max(std::abs(act_upper_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0),std::abs(act_lower_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0))/3.0),-(upper_cop_x_margin+lower_cop_x_margin)/2.0);
+                }
+
+                //yCOP
+                if(!act_outside_upper_ycop_state && !act_outside_lower_ycop_state){
+                    getWrenchWeightmoment(H,g,3,act_moment_eef[0],std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0,std::max(std::abs(act_upper_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0),std::abs(act_lower_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0))/3.0),(upper_cop_y_margin+lower_cop_y_margin)/2.0);
+                }
+
+                //回転摩擦
+                getWrenchWeightforce(H,g,5,act_moment_eef[2],std::max(rotation_friction_coefficient,act_rotation_friction_coefficient/3.0));
+            }
+            break;
+        case POINT:
+            {
+                //垂直抗力
+                H(2,2) += ee_forcemoment_distribution_weight[2] * 1.0 / std::pow(max_fz,2);
+                g[2] += ee_forcemoment_distribution_weight[2] * act_force_eef[2] / max_fz / max_fz;
+
+                //x摩擦
+                getWrenchWeightforce(H,g,0,act_force_eef[0],friction_coefficient);
+
+                //y摩擦
+                getWrenchWeightforce(H,g,1,act_force_eef[1],friction_coefficient);
+            }
+            break;
+        default: break;
+        }
+
+
+        return;
+    }
+
     void setParameter(const OpenHRP::StabilizerService::EndEffectorParam& i_ccp,std::string instance_name){
         switch(i_ccp.contact_type) {
         case OpenHRP::StabilizerService::SURFACE:
@@ -529,7 +637,13 @@ public:
     bool act_outside_lower_xcop_state;
     bool act_outside_upper_ycop_state;
     bool act_outside_lower_ycop_state;
-    
+    double act_friction_coefficient;
+    double act_rotation_friction_coefficient;
+    double act_upper_cop_x_margin;
+    double act_lower_cop_x_margin;
+    double act_upper_cop_y_margin;
+    double act_lower_cop_y_margin;
+
 private:
 };
 
@@ -539,7 +653,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(false),qpdebug(false), debugloop(false), debugloopnum(0)
+    MultiContactStabilizer() : debug(true),qpdebug(false), debugloop(false), debugloopnum(0)
     {
     }
 
@@ -669,7 +783,7 @@ public:
         cur_root_R/*refworld系*/ = m_robot->rootLink()->R/*refworld系*/;
 
         if(debug){
-            if(debugloopnum % 250 == 0){
+            if(debugloopnum % 50 == 0){
                 debugloop = true;
                 debugloopnum = 0;
             }else{
@@ -1213,10 +1327,13 @@ public:
         //wrench
         if(support_eef.size()>0){
             hrp::dmatrix W = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
+            hrp::dvector Wg = hrp::dvector::Zero(6*support_eef.size());
             for (size_t i = 0; i < support_eef.size(); i++){
-                for(size_t j = 0 ; j < 6; j++){
-                    W(6*i+j,6*i+j) = support_eef[i]->ee_forcemoment_distribution_weight[j];
-                }
+                hrp::dmatrix tmpH;
+                hrp::dvector tmpg;
+                support_eef[i]->getWrenchWeight(tmpH,tmpg);
+                W.block<6,6>(i*6,i*6)=tmpH;
+                Wg.block<6,1>(i*6,0)=tmpg;
             }
 
             hrp::dmatrix a = - (select_matrix * D * supportJ).array() / dt;
@@ -1228,7 +1345,7 @@ public:
             }
 
             H += a.transpose() * W * a;
-            g += b.transpose() * W * a;
+            g += b.transpose() * W * a + Wg.transpose() * a;
 
             for(size_t i = 0 ; i < support_eef.size() ; i++){
                 hrp::dmatrix C;
@@ -1264,6 +1381,8 @@ public:
                 std::cerr << "wrench" << std::endl;
                 std::cerr << "W" << std::endl;
                 std::cerr << W << std::endl;
+                std::cerr << "Wg" << std::endl;
+                std::cerr << Wg << std::endl;
                 std::cerr << "a" << std::endl;
                 std::cerr << a << std::endl;
                 std::cerr << "b" << std::endl;
@@ -1271,7 +1390,7 @@ public:
                 std::cerr << "H" << std::endl;
                 std::cerr << a.transpose() * W * a <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << b.transpose() * W * a <<std::endl;
+                std::cerr << b.transpose() * W * a  + Wg.transpose() * a <<std::endl;
                 std::cerr << "c" << std::endl;
                 std::cerr << c << std::endl;
                 std::cerr << "G" << std::endl;
