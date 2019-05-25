@@ -121,15 +121,16 @@ public:
                     if(act_moment_eef[0]/act_force_eef[2] < outside_lower_cop_y_margin) act_outside_lower_ycop_state=true;
                 }
 
-                act_friction_coefficient = friction_coefficient;
+                act_friction_coefficient_x = friction_coefficient;
+                act_friction_coefficient_y = friction_coefficient;
                 act_rotation_friction_coefficient = rotation_friction_coefficient;
                 act_upper_cop_x_margin = upper_cop_x_margin;
                 act_lower_cop_x_margin = lower_cop_x_margin;
                 act_upper_cop_y_margin = upper_cop_y_margin;
                 act_lower_cop_y_margin = lower_cop_y_margin;
                 if(act_force_eef[2]>0){
-                    if(std::abs(act_force_eef[0])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[0]) / act_force_eef[2];
-                    if(std::abs(act_force_eef[1])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[1]) / act_force_eef[2];
+                    if(std::abs(act_force_eef[0])>act_force_eef[2]*act_friction_coefficient_x) act_friction_coefficient_x = std::abs(act_force_eef[0]) / act_force_eef[2];
+                    if(std::abs(act_force_eef[1])>act_force_eef[2]*act_friction_coefficient_y) act_friction_coefficient_y = std::abs(act_force_eef[1]) / act_force_eef[2];
                     if(act_moment_eef[1]<-act_force_eef[2]*act_upper_cop_x_margin) act_upper_cop_x_margin = - act_moment_eef[1] / act_force_eef[2];
                     if(act_moment_eef[1]>-act_force_eef[2]*act_lower_cop_x_margin) act_lower_cop_x_margin = - act_moment_eef[1] / act_force_eef[2];
                     if(act_moment_eef[0]>act_force_eef[2]*act_upper_cop_y_margin) act_upper_cop_y_margin = act_moment_eef[0] / act_force_eef[2];
@@ -141,7 +142,8 @@ public:
                 act_outside_upper_ycop_state = true;
                 act_outside_lower_xcop_state = true;
                 act_outside_lower_ycop_state = true;
-                act_friction_coefficient = friction_coefficient;
+                act_friction_coefficient_x = friction_coefficient;
+                act_friction_coefficient_y = friction_coefficient;
                 act_rotation_friction_coefficient = rotation_friction_coefficient;
                 act_upper_cop_x_margin = upper_cop_x_margin;
                 act_lower_cop_x_margin = lower_cop_x_margin;
@@ -151,13 +153,15 @@ public:
             break;
         case POINT:
             if(act_contact_state){
-                act_friction_coefficient = friction_coefficient;
+                act_friction_coefficient_x = friction_coefficient;
+                act_friction_coefficient_y = friction_coefficient;
                 if(act_force_eef[2]>0){
-                    if(std::abs(act_force_eef[0])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[0]) / act_force_eef[2];
-                    if(std::abs(act_force_eef[1])>act_force_eef[2]*act_friction_coefficient) act_friction_coefficient = std::abs(act_force_eef[1]) / act_force_eef[2];
+                    if(std::abs(act_force_eef[0])>act_force_eef[2]*act_friction_coefficient_x) act_friction_coefficient_x = std::abs(act_force_eef[0]) / act_force_eef[2];
+                    if(std::abs(act_force_eef[1])>act_force_eef[2]*act_friction_coefficient_y) act_friction_coefficient_y = std::abs(act_force_eef[1]) / act_force_eef[2];
                 }
             }else{
-                act_friction_coefficient = friction_coefficient;
+                act_friction_coefficient_x = friction_coefficient;
+                act_friction_coefficient_y = friction_coefficient;
                 act_rotation_friction_coefficient = rotation_friction_coefficient;
             }
             act_outside_upper_xcop_state = false;
@@ -199,25 +203,29 @@ public:
 
                 //x摩擦
                 C(constraint_idx,0)=-1;
-                C(constraint_idx,2)= friction_coefficient;
+                if(act_force_eef[0]>friction_coefficient*act_force_eef[2]) C(constraint_idx,2)= act_friction_coefficient_x;
+                else C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
         
                 C(constraint_idx,0)= 1;
-                C(constraint_idx,2)= friction_coefficient;
+                if(act_force_eef[0]<-friction_coefficient*act_force_eef[2]) C(constraint_idx,2)= act_friction_coefficient_x;
+                else C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 //y摩擦
                 C(constraint_idx,1)=-1;
-                C(constraint_idx,2)= friction_coefficient;
+                if(act_force_eef[1]>friction_coefficient*act_force_eef[2]) C(constraint_idx,2)= act_friction_coefficient_y;
+                else C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
                 C(constraint_idx,1)= 1;
-                C(constraint_idx,2)= friction_coefficient;
+                if(act_force_eef[1]<-friction_coefficient*act_force_eef[2]) C(constraint_idx,2)= act_friction_coefficient_y;
+                else C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
@@ -225,14 +233,14 @@ public:
                 //xCOP
                 if(!act_outside_upper_xcop_state){
                     C(constraint_idx,4)= 1;
-                    C(constraint_idx,2)= upper_cop_x_margin;
+                    C(constraint_idx,2)= act_upper_cop_x_margin;
                     lb[constraint_idx] = 0;
                     ub[constraint_idx] = 1e10;
                     constraint_idx++;
                 }
                 if(!act_outside_lower_xcop_state){
                     C(constraint_idx,4)= -1;
-                    C(constraint_idx,2)= -lower_cop_x_margin;
+                    C(constraint_idx,2)= -act_lower_cop_x_margin;
                     lb[constraint_idx] = 0;
                     ub[constraint_idx] = 1e10;
                     constraint_idx++;
@@ -241,14 +249,14 @@ public:
                 //yCOP
                 if(!act_outside_upper_ycop_state){
                     C(constraint_idx,3)= -1;
-                    C(constraint_idx,2)= upper_cop_y_margin;
+                    C(constraint_idx,2)= act_upper_cop_y_margin;
                     lb[constraint_idx] = 0;
                     ub[constraint_idx] = 1e10;
                     constraint_idx++;
                 }
                 if(!act_outside_lower_ycop_state){
                     C(constraint_idx,3)= 1;
-                    C(constraint_idx,2)= -lower_cop_y_margin;
+                    C(constraint_idx,2)= -act_lower_cop_y_margin;
                     lb[constraint_idx] = 0;
                     ub[constraint_idx] = 1e10;
                     constraint_idx++;
@@ -256,12 +264,14 @@ public:
 
                 //回転摩擦
                 C(constraint_idx,5)= -1;
-                C(constraint_idx,2)= rotation_friction_coefficient;
+                if(act_moment_eef[2]>rotation_friction_coefficient*act_force_eef[2]) C(constraint_idx,2)= act_rotation_friction_coefficient;
+                else C(constraint_idx,2)= rotation_friction_coefficient;
                 lb[constraint_idx] = 0;
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
                 C(constraint_idx,5)= 1;
-                C(constraint_idx,2)= rotation_friction_coefficient;
+                if(act_moment_eef[2]<-rotation_friction_coefficient*act_force_eef[2]) C(constraint_idx,2)= act_rotation_friction_coefficient;
+                else C(constraint_idx,2)= rotation_friction_coefficient;
                 lb[constraint_idx] = 0;
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
@@ -322,7 +332,7 @@ public:
         H(i,2) += ee_forcemoment_distribution_weight[i] * -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
         H(2,2) += ee_forcemoment_distribution_weight[i] * 3.0 / std::pow(act_force_eef[2],4) / coefvalue2 * std::pow(actvalue,2);
         g[i] += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],2) / coefvalue2 * actvalue;
-        g[2] += ee_forcemoment_distribution_weight[i] * 1.0 / std::pow(act_force_eef[2],3) / coefvalue2 * std::pow(actvalue,2);
+        g[2] += ee_forcemoment_distribution_weight[i] * -1.0 / std::pow(act_force_eef[2],3) / coefvalue2 * std::pow(actvalue,2);
     }
 
     void getWrenchWeightmoment(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue, const double midpoint){
@@ -347,10 +357,10 @@ public:
                 g[2] += ee_forcemoment_distribution_weight[2] * act_force_eef[2] / max_fz / max_fz;
 
                 //x摩擦
-                getWrenchWeightforce(H,g,0,act_force_eef[0],std::max(friction_coefficient,act_friction_coefficient/3.0));
+                getWrenchWeightforce(H,g,0,act_force_eef[0],std::max(friction_coefficient,act_friction_coefficient_x/3.0));
 
                 //y摩擦
-                getWrenchWeightforce(H,g,1,act_force_eef[1],std::max(friction_coefficient,act_friction_coefficient/3.0));
+                getWrenchWeightforce(H,g,1,act_force_eef[1],std::max(friction_coefficient,act_friction_coefficient_y/3.0));
 
                 //xCOP
                 if(!act_outside_upper_xcop_state && !act_outside_lower_xcop_state){
@@ -510,6 +520,7 @@ public:
 
         is_ik_enable = i_ccp.is_ik_enable;
         std::cerr << "[" << instance_name << "]  is_ik_enable = " << is_ik_enable << std::endl;
+
     }
 
     void getParameter(OpenHRP::StabilizerService::EndEffectorParam& i_ccp){
@@ -637,7 +648,8 @@ public:
     bool act_outside_lower_xcop_state;
     bool act_outside_upper_ycop_state;
     bool act_outside_lower_ycop_state;
-    double act_friction_coefficient;
+    double act_friction_coefficient_x;
+    double act_friction_coefficient_y;
     double act_rotation_friction_coefficient;
     double act_upper_cop_x_margin;
     double act_lower_cop_x_margin;
@@ -653,7 +665,7 @@ private:
 
 class MultiContactStabilizer {
 public:
-    MultiContactStabilizer() : debug(true),qpdebug(false), debugloop(false), debugloopnum(0)
+    MultiContactStabilizer() : debugloop(false), debugloopnum(0)
     {
     }
 
@@ -770,6 +782,7 @@ public:
         centroid_weight = hrp::Vector3();
         centroid_weight << 1e-6, 1e-6, 1e-8;
         reference_weight = 1e-10;
+        mcs_debug_ratio = 0;
             
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
@@ -782,14 +795,16 @@ public:
         cur_root_p/*refworld系*/ = m_robot->rootLink()->p/*refworld系*/;
         cur_root_R/*refworld系*/ = m_robot->rootLink()->R/*refworld系*/;
 
-        if(debug){
-            if(debugloopnum % 50 == 0){
+        if(mcs_debug_ratio!=0){
+            if(debugloopnum % mcs_debug_ratio == 0){
                 debugloop = true;
                 debugloopnum = 0;
             }else{
                 debugloop = false;
             }
             debugloopnum++;
+        }else{
+            debugloop = false;
         }
     }
 
@@ -1444,7 +1459,19 @@ public:
             
             H += CM_J.transpose() * W * CM_J;
             g += - delta_cog.transpose() * W * CM_J;
-            
+
+            // hrp::Vector3 cogvel_min = hrp::Vector3::Zero();
+            // hrp::Vector3 cogvel_max = hrp::Vector3::Zero();
+            // for(size_t i = 0 ; i< 3 ;i++){
+            //     if(delta_cog[i]<-mcs_cogvel_compensation_limit * dt) cogvel_min[i] = delta_cog[i];
+            //     else cogvel_min[i] = -mcs_cogvel_compensation_limit * dt;
+            //     if(delta_cog[i]>mcs_cogvel_compensation_limit * dt) cogvel_max[i] = delta_cog[i];
+            //     else cogvel_max[i] = mcs_cogvel_compensation_limit * dt;
+            // }
+            // As.push_back(CM_J);
+            // lbAs.push_back(cogvel_min);
+            // ubAs.push_back(cogvel_max);
+
             if(debugloop){
                 std::cerr << "centroid" << std::endl;
                 std::cerr << "tmp_d_cog" << std::endl;
@@ -1461,6 +1488,10 @@ public:
                 std::cerr <<CM_J.transpose() * W * CM_J <<std::endl;
                 std::cerr << "g" << std::endl;
                 std::cerr << - delta_cog.transpose() * W * CM_J <<std::endl;
+                // std::cerr << "cogvel_min" << std::endl;
+                // std::cerr << cogvel_min << std::endl;
+                // std::cerr << "cogvel_max" << std::endl;
+                // std::cerr << cogvel_max << std::endl;
 
                 targetcom = delta_cog;
                 nextcoma = CM_J;
@@ -1794,10 +1825,13 @@ public:
             }
             
             qpOASES::Options options;
-            //options.enableFlippingBounds = qpOASES::BT_TRUE;
-            options.initialStatusBounds = qpOASES::ST_INACTIVE;
-            options.numRefinementSteps = 1;
-            options.enableCholeskyRefactorisation = 1;
+            
+            options.setToReliable();
+            //options.initialStatusBounds = qpOASES::ST_INACTIVE;
+            //options.numRefinementSteps = 1;
+            //options.enableCholeskyRefactorisation = 1;
+            // //options.enableNZCTests = qpOASES::BT_TRUE;
+            // //options.enableFlippingBounds = qpOASES::BT_TRUE;
             if(debugloop){
                 options.printLevel = qpOASES::PL_HIGH;
             }else{
@@ -2094,6 +2128,9 @@ public:
         reference_time_const = i_stp.reference_time_const;
         std::cerr << "[" << instance_name << "]  reference_time_const = " << reference_time_const << std::endl;
 
+        mcs_debug_ratio = i_stp.mcs_debug_ratio;
+        std::cerr << "[" << instance_name << "]  mcs_debug_ratio = " << mcs_debug_ratio << std::endl;
+
         if(i_stp.centroid_weight.length()==3){
             for(size_t i=0; i < 3; i++){
                 centroid_weight[i] = i_stp.centroid_weight[i];
@@ -2162,6 +2199,7 @@ public:
         i_stp.mcs_sync2activetime = sync2activetime;
         i_stp.mcs_sync2referencetime = sync2referencetime;
         i_stp.reference_time_const = reference_time_const;
+        i_stp.mcs_debug_ratio = mcs_debug_ratio;
 
         i_stp.centroid_weight.length(3);
         for(size_t i =0; i < 3; i++){
@@ -2290,7 +2328,7 @@ private:
     //次のループで今回の値を使用するような変数は，refworld系かactworld系で保管すること.origin系は原点が不連続に移動する.
 
     //config
-    bool debug,qpdebug,debugloop;
+    bool debugloop;
     int debugloopnum;
     std::string instance_name;
     double dt;
@@ -2352,7 +2390,7 @@ private:
     double mcs_passive_vel;
     double sync2activetime;
     double sync2referencetime;
-    hrp::Vector3 centroid_weight;
+    hrp::Vector3 centroid_weight;//mcs_cogvel_compensation_limitと連動して決定せよ
     double reference_time_const;
     double reference_weight;
     std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
@@ -2362,6 +2400,8 @@ private:
     
     std::vector<bool> is_passive;
     std::vector<bool> is_reference;
+
+    unsigned int mcs_debug_ratio;
     };
 
 

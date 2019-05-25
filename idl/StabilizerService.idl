@@ -308,6 +308,8 @@ module OpenHRP
       sequence<double> mcs_passive_torquedirection;        
       /// Sequence of all end-effector params
       sequence<EndEffectorParam> mcs_eeparams;
+      ///debug ratio
+      unsigned short mcs_debug_ratio;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;
