@@ -719,8 +719,11 @@ public:
         cur_root_R = hrp::Matrix33::Identity();
 
         qrefv = hrp::dvector::Zero(m_robot->numJoints());
+        dqrefv = hrp::dvector::Zero(m_robot->numJoints());
         ref_root_p = hrp::Vector3::Zero();
+        ref_root_v = hrp::Vector3::Zero();
         ref_root_R = hrp::Matrix33::Identity();
+        ref_root_w = hrp::Vector3::Zero();
         prev_qrefv = hrp::dvector::Zero(m_robot->numJoints());
         prev_ref_root_p = hrp::Vector3::Zero();
         prev_ref_root_R = hrp::Matrix33::Identity();
@@ -780,7 +783,9 @@ public:
 
         reference_time_const = 1.5;
         centroid_weight = hrp::Vector3();
-        centroid_weight << 1e-6, 1e-6, 1e-8;
+        centroid_weight << 1e8, 1e8, 1e8;
+        moment_weight = hrp::Vector3();
+        moment_weight << 1e5, 1e5, 1e5;
         reference_weight = 1e-10;
         mcs_debug_ratio = 0;
             
@@ -818,8 +823,11 @@ public:
         prev_qrefv = qrefv;
         prev_ref_root_p/*refworld系*/ = ref_root_p/*refworld系*/;
         prev_ref_root_R/*refworld系*/ = ref_root_R/*refworld系*/;
+        dqrefv = (_qrefv - qrefv) / dt;
         qrefv = _qrefv;
+        ref_root_v/*refworld系*/ = (_ref_root_p/*refworld系*/ - ref_root_p/*refworld系*/) / dt;
         ref_root_p/*refworld系*/ = _ref_root_p/*refworld系*/;
+        ref_root_w/*refworld系*/ = rats::matrix_log(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) / dt;
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
         for(size_t i = 0; i < eefnum; i++){
             hrp::Link* target/*refworld系*/ = m_robot->link(endeffector[i]->link_name);
@@ -836,9 +844,14 @@ public:
             m_robot->joint(i)->q = qrefv[i];
         }
         m_robot->rootLink()->p/*refworld系*/ = ref_root_p/*refworld系*/;
+        m_robot->rootLink()->v/*refworld系*/ = ref_root_v/*refworld系*/;
         m_robot->rootLink()->R/*refworld系*/ = ref_root_R/*refworld系*/;
+        m_robot->rootLink()->w/*refworld系*/ = ref_root_w/*refworld系*/;
         m_robot->calcForwardKinematics();
+        m_robot->calcForwardKinematics(true);
         ref_cog/*refworld系*/ = m_robot->calcCM();
+        m_robot->calcTotalMomentum(ref_P/*refworld系*/,ref_L/*refworld系,原点まわり*/);
+        ref_L/*refworld系cogまわり*/ = ref_L/*refworld系,原点まわり*/ - ref_cog/*refworld系*/.cross(ref_P/*refworld系*/);
         ref_total_force/*refworld系*/ = hrp::Vector3::Zero();
         ref_total_moment/*refworld系,cogまわり*/ = hrp::Vector3::Zero();
         for (size_t i = 0; i < eefnum;i++){
@@ -1267,6 +1280,7 @@ public:
 
         }
 
+        hrp::dmatrix MO_J;
         
         /*****************************************************************/
         //torque
@@ -1495,6 +1509,41 @@ public:
 
                 targetcom = delta_cog;
                 nextcoma = CM_J;
+            }
+        }
+        /*****************************************************************/
+        //angularmoment
+        {
+            hrp::dmatrix tmp_MO_J;
+            m_robot->calcAngularMomentumJacobian(NULL,tmp_MO_J);//MO_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順.refworld系,cogまわり
+            MO_J=hrp::dmatrix::Zero(3,6+ik_enable_joint_num);
+            MO_J.block<3,6>(0,0) = tmp_MO_J.block<3,6>(0,m_robot->numJoints());
+            for(size_t i = 0; i < m_robot->numJoints(); i++){
+                if(ik_enable_joint_states[i]){
+                    MO_J.block<3,1>(0,6+ik_enable_joint_map[i]) = tmp_MO_J.block<3,1>(0,i);
+                }
+            }
+
+            hrp::Vector3 delta_mo = ref_L / dt;
+            hrp::dmatrix W = hrp::dmatrix::Zero(3,3);
+            for (size_t i = 0; i < 3; i++){
+                W(i,i) = moment_weight[i];
+            }
+            H += MO_J.transpose() * W * MO_J;
+            g += - delta_mo.transpose() * W * MO_J;
+
+            if(debugloop){
+                std::cerr << "angular moment" << std::endl;
+                std::cerr << "delta_mo" << std::endl;
+                std::cerr << delta_mo << std::endl;
+                std::cerr << "MO_J" << std::endl;
+                std::cerr << MO_J << std::endl;
+                std::cerr << "W" << std::endl;
+                std::cerr << W << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr <<MO_J.transpose() * W * MO_J <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << - delta_mo.transpose() * W * MO_J <<std::endl;
             }
         }
         /*****************************************************************/
@@ -1970,7 +2019,7 @@ public:
             std::cerr << nextcoma * command_dq << std::endl;
             
         }
-        
+
         hrp::dvector cur_wrench = curwrenchb + curwrencha * command_dq;
         for(size_t i=0; i < support_eef.size();i++){
             support_eef[i]->cur_force_eef = cur_wrench.block<3,1>(i*6,0);
@@ -2136,8 +2185,14 @@ public:
                 centroid_weight[i] = i_stp.centroid_weight[i];
             }
         }
+        if(i_stp.moment_weight.length()==3){
+            for(size_t i=0; i < 3; i++){
+                moment_weight[i] = i_stp.moment_weight[i];
+            }
+        }
         reference_weight = i_stp.reference_weight;
         std::cerr << "[" << instance_name << "]  centroid_weight = " << centroid_weight << std::endl;
+        std::cerr << "[" << instance_name << "]  moment_weight = " << moment_weight << std::endl;
         std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
                 
         if(i_stp.mcs_joint_torque_distribution_weight.length()!=mcs_joint_torque_distribution_weight.size()){
@@ -2202,8 +2257,10 @@ public:
         i_stp.mcs_debug_ratio = mcs_debug_ratio;
 
         i_stp.centroid_weight.length(3);
+        i_stp.moment_weight.length(3);
         for(size_t i =0; i < 3; i++){
             i_stp.centroid_weight[i] = centroid_weight[i];
+            i_stp.moment_weight[i] = moment_weight[i];
         }
         i_stp.reference_weight = reference_weight;
 
@@ -2351,14 +2408,15 @@ private:
     hrp::Vector3 cur_root_p/*refworld系*/;
     hrp::Matrix33 cur_root_R/*refworld系*/;
     
-    hrp::dvector qrefv;//目標のq
-    hrp::Vector3 ref_root_p/*refworld系*/;
+    hrp::dvector qrefv, dqrefv;//目標のq
+    hrp::Vector3 ref_root_p, ref_root_v, ref_root_w/*refworld系*/;
     hrp::Matrix33 ref_root_R/*refworld系*/;
     hrp::dvector prev_qrefv;//前回の目標のq
     hrp::Vector3 prev_ref_root_p/*前回のrefworld系*/;
     hrp::Matrix33 prev_ref_root_R/*前回のrefworld系*/;
     
     hrp::Vector3 ref_cog/*refworld系*/;
+    hrp::Vector3 ref_P/*refworld系*/, ref_L/*refworld系,cogまわり*/;
     hrp::Vector3 ref_total_force/*refworld系*/;
     hrp::Vector3 ref_total_moment/*refworld系,cogまわり*/;
 
@@ -2391,6 +2449,7 @@ private:
     double sync2activetime;
     double sync2referencetime;
     hrp::Vector3 centroid_weight;//mcs_cogvel_compensation_limitと連動して決定せよ
+    hrp::Vector3 moment_weight;
     double reference_time_const;
     double reference_weight;
     std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み

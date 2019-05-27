@@ -298,6 +298,8 @@ module OpenHRP
       double reference_time_const;
       /// centroid weight
       sequence<double, 3> centroid_weight;
+      /// moment weight
+      sequence<double, 3> moment_weight;
       /// reference weight
       double reference_weight;
       /// Sequence of all joint torque distribution weight
