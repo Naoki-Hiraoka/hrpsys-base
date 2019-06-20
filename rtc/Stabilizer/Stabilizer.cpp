@@ -75,6 +75,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_qRefSeqIn("qRefSeq", m_qRefSeq),
     m_walkingStatesIn("walkingStates", m_walkingStates),
     m_sbpCogOffsetIn("sbpCogOffset", m_sbpCogOffset),
+    m_pgainIn("pgainIn",m_pgain),
     m_qRefOut("q", m_qRef),
     m_tauOut("tau", m_tau),
     m_zmpOut("zmp", m_zmp),
@@ -143,6 +144,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addInPort("qRefSeq", m_qRefSeqIn);
   addInPort("walkingStates", m_walkingStatesIn);
   addInPort("sbpCogOffset", m_sbpCogOffsetIn);
+  addInPort("pgainIn", m_pgainIn);
 
   // Set OutPort buffer
   addOutPort("q", m_qRefOut);
@@ -684,6 +686,10 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
     sbp_cog_offset(0) = m_sbpCogOffset.data.x;
     sbp_cog_offset(1) = m_sbpCogOffset.data.y;
     sbp_cog_offset(2) = m_sbpCogOffset.data.z;
+  }
+
+  if (m_pgainIn.isNew()) {
+    m_pgainIn.read();
   }
 
   if (is_legged_robot) {
@@ -1793,14 +1799,17 @@ void Stabilizer::calcEEForceMomentControl() {
 
     // stabilizer loop
     if(st_algorithm == OpenHRP::StabilizerService::MCS){
-        multicontactstabilizer.calcMultiContactControl(m_robot,
-                                                       current_base_pos,
-                                                       current_base_rpy,
-                                                       current_force_eef,
-                                                       current_moment_eef,
-                                                       d_foot_pos,
-                                                       d_foot_rpy,
-                                                       d_cog_pos);
+        if(m_pgain.data.length() == m_robot->numJoints()){
+            multicontactstabilizer.calcMultiContactControl(m_robot,
+                                                           m_pgain,
+                                                           current_base_pos,
+                                                           current_base_rpy,
+                                                           current_force_eef,
+                                                           current_moment_eef,
+                                                           d_foot_pos,
+                                                           d_foot_rpy,
+                                                           d_cog_pos);
+        }
         return;
     }
     
