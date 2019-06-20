@@ -46,9 +46,10 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
                         const hrp::dmatrix& isparent, //generateIsParentMatrix参照
                         const hrp::Vector3& g //(0, 0, 9.80665)
                         ){
-    m_robot->calcForwardKinematics();//link->p,R
-    m_robot->calcCM();//link->wc
-    m_robot->rootLink()->calcSubMassCM();//link->subm,submwc
+    //m_robot->calcForwardKinematics();//link->p,R
+    //m_robot->calcCM();//link->wc
+    //m_robot->rootLink()->calcSubMassCM();//link->subm,submwc
+
     //link (joint + link のセット)
 
     if(Jgrav.rows()!=rowjoints.size()+6 || Jgrav.cols()!=coljoints.size()+6) Jgrav = hrp::dmatrix::Zero(6+rowjoints.size(),6+coljoints.size());
