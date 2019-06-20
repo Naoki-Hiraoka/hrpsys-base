@@ -42,7 +42,7 @@ public:
                 coil::stringTo(name, end_effectors_str[i*prop_num].c_str());
                 coil::stringTo(link_name, end_effectors_str[i*prop_num+1].c_str());
                 coil::stringTo(sensor_name, end_effectors_str[i*prop_num+2].c_str());
-                boost::shared_ptr<EndEffector> eef(new EndEffector());
+                boost::shared_ptr<EndEffector> eef(new EndEffector(dt));
                 for (size_t j = 0; j < 3; j++) {
                     coil::stringTo(eef->localp(j), end_effectors_str[i*prop_num+3+j].c_str());
                 }
@@ -89,8 +89,9 @@ public:
         ref_total_moment = hrp::Vector3::Zero();
 
         qactv = hrp::dvector::Zero(m_robot->numJoints());
+        qactv_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
         acttauv = hrp::dvector::Zero(m_robot->numJoints());
-        acttauv_Filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
+        acttauv_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
         act_root_p = hrp::Vector3::Zero();
         act_root_R = hrp::Matrix33::Identity();
         act_cog = hrp::Vector3::Zero();
@@ -102,50 +103,36 @@ public:
                         
         d_cog = hrp::Vector3::Zero();
         d_cogvel = hrp::Vector3::Zero();
-        cog_error_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())); // [Hz]
                 
-        //14.76230184   7.69057546
-        //7.67639696  4.58959131 -0.17237698
-        mcs_k1 = 0.0;
-        mcs_k2 = 0.0;
-        mcs_k3 = 0.0;
-
-        
-        mcs_joint_torque_distribution_weight.resize(m_robot->numJoints());
-        for(size_t i = 0; i < m_robot->numJoints(); i++){
-            double taumax = m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-            if(taumax > 0.0){
-                mcs_joint_torque_distribution_weight[i] = 1.0 / taumax / taumax;
-            }else{
-                mcs_joint_torque_distribution_weight[i] = 100;
-            }
-        }
-        mcs_equality_weight = hrp::dvector6();
-        mcs_equality_weight << 100, 100, 100, 100, 100, 100; 
-        mcs_cogpos_compensation_limit = 0.1;
-        mcs_cogvel_compensation_limit = 0.1;
-        mcs_cogacc_compensation_limit = 1.0;
-        mcs_cogpos_time_const = 1.5;
-        mcs_cogvel_time_const = 1.5;
         is_passive.resize(m_robot->numJoints(),false);
         is_reference.resize(m_robot->numJoints(),false);
-        mcs_passive_torquedirection.resize(m_robot->numJoints(),0.0);
-        mcs_passive_vel = 0.034907;//2[degree/sec]
         prevpassive.resize(m_robot->numJoints(),false);
         sync2activecnt.resize(m_robot->numJoints(),0);
-        sync2activetime = 2.0;
         sync2referencecnt.resize(m_robot->numJoints(),0);
-        sync2referencetime = 2.0;
-        ik_error_count = 0;
+        
 
-        reference_time_const = 1.5;
-        centroid_weight = hrp::Vector3();
-        centroid_weight << 1e8, 1e8, 1e8;
-        moment_weight = hrp::Vector3();
-        moment_weight << 1e5, 1e5, 1e5;
-        reference_weight = 1e-10;
+        
+
+
+        //service parameter
         mcs_debug_ratio = 0;
-            
+        tau_weight = 1e0;
+        tauvel_weight = 1e0;
+        temp_safe_time = 100;//[s]
+        force_weight = 1e0;
+        forcevel_weight = 1e0;
+        intvel_weight = 1e0;
+        P_weight = 1e0;
+        Pvel_weight = 1e0;
+        L_weight = 1e0;
+        Lvel_weight = 1e0;
+        reference_weight = 1e-3;
+
+        sync2activetime = 2.0;
+        sync2referencetime = 2.0;
+        mcs_passive_vel = 0.034907;//2[degree/sec]
+        mcs_passive_torquedirection.resize(m_robot->numJoints(),0.0);
+
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
         
@@ -184,7 +171,7 @@ public:
         qrefv = _qrefv;
         ref_root_v/*refworld系*/ = (_ref_root_p/*refworld系*/ - ref_root_p/*refworld系*/) / dt;
         ref_root_p/*refworld系*/ = _ref_root_p/*refworld系*/;
-        ref_root_w/*refworld系*/ = rats::matrix_log(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) / dt;
+        ref_root_w/*refworld系*/ = matrix_logEx(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) / dt;
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
         for(size_t i = 0; i < eefnum; i++){
             hrp::Link* target/*refworld系*/ = m_robot->link(endeffector[i]->link_name);
@@ -241,8 +228,8 @@ public:
         //root位置が与えられない場合は，接触拘束から推定する
         
         //Pg Pgdot Fg hg Ngの実際の値を受け取る
-        qactv = _qactv;
-        acttauv = acttauv_Filter->passFilter(_acttauv);
+        qactv = qactv_filter->passFilter(_qactv);
+        acttauv = acttauv_filter->passFilter(_acttauv);
         act_root_R/*actworld系*/ = _act_root_R/*原点不明,actworld系*/;
         act_root_p/*actworld系*/ = _act_root_p/*actworld系*/;
 
@@ -259,8 +246,10 @@ public:
             endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
             endeffector[i]->act_R/*actworld系*/ = target->R * endeffector[i]->localR;
             hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(endeffector[i]->sensor_name);
-            endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force[sensor->id]/*sensor系*/;
-            endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment[sensor->id]/*sensor系,sensorまわり*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
+            hrp::Vector3 act_force/*sensor系*/ = endeffector[i]->act_force_filter->passFilter(_act_force[sensor->id]/*sensor系*/);
+            endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * act_force/*sensor系*/;
+            hrp::Vector3 act_moment/*sensor系,sensorまわり*/ = endeffector[i]->act_moment_filter->passFilter(_act_moment[sensor->id]/*sensor系*/);
+            endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * act_moment + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
             endeffector[i]->act_force_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force/*actworld系*/;
             endeffector[i]->act_moment_eef/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
             act_contact_states[i] = endeffector[i]->isContact();
@@ -458,7 +447,7 @@ public:
                 m_robot->joint(i)->q = qcurv[i];
             }else{
                 m_robot->joint(i)->q = qcurv[i] + (qrefv[i]- prev_qrefv[i]);
-                m_robot->joint(i)->q += (qrefv[i] - m_robot->joint(i)->q) * dt / reference_time_const;
+                m_robot->joint(i)->q += (qrefv[i] - m_robot->joint(i)->q) * dt / 1.0;//reference_time_const;
 
                 double llimit, ulimit;
                 if (joint_limit_tables.find(m_robot->joint(i)->name) != joint_limit_tables.end()) {
@@ -579,16 +568,16 @@ public:
         hrp::dmatrix D/*レンチ eef系,eefまわり<->変位 eef系,eefまわり*/ = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
         for(size_t i=0;i<support_eef.size();i++){
             for(size_t j = 0; j < 3; j++){
-                D(6*i+j,6*i+j) = support_eef[i]->pos_damping_gain[j];
-                D(6*i+3+j,6*i+3+j) = support_eef[i]->rot_damping_gain[j];
+                D(6*i+j,6*i+j) = 1;//support_eef[i]->pos_damping_gain[j];
+                D(6*i+3+j,6*i+3+j) = 1;//support_eef[i]->rot_damping_gain[j];
             }
         }
 
         hrp::dmatrix Tinv/*時定数*/ = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
         for(size_t i=0;i<support_eef.size();i++){
             for(size_t j = 0; j < 3; j++){
-                Tinv(6*i+j,6*i+j) = 1.0/support_eef[i]->pos_time_const[j];
-                Tinv(6*i+3+j,6*i+3+j) = 1.0/support_eef[i]->rot_time_const[j];
+                Tinv(6*i+j,6*i+j) = 1.0;///support_eef[i]->pos_time_const[j];
+                Tinv(6*i+3+j,6*i+3+j) = 1.0;///support_eef[i]->rot_time_const[j];
             }
         }
 
@@ -641,12 +630,13 @@ public:
         
         /*****************************************************************/
         //torque
+        //double taumax = m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
         if(support_eef.size()>0){
             hrp::dmatrix W = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num);
             for (size_t i = 0; i < m_robot->numJoints(); i++){
                 if(ik_enable_joint_states[i]){
                     if(is_passive[i]) W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = 1e-10;
-                    else W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = mcs_joint_torque_distribution_weight[i];
+                    else W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = 1.0;//mcs_joint_torque_distribution_weight[i];
                 }
             }
 
@@ -794,22 +784,10 @@ public:
         /*****************************************************************/
         //centroid
         {
-            hrp::Vector3 tmp_d_cogv = - mcs_k1 * cog_error_filter->passFilter(act_cog_origin/*act_cogorigin系*/);
+            hrp::Vector3 tmp_d_cogv = - 1.0/*mcs_k1*/ * act_cog_origin/*act_cogorigin系*/;
             hrp::Vector3 tmp_d_cogacc = (tmp_d_cogv - d_cogvel)/dt;
-            for(size_t i=0; i < 3 ; i++){
-                if(tmp_d_cogacc[i] > mcs_cogacc_compensation_limit) tmp_d_cogacc[i] = mcs_cogacc_compensation_limit;
-                if(tmp_d_cogacc[i] < -mcs_cogacc_compensation_limit) tmp_d_cogacc[i] = -mcs_cogacc_compensation_limit;
-            }
             tmp_d_cogv = d_cogvel + tmp_d_cogacc * dt;
-            for(size_t i=0; i < 3 ; i++){
-                if(tmp_d_cogv[i] > mcs_cogvel_compensation_limit) tmp_d_cogv[i] = mcs_cogvel_compensation_limit;
-                if(tmp_d_cogv[i] < -mcs_cogvel_compensation_limit) tmp_d_cogv[i] = -mcs_cogvel_compensation_limit;
-            }
             hrp::Vector3 tmp_d_cog/*refworld系*/ = /*(1 - dt/mcs_cogpos_time_const) */ d_cog + tmp_d_cogv * dt;
-            for(size_t i=0; i < 3 ; i++){
-                if(tmp_d_cog[i] > mcs_cogpos_compensation_limit) tmp_d_cog[i] = mcs_cogpos_compensation_limit;
-                if(tmp_d_cog[i] < -mcs_cogpos_compensation_limit) tmp_d_cog[i] = -mcs_cogpos_compensation_limit;
-            }
             hrp::Vector3 target_cog/*refworld系*/ = ref_cog/*refworld系*/ + tmp_d_cog/*refworld系*/;
             hrp::Vector3 delta_cog = target_cog/*refworld系*/ - cur_cog/*refworld系*/;
             
@@ -825,7 +803,7 @@ public:
             
             hrp::dmatrix W = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                W(i,i) = centroid_weight[i];
+                W(i,i) = 1.0;//centroid_weight[i];
             }
             
             H += CM_J.transpose() * W * CM_J;
@@ -884,7 +862,7 @@ public:
             hrp::Vector3 delta_mo = ref_L / dt;
             hrp::dmatrix W = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                W(i,i) = moment_weight[i];
+                W(i,i) = 1.0;//moment_weight[i];
             }
             H += MO_J.transpose() * W * MO_J;
             g += - delta_mo.transpose() * W * MO_J;
@@ -1017,12 +995,12 @@ public:
                 }
             }
             
-            reference_q.block<3,1>(0,0) += (ref_root_p/*refworld系*/ - (m_robot->rootLink()->p/*refworld系*/ + reference_q.block<3,1>(0,0))) * dt / reference_time_const;
+            reference_q.block<3,1>(0,0) += (ref_root_p/*refworld系*/ - (m_robot->rootLink()->p/*refworld系*/ + reference_q.block<3,1>(0,0))) * dt / 1.0;//reference_time_const;
             hrp::Matrix33 dR/*refworld系*/ = ref_root_R/*refworld系*/ * prev_ref_root_R.transpose()/*refworld系*/;
-            reference_q.block<3,1>(3,0) += matrix_logEx( ref_root_R/*refworld系*/ * (dR * m_robot->rootLink()->R).transpose()/*refworld系*/) * dt / reference_time_const;
+            reference_q.block<3,1>(3,0) += matrix_logEx( ref_root_R/*refworld系*/ * (dR * m_robot->rootLink()->R).transpose()/*refworld系*/) * dt / 1.0;//reference_time_const;
             for ( unsigned int j = 0; j < m_robot->numJoints(); j++ ) {
                 if(ik_enable_joint_states[j]){
-                    reference_q[6+ik_enable_joint_map[j]] += (qrefv[j] - (m_robot->joint(j)->q + reference_q[6+ik_enable_joint_map[j]])) * dt / reference_time_const;
+                    reference_q[6+ik_enable_joint_map[j]] += (qrefv[j] - (m_robot->joint(j)->q + reference_q[6+ik_enable_joint_map[j]])) * dt / 1.0;//reference_time_const;
                 }
             }
 
@@ -1476,7 +1454,6 @@ public:
 
         d_cog = hrp::Vector3::Zero();
         d_cogvel = hrp::Vector3::Zero();
-        cog_error_filter->reset(hrp::Vector3::Zero());
         
         qcurv = qrefv;
         cur_root_p = ref_root_p;
@@ -1500,81 +1477,55 @@ public:
     }
     
     void setParameter(const OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
-        mcs_k1 = i_stp.mcs_k1;
-        mcs_k2 = i_stp.mcs_k2;
-        mcs_k3 = i_stp.mcs_k3;
-        std::cerr << "[" << instance_name << "]   mcs_k1 = " << mcs_k1 << ", mcs_k2 = " << mcs_k2 << ", mcs_k3 = " << mcs_k3 <<std::endl;
-        
-        acttauv_Filter->setCutOffFreq(i_stp.mcs_acttauv_cutoff_freq);
-        std::cerr << "[" << instance_name << "]  mcs_acttauv_cutoff_freq = " << acttauv_Filter->getCutOffFreq() << std::endl;
+        mcs_debug_ratio = i_stp.mcs_debug_ratio;
+        std::cerr << "[" << instance_name << "]  mcs_debug_ratio = " << mcs_debug_ratio << std::endl;
 
-        cog_error_filter->setCutOffFreq(i_stp.mcs_cog_error_cutoff_freq);
-        std::cerr << "[" << instance_name << "]  mcs_cog_error_cutoff_freq = " << cog_error_filter->getCutOffFreq() << std::endl;
-                
-        mcs_cogpos_compensation_limit = i_stp.mcs_cogpos_compensation_limit;
-        mcs_cogvel_compensation_limit = i_stp.mcs_cogvel_compensation_limit;
-        mcs_cogacc_compensation_limit = i_stp.mcs_cogacc_compensation_limit;
-        std::cerr << "[" << instance_name << "]  mcs_cogpos_compensation_limit = " << mcs_cogpos_compensation_limit << std::endl;
-        std::cerr << "[" << instance_name << "]  mcs_cogvel_compensation_limit = " << mcs_cogvel_compensation_limit << std::endl;
-        std::cerr << "[" << instance_name << "]  mcs_cogacc_compensation_limit = " << mcs_cogacc_compensation_limit << std::endl;
+        qactv_filter->setCutOffFreq(i_stp.mcs_qactv_cutoff_freq);
+        std::cerr << "[" << instance_name << "]  mcs_qactv_cutoff_freq = " << qactv_filter->getCutOffFreq() << std::endl;
 
-        mcs_cogpos_time_const = i_stp.mcs_cogpos_time_const;
-        mcs_cogvel_time_const = i_stp.mcs_cogvel_time_const;
-        std::cerr << "[" << instance_name << "]  mcs_cogpos_time_const = " << mcs_cogpos_time_const << std::endl;
-        std::cerr << "[" << instance_name << "]  mcs_cogvel_time_const = " << mcs_cogvel_time_const << std::endl;
-        
-        mcs_passive_vel = i_stp.mcs_passive_vel;
-        std::cerr << "[" << instance_name << "]  mcs_passive_vel = " << mcs_passive_vel << std::endl;
+        acttauv_filter->setCutOffFreq(i_stp.mcs_acttauv_cutoff_freq);
+        std::cerr << "[" << instance_name << "]  mcs_acttauv_cutoff_freq = " << acttauv_filter->getCutOffFreq() << std::endl;
+
+        tau_weight = i_stp.tau_weight;
+        std::cerr << "[" << instance_name << "]  tau_weight = " << tau_weight << std::endl;
+
+        tauvel_weight = i_stp.tauvel_weight;
+        std::cerr << "[" << instance_name << "]  tauvel_weight = " << tauvel_weight << std::endl;
+
+        temp_safe_time = i_stp.temp_safe_time;
+        std::cerr << "[" << instance_name << "]  temp_safe_time = " << temp_safe_time << std::endl;
+
+        force_weight = i_stp.force_weight;
+        std::cerr << "[" << instance_name << "]  force_weight = " << force_weight << std::endl;
+
+        forcevel_weight = i_stp.forcevel_weight;
+        std::cerr << "[" << instance_name << "]  forcevel_weight = " << forcevel_weight << std::endl;
+
+        intvel_weight = i_stp.intvel_weight;
+        std::cerr << "[" << instance_name << "]  intvel_weight = " << intvel_weight << std::endl;
+
+        P_weight = i_stp.P_weight;
+        std::cerr << "[" << instance_name << "]  P_weight = " << P_weight << std::endl;
+
+        Pvel_weight = i_stp.Pvel_weight;
+        std::cerr << "[" << instance_name << "]  Pvel_weight = " << Pvel_weight << std::endl;
+
+        L_weight = i_stp.L_weight;
+        std::cerr << "[" << instance_name << "]  L_weight = " << L_weight << std::endl;
+
+        Lvel_weight = i_stp.Lvel_weight;
+        std::cerr << "[" << instance_name << "]  Lvel_weight = " << Lvel_weight << std::endl;
+
+        reference_weight = i_stp.reference_weight;
+        std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
 
         sync2activetime = i_stp.mcs_sync2activetime;
         sync2referencetime = i_stp.mcs_sync2referencetime;
         std::cerr << "[" << instance_name << "]  mcs_sync2activetime = " << sync2activetime << std::endl;
         std::cerr << "[" << instance_name << "]  mcs_sync2referencetime = " << sync2referencetime << std::endl;
-        
-        reference_time_const = i_stp.reference_time_const;
-        std::cerr << "[" << instance_name << "]  reference_time_const = " << reference_time_const << std::endl;
 
-        mcs_debug_ratio = i_stp.mcs_debug_ratio;
-        std::cerr << "[" << instance_name << "]  mcs_debug_ratio = " << mcs_debug_ratio << std::endl;
-
-        if(i_stp.centroid_weight.length()==3){
-            for(size_t i=0; i < 3; i++){
-                centroid_weight[i] = i_stp.centroid_weight[i];
-            }
-        }
-        if(i_stp.moment_weight.length()==3){
-            for(size_t i=0; i < 3; i++){
-                moment_weight[i] = i_stp.moment_weight[i];
-            }
-        }
-        reference_weight = i_stp.reference_weight;
-        std::cerr << "[" << instance_name << "]  centroid_weight = " << centroid_weight << std::endl;
-        std::cerr << "[" << instance_name << "]  moment_weight = " << moment_weight << std::endl;
-        std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
-                
-        if(i_stp.mcs_joint_torque_distribution_weight.length()!=mcs_joint_torque_distribution_weight.size()){
-            std::cerr << "[" << instance_name << "] failed. mcs_joint_torque_distribution_weight size: " << i_stp.mcs_joint_torque_distribution_weight.length() << ", joints: " << mcs_joint_torque_distribution_weight.size() <<std::endl;
-        }else{
-            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-                mcs_joint_torque_distribution_weight[i] = i_stp.mcs_joint_torque_distribution_weight[i];
-            }
-        }
-        std::cerr << "[" << instance_name << "]  mcs_joint_torque_distribution_weight = [" ;
-        for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-            std::cerr<< mcs_joint_torque_distribution_weight[i] << ", ";
-        }
-        std::cerr << "]" <<std::endl;
-
-        if(i_stp.mcs_equality_weight.length() == 6){
-            for(size_t j = 0; j < 6; j++){
-                mcs_equality_weight[j] = i_stp.mcs_equality_weight[j];
-            }
-        }
-        std::cerr << "[" << instance_name << "]  mcs_equality_weight = [" ;
-        for(size_t i = 0 ; i < 6; i++){
-            std::cerr<< mcs_equality_weight[i] << ", ";
-        }
-        std::cerr << "]" <<std::endl;
+        mcs_passive_vel = i_stp.mcs_passive_vel;
+        std::cerr << "[" << instance_name << "]  mcs_passive_vel = " << mcs_passive_vel << std::endl;
 
         if(i_stp.mcs_passive_torquedirection.length()!=mcs_passive_torquedirection.size()){
             std::cerr << "[" << instance_name << "] set mcs_passive_torquedirection failed. mcs_passive_torquedirection size: " << i_stp.mcs_passive_torquedirection.length() << ", joints: " << mcs_passive_torquedirection.size() <<std::endl;
@@ -1588,53 +1539,43 @@ public:
             std::cerr<< mcs_passive_torquedirection[i] << ", ";
         }
         std::cerr << "]" <<std::endl;
-        
+
         if (i_stp.mcs_eeparams.length() == eefnum){
             for(size_t i = 0; i < eefnum; i++){
                 endeffector[i]->setParameter(i_stp.mcs_eeparams[i],instance_name);
             }
-        }        
+        }else{
+            std::cerr << "[" << instance_name << "] set mcs_eeparams failed. mcs_eeparams size: " << i_stp.mcs_eeparams.length() << ", endeffectors: " << endeffector.size() <<std::endl;
+        }
     }
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
-        i_stp.mcs_k1 = mcs_k1;
-        i_stp.mcs_k2 = mcs_k2;
-        i_stp.mcs_k3 = mcs_k3;
-        i_stp.mcs_acttauv_cutoff_freq = acttauv_Filter->getCutOffFreq();
-        i_stp.mcs_cog_error_cutoff_freq = cog_error_filter->getCutOffFreq();
-        i_stp.mcs_cogpos_compensation_limit = mcs_cogpos_compensation_limit;
-        i_stp.mcs_cogvel_compensation_limit = mcs_cogvel_compensation_limit;
-        i_stp.mcs_cogacc_compensation_limit = mcs_cogacc_compensation_limit;
-        i_stp.mcs_cogpos_time_const = mcs_cogpos_time_const;
-        i_stp.mcs_cogvel_time_const = mcs_cogvel_time_const;
-        i_stp.mcs_passive_vel = mcs_passive_vel;
+        i_stp.mcs_qactv_cutoff_freq = qactv_filter->getCutOffFreq();
+        i_stp.mcs_acttauv_cutoff_freq = acttauv_filter->getCutOffFreq();
+        i_stp.mcs_debug_ratio = mcs_debug_ratio;
+        i_stp.tau_weight = tau_weight;
+        i_stp.tauvel_weight = tauvel_weight;
+        i_stp.temp_safe_time = temp_safe_time;
+        i_stp.force_weight = force_weight;
+        i_stp.forcevel_weight = forcevel_weight;
+        i_stp.intvel_weight = intvel_weight;
+        i_stp.P_weight = P_weight;
+        i_stp.Pvel_weight = Pvel_weight;
+        i_stp.L_weight = L_weight;
+        i_stp.Lvel_weight = Lvel_weight;
+        i_stp.reference_weight = reference_weight;
+
         i_stp.mcs_sync2activetime = sync2activetime;
         i_stp.mcs_sync2referencetime = sync2referencetime;
-        i_stp.reference_time_const = reference_time_const;
-        i_stp.mcs_debug_ratio = mcs_debug_ratio;
-
-        i_stp.centroid_weight.length(3);
-        i_stp.moment_weight.length(3);
-        for(size_t i =0; i < 3; i++){
-            i_stp.centroid_weight[i] = centroid_weight[i];
-            i_stp.moment_weight[i] = moment_weight[i];
+        i_stp.mcs_passive_vel = mcs_passive_vel;
+        i_stp.mcs_passive_torquedirection.length(m_robot->numJoints());
+        for (size_t i = 0; i < m_robot->numJoints(); i++) {
+            i_stp.mcs_passive_torquedirection[i] = mcs_passive_torquedirection[i];
         }
-        i_stp.reference_weight = reference_weight;
 
         i_stp.mcs_eeparams.length(eefnum);
         for(size_t i = 0; i < eefnum; i++){
-            endeffector[i]->getParameter(i_stp.mcs_eeparams[i]);            
-        }
-
-        i_stp.mcs_joint_torque_distribution_weight.length(m_robot->numJoints());
-        i_stp.mcs_passive_torquedirection.length(m_robot->numJoints());
-        for (size_t i = 0; i < m_robot->numJoints(); i++) {
-            i_stp.mcs_joint_torque_distribution_weight[i] = mcs_joint_torque_distribution_weight[i];
-            i_stp.mcs_passive_torquedirection[i] = mcs_passive_torquedirection[i];
-        }
-        i_stp.mcs_equality_weight.length(6);
-        for (size_t i = 0 ; i < 6; i++){
-            i_stp.mcs_equality_weight[i] = mcs_equality_weight[i];
+            endeffector[i]->getParameter(i_stp.mcs_eeparams[i]);
         }
     }
 
@@ -1752,13 +1693,14 @@ private:
     std::map<std::string, size_t> endeffector_index_map;
 
     hrp::BodyPtr const_robot;
-    
+
     //stで使用
     double transition_smooth_gain;//0.0~1.0, 0のとき何もしない
     std::vector<bool> prevpassive;
     std::vector<double> sync2activecnt;
     std::vector<double> sync2referencecnt;
-    int ik_error_count;
+    std::vector<bool> is_reference;
+    std::vector<bool> is_passive;
     std::map<std::pair<int, int>, boost::shared_ptr<SQProblem> > sqp_map;
 
     hrp::dvector qcurv;
@@ -1778,8 +1720,9 @@ private:
     hrp::Vector3 ref_total_moment/*refworld系,cogまわり*/;
 
     hrp::dvector qactv;
+    boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > qactv_filter;
     hrp::dvector acttauv;
-    boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > acttauv_Filter;
+    boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > acttauv_filter;
     hrp::Vector3 act_root_p/*actworld系*/;
     hrp::Matrix33 act_root_R/*actworld系*/;
 
@@ -1790,34 +1733,29 @@ private:
     hrp::Vector3 act_cogorigin_p/*actworld系*/;
     hrp::Matrix33 act_cogorigin_R/*actworld系*/;
     hrp::Vector3 act_cog_origin/*act_cogorigin系*/;
-        
+
     hrp::Vector3 d_cog/*refworld系*/;
     hrp::Vector3 d_cogvel/*refworld系*/;
-    boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > cog_error_filter/*refworld系*/;
-    
+
     //サービスコールで設定
-    double mcs_k1, mcs_k2, mcs_k3;
-    double mcs_cogpos_compensation_limit;
-    double mcs_cogvel_compensation_limit;
-    double mcs_cogacc_compensation_limit;
-    double mcs_cogpos_time_const;
-    double mcs_cogvel_time_const;
-    double mcs_passive_vel;
+    unsigned int mcs_debug_ratio;
+
+    double tau_weight;
+    double tauvel_weight;
+    double temp_safe_time;
+    double force_weight;
+    double forcevel_weight;
+    double intvel_weight;
+    double P_weight;
+    double Pvel_weight;
+    double L_weight;
+    double Lvel_weight;
+    double reference_weight;
+
     double sync2activetime;
     double sync2referencetime;
-    hrp::Vector3 centroid_weight;//mcs_cogvel_compensation_limitと連動して決定せよ
-    hrp::Vector3 moment_weight;
-    double reference_time_const;
-    double reference_weight;
-    std::vector<double> mcs_joint_torque_distribution_weight;//numJoints,トルクに対する重み
-
-    std::vector<double> mcs_passive_torquedirection;
-    hrp::dvector6 mcs_equality_weight;//等式制約に対する重み//not used
-    
-    std::vector<bool> is_passive;
-    std::vector<bool> is_reference;
-
-    unsigned int mcs_debug_ratio;
+    double mcs_passive_vel;//not used
+    std::vector<double> mcs_passive_torquedirection;//not used
     };
 
 

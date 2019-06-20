@@ -94,6 +94,13 @@ module OpenHRP
      * @brief EndEfector
      */
     struct EndEffectorParam {
+        /// whether the end effector is used for limb IK.
+        boolean is_ik_enable;
+        double contact_decision_threshold;
+        /// Cutoff frequency of LPF in calculation of actual force [Hz]
+        double act_force_cutoff_freq;
+        /// Cutoff frequency of LPF in calculation of actual moment [Hz]
+        double act_moment_cutoff_freq;
         ContactType contact_type;
         double friction_coefficient;
         double rotation_friction_coefficient;
@@ -101,34 +108,12 @@ module OpenHRP
         double lower_cop_x_margin;
         double upper_cop_y_margin;
         double lower_cop_y_margin;
-        double outside_upper_cop_x_margin;
-        double outside_lower_cop_x_margin;
-        double outside_upper_cop_y_margin;
-        double outside_lower_cop_y_margin;
         double max_fz;
         double min_fz;
-        double contact_decision_threshold;
-        sequence<double, 6> ee_forcemoment_distribution_weight;
-        /// rotation damping gain [Nm/(rad/s)] (r,p,y).
-        sequence<double, 3> rot_damping_gain;
-        /// rotation damping time constant [s] (r,p,y).
-        sequence<double, 3> rot_time_const;
-        /// position damping gain [N/(m/s)] (x,y,z).
-        sequence<double, 3> pos_damping_gain;
-        /// position damping time constant [s] (x,y,z).
-        sequence<double, 3> pos_time_const;
-        /// position compensation limit [m]
-        double pos_compensation_limit;
-        /// rot compensation limit [rad]
-        double rot_compensation_limit;
-        /// z contact velocity [m/s]
-        double z_contact_vel;
-        /// rz,ry contact velocity [rad/s]
-        double rot_contact_vel;
-        /// z contact weight
-        double z_contact_weight;
-        /// rz,ry contact weight
-        double rot_contact_weight;
+        /// interact weight
+        double pos_interact_weight;
+        /// interact weight
+        double rot_interact_weight;
         /// Position mass [N/(m/s^2)]
         double M_p;
         /// Position damper [N/(m/s)]
@@ -145,14 +130,26 @@ module OpenHRP
         sequence<double, 3> force_gain;
         /// Moment gain (x,y,z).
         sequence<double, 3> moment_gain;
-        /// interact weight
-        double pos_interact_weight;
-        /// interact weight
-        double rot_interact_weight;
-        /// whether the end effector is used for limb IK.
-        boolean is_ik_enable;
+        /// position compensation limit [m]
+        double pos_compensation_limit;
+        /// rot compensation limit [rad]
+        double rot_compensation_limit;
+        /// footorigin weight
+        double footorigin_weight;
+        /// z contact weight
+        double z_contact_weight;
+        /// z contact velocity [m/s]
+        double z_contact_vel;
+        /// rz,ry contact weight
+        double rot_contact_weight;
+        /// rz,ry contact velocity [rad/s]
+        double rot_contact_vel;
+        double outside_upper_cop_x_margin;
+        double outside_lower_cop_x_margin;
+        double outside_upper_cop_y_margin;
+        double outside_lower_cop_y_margin;
     };
-            
+
     /**
      * @struct stParam
      * @brief Stabilizer Parameters.
@@ -268,50 +265,44 @@ module OpenHRP
       /// Sequence of all end-effector force/moment distribution weight
       sequence<sequence<double, 6> > eefm_ee_forcemoment_distribution_weight;
       // for MCS
-      /// Feedback gain for COG position tracking error (x,y,z)
-      double mcs_k1;
-      /// Feedback gain for COG velocity tracking error (x,y,z)
-      double mcs_k2;
-      /// Feedback gain for Force tracking error (x,y,z)
-      double mcs_k3;
+      ///debug ratio
+      unsigned short mcs_debug_ratio;
+      /// Cutoff frequency of LPF in calculation of actual angle [Hz]
+      double mcs_qactv_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of actual torque [Hz]
       double mcs_acttauv_cutoff_freq;
-      /// Cutoff frequency of LPF in calculation of COG position error [Hz]
-      double mcs_cog_error_cutoff_freq;
-      /// COG position position compensation limit [m]
-      double mcs_cogpos_compensation_limit;
-      /// COG velocity position compensation limit [m/s]
-      double mcs_cogvel_compensation_limit;
-      /// COG acceleration position compensation limit [m/s^2]
-      double mcs_cogacc_compensation_limit;
-      /// COG position damping time constant[s]
-      double mcs_cogpos_time_const;
-      /// COG velocity damping time constant[s]
-      double mcs_cogvel_time_const;
+      /// tau weight
+      double tau_weight;
+      /// tauvel weight
+      double tauvel_weight;
+      /// temperature sage time
+      double temp_safe_time;
+      /// force weight
+      double force_weight;
+      /// force vel weight
+      double forcevel_weight;
+      /// interact eef vel weight
+      double intvel_weight;
+      /// P weight
+      double P_weight;
+      /// \dot P weight
+      double Pvel_weight;
+      /// L weight
+      double L_weight;
+      /// \dot L weight
+      double Lvel_weight;
+      /// reference weight
+      double reference_weight;
       /// joint passive velocity [rad/s]
       double mcs_passive_vel;
       /// joint passive2active time [s]
       double mcs_sync2activetime;
       /// joint passive2reference time [s]
       double mcs_sync2referencetime;
-      /// reference time const [s]
-      double reference_time_const;
-      /// centroid weight
-      sequence<double, 3> centroid_weight;
-      /// moment weight
-      sequence<double, 3> moment_weight;
-      /// reference weight
-      double reference_weight;
-      /// Sequence of all joint torque distribution weight
-      sequence<double> mcs_joint_torque_distribution_weight;
-      /// Sequence of equality constraint weight
-      sequence<double, 6> mcs_equality_weight;
       /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
-      sequence<double> mcs_passive_torquedirection;        
+      sequence<double> mcs_passive_torquedirection;
       /// Sequence of all end-effector params
       sequence<EndEffectorParam> mcs_eeparams;
-      ///debug ratio
-      unsigned short mcs_debug_ratio;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;
