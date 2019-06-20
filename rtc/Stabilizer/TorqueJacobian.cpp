@@ -36,6 +36,7 @@ hrp::dmatrix generateIsParentMatrix(hrp::BodyPtr& m_robot){// ret[i][j] = 0 (if 
 }
 
 //calcForwardKinematics(), calcCM() should be already called.
+//virtual root joint は各軸独立(シリアルでない)
 void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
                         hrp::dmatrix& Jcnt,//output, 接触点はリンク固定(環境固定でない)
                         hrp::BodyPtr& m_robot,
@@ -73,27 +74,22 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
     }
     for(size_t i = 3 ; i < 6; i++){
         for(size_t j = 0 ; j < 3; j++){
-            Jgrav(i,j) = 0;
+            Jgrav(i,j) = g.dot( hrp::hat(rootaxis[i]) * rootaxis[j] * m_robot->rootLink()->subm);
             Jcnt(i,j) = 0;
+            for(size_t m = 0; m < eef.size(); m++){
+                hrp::Link* target = m_robot->link(eef[m]->link_name);
+                Jcnt(i,j) += eef[m]->act_force.dot(hrp::hat(rootaxis[i]) * rootaxis[j]);
+            }
         }
     }
+
     for(size_t i = 3 ; i < 6; i++){
         for(size_t j = 3 ; j < 6; j++){
-            if(i<j){
-                Jgrav(i,j) = g.dot( hrp::hat(rootaxis[i]) * hrp::hat(rootaxis[j]) * (m_robot->rootLink()->submwc - m_robot->rootLink()->p * m_robot->rootLink()->subm));
-                Jcnt(i,j) = 0;
-                for(size_t m = 0; m < eef.size(); m++){
-                    hrp::Link* target = m_robot->link(eef[m]->link_name);
-                    Jcnt(i,j) += eef[m]->act_force.dot( hrp::hat(rootaxis[i]) * hrp::hat(rootaxis[j]) * (target->p + target->R * eef[m]->localp - m_robot->rootLink()->p));
-                }
-            }else{
-                Jgrav(i,j) = g.dot( hrp::hat(rootaxis[j]) * hrp::hat(rootaxis[i]) * (m_robot->rootLink()->submwc - m_robot->rootLink()->p * m_robot->rootLink()->subm));
-                Jcnt(i,j) = 0;
-                for(size_t m = 0; m < eef.size(); m++){
-                    hrp::Link* target = m_robot->link(eef[m]->link_name);
-                    Jcnt(i,j) += eef[m]->act_force.dot( hrp::hat(rootaxis[j]) * hrp::hat(rootaxis[i]) * (target->p + target->R * eef[m]->localp - m_robot->rootLink()->p));
-                    Jcnt(i,j) += eef[m]->act_moment.dot( hrp::hat(rootaxis[j]) * rootaxis[i]);//TODO ????? virtual root joint never rotates ?????
-                }
+            Jgrav(i,j) = g.dot( hrp::hat(rootaxis[i]) * hrp::hat(rootaxis[j]) * (m_robot->rootLink()->submwc - m_robot->rootLink()->p * m_robot->rootLink()->subm));
+            Jcnt(i,j) = 0;
+            for(size_t m = 0; m < eef.size(); m++){
+                hrp::Link* target = m_robot->link(eef[m]->link_name);
+                Jcnt(i,j) += eef[m]->act_force.dot( hrp::hat(rootaxis[i]) * hrp::hat(rootaxis[j]) * (target->p + target->R * eef[m]->localp - m_robot->rootLink()->p));
             }
         }
     }
