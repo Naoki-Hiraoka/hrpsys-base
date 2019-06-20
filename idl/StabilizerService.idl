@@ -12,6 +12,7 @@ module OpenHRP
     typedef double DblArray3[3];
     typedef double DblArray4[4];
     typedef sequence<boolean> BoolSequence;
+    typedef sequence<string> StrSequence;
 
     /**
      * @enum STAlgorithm
@@ -271,6 +272,8 @@ module OpenHRP
       double mcs_qactv_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of actual torque [Hz]
       double mcs_acttauv_cutoff_freq;
+      /// is joint enable
+      BoolSequence is_joint_enable;
       /// tau weight
       double tau_weight;
       /// tauvel weight
@@ -373,25 +376,42 @@ module OpenHRP
      */
     void setParameter(in stParam i_param);
 
-      /**
+    /**
      * @brief set passive joint
      * @param name joint name
      */
     void setPassiveJoint(in string name);
 
-      /**
+    /**
+     * @brief set passive joint
+     * @param name joint name
+     */
+    void setPassiveJoints(in StrSequence names);
+
+    /**
      * @brief set reference joint
      * @param name joint name
      */
     void setReferenceJoint(in string name);
 
-      /**
+    /**
+     * @brief set reference joint
+     * @param name joint name
+     */
+    void setReferenceJoints(in StrSequence names);
+
+    /**
      * @brief set active joint
      * @param name joint name
      */
     void setActiveJoint(in string name);
 
-      
+    /**
+     * @brief set active joint
+     * @param name joint name
+     */
+    void setActiveJoints(in StrSequence names);
+
     /**
      * @brief Start Stabilizer mode.
      * @param

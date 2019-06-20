@@ -12,7 +12,8 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
                         hrp::dmatrix& Jcnt,//output, 接触点はリンク固定(環境固定でない)
                         hrp::BodyPtr& m_robot,
                         const std::vector<boost::shared_ptr<EndEffector> >& eef,//Jcntで使用する
-                        const std::vector<hrp::Link*>& joints,//この順番,サイズに対応してヤコビアンが作られる
+                        const std::vector<hrp::Link*>& rowjoints,//この順番,サイズに対応してヤコビアンの行が作られる
+                        const std::vector<hrp::Link*>& coljoints,//この順番,サイズに対応してヤコビアンの列が作られる
                         const hrp::dmatrix& isparent, //generateIsParentMatrix参照
                         const hrp::Vector3& g //(0, 0, 9.80665)
                         );

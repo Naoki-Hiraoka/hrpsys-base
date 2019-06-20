@@ -540,7 +540,6 @@ public:
     }
 
     //サービスコールで設定
-    bool is_ik_enable;
     //接触判定
     double contact_decision_threshold;//これを下回るとact contactしていない. < min_fz
     //接触力制約
@@ -557,6 +556,7 @@ public:
     double max_fz;
     double min_fz;
     //遊脚インピーダンス
+    bool is_ik_enable;//遊脚(!ref_contact)時に位置を制御するか,遊脚時に反力を考慮するか
     double pos_interact_weight;
     double rot_interact_weight;
     double M_p, D_p, K_p, M_r, D_r, K_r;

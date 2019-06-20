@@ -116,6 +116,7 @@ public:
 
         //service parameter
         mcs_debug_ratio = 0;
+        is_joint_enable.resize(m_robot->numJoints(),true);
         tau_weight = 1e0;
         tauvel_weight = 1e0;
         temp_safe_time = 100;//[s]
@@ -1480,6 +1481,19 @@ public:
         mcs_debug_ratio = i_stp.mcs_debug_ratio;
         std::cerr << "[" << instance_name << "]  mcs_debug_ratio = " << mcs_debug_ratio << std::endl;
 
+        if(i_stp.is_joint_enable.length()!=is_joint_enable.size()){
+            std::cerr << "[" << instance_name << "] set is_joint_enable failed. is_joint_enable size: " << i_stp.is_joint_enable.length() << ", joints: " << is_joint_enable.size() <<std::endl;
+        }else{
+            for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+                is_joint_enable[i] = i_stp.is_joint_enable[i];
+            }
+        }
+        std::cerr << "[" << instance_name << "]  mcs_passive_torquedirection = [" ;
+        for(size_t i = 0 ; i < m_robot->numJoints(); i++){
+            std::cerr<< mcs_passive_torquedirection[i] << ", ";
+        }
+        std::cerr << "]" <<std::endl;
+
         qactv_filter->setCutOffFreq(i_stp.mcs_qactv_cutoff_freq);
         std::cerr << "[" << instance_name << "]  mcs_qactv_cutoff_freq = " << qactv_filter->getCutOffFreq() << std::endl;
 
@@ -1550,9 +1564,13 @@ public:
     }
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
+        i_stp.mcs_debug_ratio = mcs_debug_ratio;
+        i_stp.is_joint_enable.length(m_robot->numJoints());
+        for(size_t i = 0; i < m_robot->numJoints(); i++){
+            i_stp.is_joint_enable[i] = is_joint_enable[i];
+        }
         i_stp.mcs_qactv_cutoff_freq = qactv_filter->getCutOffFreq();
         i_stp.mcs_acttauv_cutoff_freq = acttauv_filter->getCutOffFreq();
-        i_stp.mcs_debug_ratio = mcs_debug_ratio;
         i_stp.tau_weight = tau_weight;
         i_stp.tauvel_weight = tauvel_weight;
         i_stp.temp_safe_time = temp_safe_time;
@@ -1739,6 +1757,8 @@ private:
 
     //サービスコールで設定
     unsigned int mcs_debug_ratio;
+
+    std::vector<bool> is_joint_enable;//トルクを評価するか
 
     double tau_weight;
     double tauvel_weight;

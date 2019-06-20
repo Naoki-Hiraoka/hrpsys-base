@@ -26,14 +26,35 @@ void StabilizerService_impl::setPassiveJoint(const char *jname)
 	m_stabilizer->setPassiveJoint(jname);
 }
 
+void StabilizerService_impl::setPassiveJoints(const OpenHRP::StabilizerService::StrSequence& jnames)
+{
+	for(size_t i=0; i < jnames.length(); i++){
+		m_stabilizer->setPassiveJoint(jnames[i]);
+	}
+}
+
 void StabilizerService_impl::setReferenceJoint(const char *jname)
 {
 	m_stabilizer->setReferenceJoint(jname);
 }
 
+void StabilizerService_impl::setReferenceJoints(const OpenHRP::StabilizerService::StrSequence& jnames)
+{
+	for(size_t i=0; i < jnames.length(); i++){
+		m_stabilizer->setReferenceJoint(jnames[i]);
+	}
+}
+
 void StabilizerService_impl::setActiveJoint(const char *jname)
 {
 	m_stabilizer->setActiveJoint(jname);
+}
+
+void StabilizerService_impl::setActiveJoints(const OpenHRP::StabilizerService::StrSequence& jnames)
+{
+	for(size_t i=0; i < jnames.length(); i++){
+		m_stabilizer->setActiveJoint(jnames[i]);
+	}
 }
 
 void StabilizerService_impl::getParameter(OpenHRP::StabilizerService::stParam_out i_param)
