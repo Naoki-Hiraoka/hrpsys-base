@@ -272,6 +272,10 @@ module OpenHRP
       double mcs_qactv_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of actual torque [Hz]
       double mcs_acttauv_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of coil temperature [Hz]
+      double mcs_coiltemp_cutoff_freq;
+      /// Cutoff frequency of LPF in calculation of surface temperature [Hz]
+      double mcs_surfacetemp_cutoff_freq;
       /// is joint enable
       BoolSequence is_joint_enable;
       /// tau weight

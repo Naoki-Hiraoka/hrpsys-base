@@ -398,6 +398,7 @@ class HrpsysConfigurator(object):
             connectPorts(self.abc.port("walkingStates"), self.st.port("walkingStates"))
             connectPorts(self.abc.port("sbpCogOffset"), self.st.port("sbpCogOffset"))
             connectPorts(self.abc.port("toeheelRatio"), self.st.port("toeheelRatio"))
+            connectPorts(self.rh.port("pgain"), self.st.port("pgainIn"))
             if self.es:
                 connectPorts(self.st.port("emergencySignal"), self.es.port("emergencySignal"))
             connectPorts(self.st.port("emergencySignal"), self.abc.port("emergencySignal"))
@@ -409,6 +410,9 @@ class HrpsysConfigurator(object):
                 connectPorts(self.rfu.port("refFootOriginExtMomentIsHoldValue"), self.abc.port("refFootOriginExtMomentIsHoldValue"))
             if self.octd:
                 connectPorts(self.abc.port("contactStates"), self.octd.port("contactStates"))
+            if self.te:
+                connectPorts(self.te.port("tempOut"), self.st.port("tempIn"))
+                connectPorts(self.te.port("surfacetempOut"), self.st.port("surfacetempIn"))
             if rtm.findPort(self.rh.ref, "tau") != None:
                 connectPorts(self.rh.port("tau"), self.st.port("acttau"))
 

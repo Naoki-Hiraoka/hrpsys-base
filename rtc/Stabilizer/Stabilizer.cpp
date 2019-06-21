@@ -76,6 +76,8 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_walkingStatesIn("walkingStates", m_walkingStates),
     m_sbpCogOffsetIn("sbpCogOffset", m_sbpCogOffset),
     m_pgainIn("pgainIn",m_pgain),
+    m_tempIn("tempIn",m_temp),
+    m_surfacetempIn("surfacetempIn",m_surfacetemp),
     m_qRefOut("q", m_qRef),
     m_tauOut("tau", m_tau),
     m_zmpOut("zmp", m_zmp),
@@ -145,6 +147,8 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addInPort("walkingStates", m_walkingStatesIn);
   addInPort("sbpCogOffset", m_sbpCogOffsetIn);
   addInPort("pgainIn", m_pgainIn);
+  addInPort("tempIn", m_tempIn);
+  addInPort("surfacetempIn", m_surfacetempIn);
 
   // Set OutPort buffer
   addOutPort("q", m_qRefOut);
@@ -691,6 +695,12 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
   if (m_pgainIn.isNew()) {
     m_pgainIn.read();
   }
+  if (m_tempIn.isNew()) {
+    m_tempIn.read();
+  }
+  if (m_surfacetempIn.isNew()) {
+    m_surfacetempIn.read();
+  }
 
   if (is_legged_robot) {
     getCurrentParameters();
@@ -950,6 +960,8 @@ void Stabilizer::getActualParameters ()
                                                              act_moment_sen/*sensor系,sensorまわり*/,
                                                              act_contact_states,
                                                              contact_decision_threshold,
+                                                             m_temp,
+                                                             m_surfacetemp,
                                                              act_cog/*refworld系*/,
                                                              act_cogvel/*refworld系*/,
                                                              act_force_eef/*eef系*/,

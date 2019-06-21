@@ -44,6 +44,8 @@ public:
 
                              ref_p(hrp::Vector3::Zero()),
                              ref_R(hrp::Matrix33::Identity()),
+                             ref_p_origin(hrp::Vector3::Zero()),
+                             ref_R_origin(hrp::Matrix33::Identity()),
                              ref_force(hrp::Vector3::Zero()),
                              ref_force_eef(hrp::Vector3::Zero()),
                              ref_moment(hrp::Vector3::Zero()),
@@ -51,6 +53,8 @@ public:
                              ref_contact_state(false),
                              act_p(hrp::Vector3::Zero()),
                              act_R(hrp::Matrix33::Identity()),
+                             act_p_origin(hrp::Vector3::Zero()),
+                             act_R_origin(hrp::Matrix33::Identity()),
                              act_force_filter(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, dt, hrp::Vector3::Zero())),
                              act_force(hrp::Vector3::Zero()),
                              act_force_eef(hrp::Vector3::Zero()),
@@ -59,8 +63,8 @@ public:
                              act_moment_eef(hrp::Vector3::Zero()),
                              act_contact_state(false),
                              prev_act_contact_state(false),
-                             cur_p(hrp::Vector3::Zero()),
-                             cur_R(hrp::Matrix33::Identity()),
+                             cur_p_origin(hrp::Vector3::Zero()),
+                             cur_R_origin(hrp::Matrix33::Identity()),
                              cur_force_eef(hrp::Vector3::Zero()),
                              cur_moment_eef(hrp::Vector3::Zero()),
                              d_foot_pos(hrp::Vector3::Zero()),
@@ -585,21 +589,21 @@ public:
 
     //stで使用
     double dt;
-    hrp::Vector3 ref_p/*refworld系*/;
-    hrp::Matrix33 ref_R/*refworld系*/;
+    hrp::Vector3 ref_p/*refworld系*/, ref_p_origin/*ref_footorigin系*/;
+    hrp::Matrix33 ref_R/*refworld系*/, ref_R_origin/*ref_footorigin系*/;
     hrp::Vector3 ref_force/*refworld系*/, ref_force_eef/*eef系*/;
     hrp::Vector3 ref_moment/*refworld系,eefまわり*/, ref_moment_eef/*eef系,eefまわり*/;
     bool ref_contact_state;
-    hrp::Vector3 act_p/*actworld系*/, act_p_origin/*act_cogorigin系*/;
-    hrp::Matrix33 act_R/*actworld系*/, act_R_origin/*act_cogorigin系*/;
+    hrp::Vector3 act_p/*actworld系*/, act_p_origin/*act_footorigin系*/;
+    hrp::Matrix33 act_R/*actworld系*/, act_R_origin/*act_footorigin系*/;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > act_force_filter/*sensor系*/;
     hrp::Vector3 act_force/*actworld系*/, act_force_eef/*eef系*/;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > act_moment_filter/*sensor系,sensorまわり*/;
     hrp::Vector3 act_moment/*actworld系,eefまわり*/, act_moment_eef/*eef系,eefまわり*/;
     bool act_contact_state;
     bool prev_act_contact_state;
-    hrp::Vector3 cur_p/*refworld系*/;
-    hrp::Matrix33 cur_R/*refworld系*/;
+    hrp::Vector3 cur_p_origin/*act_footorigin系*/;
+    hrp::Matrix33 cur_R_origin/*act_footorigin系*/;
     hrp::Vector3 cur_force_eef/*eef系*/;
     hrp::Vector3 cur_moment_eef/*eef系,eefまわり*/;
     hrp::Vector3 d_foot_pos/*eef系*/;
