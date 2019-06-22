@@ -757,22 +757,15 @@ public:
                     }else{
                         squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
                     }
-                    Wtau(i,i) = tau_weight / squaremaxtau;
+                    Wtau(i,i) = 1.0 / squaremaxtau;
                 }
             }
 
-            H += dtau.transpose() * Wtau * dtau;
-            g += acttauv.transpose() * Wtau * dtau;
+            H += dtau.transpose() * (tau_weight * Wtau) * dtau;
+            g += acttauv.transpose() * (tau_weight * Wtau) * dtau;
 
             //velocity
-            hrp::dmatrix Wtauvel = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
-            for (size_t i = 0; i < m_robot->numJoints(); i++){
-                if(is_joint_enable[i]){
-                    Wtauvel(i,i) = tauvel_weight / dt;
-                }
-            }
-
-            H += dtau.transpose() * Wtauvel * dtau;
+            H += dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau;
 
             //min max
             hrp::dvector taumin=hrp::dvector::Zero(m_robot->numJoints());
@@ -805,15 +798,15 @@ public:
                 std::cerr << "dtau" << std::endl;
                 std::cerr << dtau << std::endl;
                 std::cerr << "Wtau" << std::endl;
-                std::cerr << Wtau << std::endl;
+                std::cerr << (tau_weight * Wtau) << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dtau.transpose() * Wtau * dtau <<std::endl;
+                std::cerr << dtau.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << acttauv.transpose() * Wtau * dtau <<std::endl;
+                std::cerr << acttauv.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
                 std::cerr << "Wtauvel" << std::endl;
-                std::cerr << Wtauvel << std::endl;
+                std::cerr << tauvel_weight / dt * Wtau << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dtau.transpose() * Wtauvel * dtau <<std::endl;
+                std::cerr << dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau <<std::endl;
                 std::cerr << "taumin" << std::endl;
                 std::cerr << taumin << std::endl;
                 std::cerr << "taumax" << std::endl;
@@ -845,12 +838,7 @@ public:
             g += (Wforceg.transpose() * force_weight) * dF;
 
             //velocity
-            hrp::dmatrix Wforcevel = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
-            for (size_t i = 0; i < 6*support_eef.size(); i++){
-                Wforcevel(i,i) = forcevel_weight / dt;
-            }
-
-            H += dF.transpose() * Wforcevel * dF;
+            H += dF.transpose() * (forcevel_weight / dt * Wforce) * dF;
 
             //min max
             for(size_t i = 0 ; i < support_eef.size() ; i++){
@@ -887,9 +875,9 @@ public:
                 std::cerr << "g" << std::endl;
                 std::cerr << (Wforceg.transpose() * force_weight) * dF <<std::endl;
                 std::cerr << "Wforcevel" << std::endl;
-                std::cerr << Wforcevel << std::endl;
+                std::cerr << forcevel_weight / dt * Wforce << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dF.transpose() * Wforcevel * dF <<std::endl;
+                std::cerr << dF.transpose() * (forcevel_weight / dt * Wforce) * dF <<std::endl;
             }
         }
 
@@ -1024,7 +1012,7 @@ public:
         }
 
         /*****************************************************************/
-        //reference q
+        //redundant q
         {
             hrp::dmatrix Wq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
@@ -1334,11 +1322,15 @@ public:
 
             std::cerr << "acttau" << std::endl;
             std::cerr << acttauv << std::endl;
+            std::cerr << "dtau" << std::endl;
+            std::cerr << dtau * command_dq << std::endl;
             std::cerr << "nexttau" << std::endl;
             std::cerr << acttauv + dtau * command_dq << std::endl;
 
             std::cerr << "actwrench" << std::endl;
             std::cerr << actwrenchv << std::endl;
+            std::cerr << "dwrench" << std::endl;
+            std::cerr << dF * command_dq << std::endl;
             std::cerr << "nextwrench" << std::endl;
             std::cerr << actwrenchv + dF * command_dq << std::endl;
 
