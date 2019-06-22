@@ -68,12 +68,14 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
             Jcnt(i,j) = 0;
         }
     }
+
     for(size_t i = 0 ; i < 3; i++){
         for(size_t j = 3 ; j < 6; j++){
             Jgrav(i,j) = 0;
             Jcnt(i,j) = 0;
         }
     }
+
     for(size_t i = 3 ; i < 6; i++){
         for(size_t j = 0 ; j < 3; j++){
             Jgrav(i,j) = g.dot( hrp::hat(rootaxis[i]) * rootaxis[j] * m_robot->rootLink()->subm);
@@ -102,6 +104,7 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
             Jcnt(i,6+j) = 0;
         }
     }
+
     for(size_t i = 3 ; i < 6; i++){
         for(size_t j = 0 ; j < coljoints.size(); j++){//j = j+6
             Jgrav(i,6+j) = g.dot( hrp::hat(rootaxis[i]) * hrp::hat(coljoints[j]->R * coljoints[j]->a) * (coljoints[j]->submwc - coljoints[j]->p * coljoints[j]->subm));
@@ -132,6 +135,7 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
             Jcnt(6+i,j) = 0;
         }
     }
+
     for(size_t i = 0 ; i < rowjoints.size(); i++){//i = i+6
         for(size_t j = 3 ; j < 6; j++){
             Jgrav(6+i,j) = g.dot( hrp::hat(rootaxis[j]) * hrp::hat(rowjoints[i]->R * rowjoints[i]->a) * (rowjoints[i]->submwc - rowjoints[i]->p * rowjoints[i]->subm));

@@ -35,7 +35,7 @@ public:
         const_robot = m_robot;
         joints.resize(m_robot->numJoints());
         for(size_t i = 0; i < m_robot->numJoints(); i++){
-            joints.push_back(m_robot->joint(i));
+            joints[i]=m_robot->joint(i);
         }
 
         //name, link_name, ?, localpx, localpy, localpz, localRx, localRy, localRz, localRangle
@@ -110,8 +110,6 @@ public:
         act_total_force = hrp::Vector3::Zero();
         act_total_moment = hrp::Vector3::Zero();
 
-        d_cog = hrp::Vector3::Zero();
-        d_cogvel = hrp::Vector3::Zero();
         prev_P = hrp::Vector3::Zero();
         prev_L = hrp::Vector3::Zero();
         act_footorigin_p = hrp::Vector3::Zero();
@@ -549,6 +547,10 @@ public:
                                  std::vector<hrp::Vector3>& log_d_foot_rpy/*eef系,eefまわり*/,
                                  hrp::Vector3& log_d_cog_pos/*refworld系*/
                                  ) {
+        if(debugloop){
+            std::cerr << "calcMultiContactControl start" << std::endl;
+        }
+
         coil::Guard<coil::Mutex> guard(m_mutex);
         const hrp::Vector3 gravity(0, 0, 9.80665);
 
@@ -564,9 +566,18 @@ public:
 
         std::vector<boost::shared_ptr<EndEffector> > cnt_enable_eef;
         for(size_t i = 0; i < eefnum; i++){
-            if(cnt_enable_eef[i]->is_ik_enable || cnt_enable_eef[i]->act_contact_state){
-                cnt_enable_eef.push_back(cnt_enable_eef[i]);
+            if(endeffector[i]->is_ik_enable || endeffector[i]->act_contact_state){
+                cnt_enable_eef.push_back(endeffector[i]);
             }
+        }
+
+        if(debugloop){
+            std::cerr << "cnt_enable_eef" <<std::endl;
+            for(size_t i=0; i<cnt_enable_eef.size(); i++){
+                std::cerr << cnt_enable_eef[i]->name << std::endl;
+            }
+            std::cerr << "isparent" <<std::endl;
+            std::cerr << isparent <<std::endl;
         }
 
         hrp::dmatrix Jgrav;
@@ -579,6 +590,13 @@ public:
                            joints,
                            isparent,
                            gravity);
+
+        if(debugloop){
+            std::cerr << "Jgrav" <<std::endl;
+            std::cerr << Jgrav <<std::endl;
+            std::cerr << "Jcnt" <<std::endl;
+            std::cerr << Jcnt <<std::endl;
+        }
 
         hrp::dmatrix K = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
         for(size_t i = 0; i < m_robot->numJoints(); i++){
@@ -744,7 +762,7 @@ public:
             }
 
             H += dtau.transpose() * Wtau * dtau;
-            g += acttauv * Wtau * dtau;
+            g += acttauv.transpose() * Wtau * dtau;
 
             //velocity
             hrp::dmatrix Wtauvel = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
@@ -791,7 +809,7 @@ public:
                 std::cerr << "H" << std::endl;
                 std::cerr << dtau.transpose() * Wtau * dtau <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << acttauv * Wtau * dtau <<std::endl;
+                std::cerr << acttauv.transpose() * Wtau * dtau <<std::endl;
                 std::cerr << "Wtauvel" << std::endl;
                 std::cerr << Wtauvel << std::endl;
                 std::cerr << "H" << std::endl;
@@ -841,8 +859,8 @@ public:
                 hrp::dvector ub;
                 support_eef[i]->getContactConstraint(C,lb,ub);
                 As.push_back(C * dF.block(i*6,0,6,dF.cols()));
-                lbAs.push_back(lb-C*actwrenchv);
-                ubAs.push_back(ub-C*actwrenchv);
+                lbAs.push_back(lb-C*actwrenchv.block<6,1>(6*i,0));
+                ubAs.push_back(ub-C*actwrenchv.block<6,1>(6*i,0));
 
                 if(debugloop){
                     std::cerr << "C" << std::endl;
@@ -915,8 +933,8 @@ public:
                 }
             }
 
-            H += interactJ.transpose() * Wint * interactJ;
-            g += delta_interact_eef.transpose() * Wint * interactJ;
+            H += dqa.transpose() * interactJ.transpose() * Wint * interactJ * dqa;
+            g += delta_interact_eef.transpose() * Wint * interactJ * dqa;
 
             if(debugloop){
                 std::cerr << "interact eef" << std::endl;
@@ -925,9 +943,9 @@ public:
                 std::cerr << "delta_interact_eef" << std::endl;
                 std::cerr << delta_interact_eef << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << interactJ.transpose() * Wint * interactJ <<std::endl;
+                std::cerr << dqa.transpose() * interactJ.transpose() * Wint * interactJ * dqa<<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << delta_interact_eef.transpose() * Wint * interactJ <<std::endl;
+                std::cerr << delta_interact_eef.transpose() * Wint * interactJ * dqa <<std::endl;
             }
         }
 
@@ -940,7 +958,7 @@ public:
                 WP(i,i) = P_weight / dt;
             }
 
-            H += CM_J.transpose() * WP * CM_J;
+            H += dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa;
 
             //accleration
             hrp::dmatrix WPvel = hrp::dmatrix::Zero(3,3);
@@ -948,8 +966,8 @@ public:
                 WPvel(i,i) = Pvel_weight / std::pow(dt,2);
             }
 
-            H += CM_J.transpose() * WPvel * CM_J;
-            g += -prev_P.transpose() * WPvel * CM_J;
+            H += dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa;
+            g += -prev_P.transpose() * WPvel * CM_J * dqa;
 
             if(debugloop){
                 std::cerr << "centroid" << std::endl;
@@ -958,13 +976,13 @@ public:
                 std::cerr << "WP" << std::endl;
                 std::cerr << WP << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << CM_J.transpose() * WP * CM_J <<std::endl;
+                std::cerr <<  dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa <<std::endl;
                 std::cerr << "WPvel" << std::endl;
                 std::cerr << WPvel << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << CM_J.transpose() * WPvel * CM_J <<std::endl;
+                std::cerr << dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << -prev_P.transpose() * WPvel * CM_J <<std::endl;
+                std::cerr << -prev_P.transpose() * WPvel * CM_J * dqa <<std::endl;
             }
         }
 
@@ -977,7 +995,7 @@ public:
                 WL(i,i) = L_weight / dt;
             }
 
-            H += MO_J.transpose() * WL * MO_J;
+            H += dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa;
 
             //accleration
             hrp::dmatrix WLvel = hrp::dmatrix::Zero(3,3);
@@ -985,8 +1003,8 @@ public:
                 WLvel(i,i) = Lvel_weight / std::pow(dt,2);
             }
 
-            H += MO_J.transpose() * WLvel * MO_J;
-            g += -prev_L.transpose() * WLvel * MO_J;
+            H += dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa;
+            g += -prev_L.transpose() * WLvel * MO_J * dqa;
 
             if(debugloop){
                 std::cerr << "centroid" << std::endl;
@@ -995,13 +1013,13 @@ public:
                 std::cerr << "WL" << std::endl;
                 std::cerr << WL << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << MO_J.transpose() * WL * MO_J <<std::endl;
+                std::cerr << dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa <<std::endl;
                 std::cerr << "WLvel" << std::endl;
                 std::cerr << WLvel << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << MO_J.transpose() * WLvel * MO_J <<std::endl;
+                std::cerr << dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << -prev_L.transpose() * WLvel * MO_J <<std::endl;
+                std::cerr << -prev_L.transpose() * WLvel * MO_J * dqa <<std::endl;
             }
         }
 
@@ -1325,9 +1343,9 @@ public:
             std::cerr << actwrenchv + dF * command_dq << std::endl;
 
             std::cerr << "P" << std::endl;
-            std::cerr << CM_J * command_dq / dt << std::endl;
+            std::cerr << CM_J * dqa * command_dq / dt << std::endl;
             std::cerr << "L" << std::endl;
-            std::cerr << MO_J * command_dq / dt << std::endl;
+            std::cerr << MO_J * dqa * command_dq / dt << std::endl;
         }
 
         hrp::dvector cur_wrench = actwrenchv + dF * command_dq;
@@ -1337,15 +1355,30 @@ public:
         }
 
         /*****************************************************************/
-        hrp::dvector cur_intvel = interactJ * command_dq;
-        prev_P = CM_J * transition_smooth_gain * command_dq;
-        prev_L = MO_J * transition_smooth_gain * command_dq;
+        prev_P = CM_J * dqa * transition_smooth_gain * command_dq;
+        prev_L = MO_J * dqa * transition_smooth_gain * command_dq;
+
+        hrp::dmatrix eefJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*eefnum,6+m_robot->numJoints());
+        //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
+        for(size_t i=0;i<endeffector.size();i++){
+            eefJ.block<3,3>(i*6,0)= endeffector[i]->act_R/*actworld系*/.transpose();
+            eefJ.block<3,3>(i*6,3)= endeffector[i]->act_R/*actworld系*/.transpose() * - hrp::hat(endeffector[i]->act_p/*actworld系*/ - m_robot->rootLink()->p/*actworld系*/);
+            eefJ.block<3,3>(i*6+3,3)= endeffector[i]->act_R/*actworld系*/.transpose();
+            hrp::dmatrix JJ;
+            endeffector[i]->jpe->calcJacobian(JJ,endeffector[i]->localp);
+            JJ.block(0,0,3,JJ.cols()) = endeffector[i]->act_R/*actworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
+            JJ.block(3,0,3,JJ.cols()) = endeffector[i]->act_R/*actworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
+            for(size_t j = 0; j < endeffector[i]->jpe->numJoints(); j++){
+                eefJ.block<6,1>(i*6,6+endeffector[i]->jpe->joint(j)->jointId)=JJ.block<6,1>(0,j);
+            }
+        }
+        hrp::dvector eefvel = eefJ * dqa * command_dq;
         for(size_t i=0; i < eefnum; i++){
             endeffector[i]->d_foot_pos1/*eef系*/ = endeffector[i]->d_foot_pos;
             endeffector[i]->d_foot_rpy1/*eef系*/ = endeffector[i]->d_foot_rpy;
 
-            endeffector[i]->cur_p_origin = endeffector[i]->act_p_origin/*act_footorigin系*/ + endeffector[i]->act_R_origin/*act_footorigin系*/ * cur_intvel.block<3,1>(6*i,0)/*eef系*/;
-            endeffector[i]->cur_R_origin = endeffector[i]->act_R_origin/*act_footorigin系*/ * hrp::rotFromRpy(cur_intvel.block<3,1>(6*i+3,0))/*eef系*/;
+            endeffector[i]->cur_p_origin = endeffector[i]->act_p_origin/*act_footorigin系*/ + endeffector[i]->act_R_origin/*act_footorigin系*/ * eefvel.block<3,1>(6*i,0)/*eef系*/;
+            endeffector[i]->cur_R_origin = endeffector[i]->act_R_origin/*act_footorigin系*/ * hrp::rotFromRpy(eefvel.block<3,1>(6*i+3,0))/*eef系*/;
 
             endeffector[i]->d_foot_pos/*eef系*/ = endeffector[i]->ref_R_origin.transpose() * (endeffector[i]->cur_p_origin - endeffector[i]->ref_p_origin);
             endeffector[i]->d_foot_rpy/*eef系*/ = hrp::rpyFromRot(endeffector[i]->ref_R_origin.transpose() * endeffector[i]->cur_R_origin);
@@ -1400,14 +1433,15 @@ public:
         //m_currentBaseRpy
         //m_currentbasePos
         //m_emergencySignal
+
+        if(debugloop){
+            std::cerr << "calcMultiContactControl end" << std::endl;
+        }
     }
 
     void sync_2_st(){//初期化
         std::cerr << "[MCS] sync_2_st"<< std::endl;
 
-        d_cog = hrp::Vector3::Zero();
-        d_cogvel = hrp::Vector3::Zero();
-        
         qcurv = qrefv;
         cur_root_p = ref_root_p;
         cur_root_R = ref_root_R;
@@ -1416,7 +1450,6 @@ public:
             prevpassive[i] = false;
             sync2activecnt[i] = 0.0;
             sync2referencecnt[i] = 0.0;
-
         }
 
         for(size_t i=0; i< eefnum;i++){
@@ -1444,9 +1477,9 @@ public:
                 is_joint_enable[i] = i_stp.is_joint_enable[i];
             }
         }
-        std::cerr << "[" << instance_name << "]  mcs_passive_torquedirection = [" ;
+        std::cerr << "[" << instance_name << "]  is_joint_enable = [" ;
         for(size_t i = 0 ; i < m_robot->numJoints(); i++){
-            std::cerr<< mcs_passive_torquedirection[i] << ", ";
+            std::cerr<< is_joint_enable[i] << ", ";
         }
         std::cerr << "]" <<std::endl;
 
@@ -1726,9 +1759,6 @@ private:
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > coiltemp_filter;
     hrp::dvector surfacetemp;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > surfacetemp_filter;
-
-    hrp::Vector3 d_cog/*refworld系*/;
-    hrp::Vector3 d_cogvel/*refworld系*/;
 
     hrp::Vector3 prev_P/*actworld系*/, prev_L/*actworld系,cogまわり*/;
 
