@@ -159,9 +159,10 @@ public:
         std::cerr << std::endl;
 
         // set temperature of environment
-        double ambientTemp = 25.0;
         if (prop["ambient_tmp"] != "") {
             coil::stringTo(ambientTemp, prop["ambient_tmp"].c_str());
+        }else{
+            ambientTemp = 25.0;
         }
         std::cerr << "[" << instance_name << "] : ambient temperature: " << ambientTemp << std::endl;
 
@@ -255,9 +256,8 @@ public:
 
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
-        
     }
-    
+
     void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv) {
         //前回の指令値を記憶する
         qcurv = _qcurv;
@@ -732,15 +732,14 @@ public:
             hrp::dmatrix Wtau = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
                 if(is_joint_enable[i]){
-                    double maxtau = m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                    if(coiltemp[i]>motorTemperatureLimit[i]){
-                        double targetsqureTauMax = (coiltemp[i] - surfacetemp[i]) / motorHeatParams[i].R1 / motorHeatParams[i].currentCoeffs;
-                        if(targetsqureTauMax>0) maxtau = std::min(std::sqrt(targetsqureTauMax),maxtau);
+                    double squaremaxtau = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
+                    double targetsqureTauMax = (motorTemperatureLimit[i] - ambientTemp - motorTempPredParams[i][1] * (motorTempPredParams[i][2] * ambientTemp + motorTempPredParams[i][3] * coiltemp[i] + motorTempPredParams[i][4]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][6] * temp_safe_time) - motorTempPredParams[i][7] * (motorTempPredParams[i][8] * ambientTemp + motorTempPredParams[i][9] * coiltemp[i] + motorTempPredParams[i][10]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][12] * temp_safe_time)) / (motorTempPredParams[i][0] + motorTempPredParams[i][1] * motorTempPredParams[i][5] * std::exp(motorTempPredParams[i][6] * temp_safe_time) + motorTempPredParams[i][7] * motorTempPredParams[i][11] * std::exp(motorTempPredParams[i][12] * temp_safe_time));
+                    if(targetsqureTauMax>0 && targetsqureTauMax > squaremaxtau*1e-4){
+                        squaremaxtau = std::min(targetsqureTauMax,squaremaxtau);
                     }else{
-                        //TODO
-                        
+                        squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
                     }
-                    Wtau(i,i) = tau_weight / std::pow(maxtau,2);
+                    Wtau(i,i) = tau_weight / squaremaxtau;
                 }
             }
 
@@ -1676,7 +1675,8 @@ private:
     std::map<std::string, size_t> endeffector_index_map;
     std::vector<MotorHeatParam> motorHeatParams;
     std::vector<std::vector<double> > motorTempPredParams;
-    hrp::dvector motorTemperatureLimit;
+    std::vector<double> motorTemperatureLimit;
+    double ambientTemp;
 
     hrp::BodyPtr const_robot;
     std::vector<hrp::Link*> joints;
