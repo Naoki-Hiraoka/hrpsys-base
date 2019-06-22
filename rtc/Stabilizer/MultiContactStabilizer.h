@@ -757,6 +757,7 @@ public:
         {
             //value
             hrp::dmatrix Wtau = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
+            hrp::dvector taumaxv = hrp::dvector::Zero(m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
                 if(is_joint_enable[i]){
                     double squaremaxtau = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
@@ -767,6 +768,7 @@ public:
                         squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
                     }
                     Wtau(i,i) = 1.0 / squaremaxtau;
+                    taumaxv[i] = std::sqrt(squaremaxtau);
                 }
             }
 
@@ -804,6 +806,8 @@ public:
                 std::cerr << "torque" << std::endl;
                 std::cerr << "acttauv" << std::endl;
                 std::cerr << acttauv << std::endl;
+                std::cerr << "taumaxv" << std::endl;
+                std::cerr << taumaxv << std::endl;
                 std::cerr << "Wtau" << std::endl;
                 std::cerr << (tau_weight * Wtau) << std::endl;
                 std::cerr << "H" << std::endl;

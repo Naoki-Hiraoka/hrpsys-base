@@ -199,12 +199,12 @@ void calcTorquejacobian(hrp::dmatrix& Jgrav,//output
                     case 0: //(if i, m are in different path)
                         Jcnt(6+i,6+j) += 0;
                         break;
-                    case 1: //(if j=m)
-                    case 2: //(if root->j->m)
+                    case 1: //(if i=m)
+                    case 2: //(if root->i->m)
                         Jcnt(6+i,6+j) += eef[m]->act_force.dot( hrp::hat(coljoints[j]->R * coljoints[j]->a) * hrp::hat(rowjoints[i]->R * rowjoints[i]->a) * (target->p + target->R * eef[m]->localp - rowjoints[i]->p));
                         Jcnt(6+i,6+j) += eef[m]->act_moment.dot( hrp::hat(coljoints[j]->R * coljoints[j]->a) * rowjoints[i]->R * rowjoints[i]->a);
                         break;
-                    case 3: //(if root->m->j)
+                    case 3: //(if root->m->i)
                         Jcnt(6+i,6+j) += 0;
                         break;
                     default:
