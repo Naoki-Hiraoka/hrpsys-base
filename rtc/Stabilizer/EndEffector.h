@@ -174,11 +174,7 @@ public:
         switch(contact_type) {
         case SURFACE:
             {
-                int constraint_num = 7;
-                if(!act_outside_upper_xcop_state)constraint_num++;
-                if(!act_outside_lower_xcop_state)constraint_num++;
-                if(!act_outside_upper_ycop_state)constraint_num++;
-                if(!act_outside_lower_ycop_state)constraint_num++;
+                int constraint_num = 11;
                 C = hrp::dmatrix::Zero(constraint_num,6);
                 lb = hrp::dvector::Zero(constraint_num);
                 ub = hrp::dvector::Zero(constraint_num);
@@ -221,36 +217,30 @@ public:
                 constraint_idx++;
 
                 //xCOP
-                if(!act_outside_upper_xcop_state){
-                    C(constraint_idx,4)= 1;
-                    C(constraint_idx,2)= act_upper_cop_x_margin;
-                    lb[constraint_idx] = 0;
-                    ub[constraint_idx] = 1e10;
-                    constraint_idx++;
-                }
-                if(!act_outside_lower_xcop_state){
-                    C(constraint_idx,4)= -1;
-                    C(constraint_idx,2)= -act_lower_cop_x_margin;
-                    lb[constraint_idx] = 0;
-                    ub[constraint_idx] = 1e10;
-                    constraint_idx++;
-                }
+                C(constraint_idx,4)= 1;
+                C(constraint_idx,2)= act_upper_cop_x_margin;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+
+                C(constraint_idx,4)= -1;
+                C(constraint_idx,2)= -act_lower_cop_x_margin;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
 
                 //yCOP
-                if(!act_outside_upper_ycop_state){
-                    C(constraint_idx,3)= -1;
-                    C(constraint_idx,2)= act_upper_cop_y_margin;
-                    lb[constraint_idx] = 0;
-                    ub[constraint_idx] = 1e10;
-                    constraint_idx++;
-                }
-                if(!act_outside_lower_ycop_state){
-                    C(constraint_idx,3)= 1;
-                    C(constraint_idx,2)= -act_lower_cop_y_margin;
-                    lb[constraint_idx] = 0;
-                    ub[constraint_idx] = 1e10;
-                    constraint_idx++;
-                }
+                C(constraint_idx,3)= -1;
+                C(constraint_idx,2)= act_upper_cop_y_margin;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
+
+                C(constraint_idx,3)= 1;
+                C(constraint_idx,2)= -act_lower_cop_y_margin;
+                lb[constraint_idx] = 0;
+                ub[constraint_idx] = 1e10;
+                constraint_idx++;
 
                 //回転摩擦
                 C(constraint_idx,5)= -1;
@@ -353,14 +343,10 @@ public:
                 getWrenchWeightforce(H,g,1,act_force_eef[1],std::max(friction_coefficient,act_friction_coefficient_y/3.0));
 
                 //xCOP
-                if(!act_outside_upper_xcop_state && !act_outside_lower_xcop_state){
-                    getWrenchWeightmoment(H,g,4,act_moment_eef[1],std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0,std::max(std::abs(act_upper_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0),std::abs(act_lower_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0))/3.0),-(upper_cop_x_margin+lower_cop_x_margin)/2.0);
-                }
+                getWrenchWeightmoment(H,g,4,act_moment_eef[1],std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0,std::max(std::abs(act_upper_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0),std::abs(act_lower_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0))/3.0),-(upper_cop_x_margin+lower_cop_x_margin)/2.0);
 
                 //yCOP
-                if(!act_outside_upper_ycop_state && !act_outside_lower_ycop_state){
-                    getWrenchWeightmoment(H,g,3,act_moment_eef[0],std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0,std::max(std::abs(act_upper_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0),std::abs(act_lower_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0))/3.0),(upper_cop_y_margin+lower_cop_y_margin)/2.0);
-                }
+                getWrenchWeightmoment(H,g,3,act_moment_eef[0],std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0,std::max(std::abs(act_upper_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0),std::abs(act_lower_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0))/3.0),(upper_cop_y_margin+lower_cop_y_margin)/2.0);
 
                 //回転摩擦
                 getWrenchWeightforce(H,g,5,act_moment_eef[2],std::max(rotation_friction_coefficient,act_rotation_friction_coefficient/3.0));

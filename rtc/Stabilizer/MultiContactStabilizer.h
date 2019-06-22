@@ -708,6 +708,15 @@ public:
             }
         }
 
+        if(debugloop){
+            std::cerr << "dF" << std::endl;
+            std::cerr << dF << std::endl;
+            std::cerr << "dqa" << std::endl;
+            std::cerr << dqa << std::endl;
+            std::cerr << "dtau" << std::endl;
+            std::cerr << dtau << std::endl;
+        }
+
         // hrp::dmatrix select_matrix = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
         // hrp::dmatrix select_matrix_bar = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
         // for(size_t i = 0 ; i < support_eef.size() ; i++){
@@ -795,8 +804,6 @@ public:
                 std::cerr << "torque" << std::endl;
                 std::cerr << "acttauv" << std::endl;
                 std::cerr << acttauv << std::endl;
-                std::cerr << "dtau" << std::endl;
-                std::cerr << dtau << std::endl;
                 std::cerr << "Wtau" << std::endl;
                 std::cerr << (tau_weight * Wtau) << std::endl;
                 std::cerr << "H" << std::endl;
@@ -864,8 +871,6 @@ public:
                 std::cerr << "wrench" << std::endl;
                 std::cerr << "actwrenchv" << std::endl;
                 std::cerr << actwrenchv << std::endl;
-                std::cerr << "dF" << std::endl;
-                std::cerr << dF << std::endl;
                 std::cerr << "Wforce" << std::endl;
                 std::cerr << Wforce << std::endl;
                 std::cerr << "Wforceg" << std::endl;
@@ -1319,6 +1324,10 @@ public:
             std::cerr << qp_solved << std::endl;
             std::cerr << "command_dq" << std::endl;
             std::cerr << command_dq << std::endl;
+            std::cerr << "qact" << std::endl;
+            std::cerr << qactv << std::endl;
+            std::cerr << "dqact" << std::endl;
+            std::cerr << dqa * command_dq << std::endl;
 
             std::cerr << "acttau" << std::endl;
             std::cerr << acttauv << std::endl;
