@@ -631,7 +631,7 @@ public:
         M.block(0,6+m_robot->numJoints(),6+m_robot->numJoints(),supportJ.rows()) += -supportJ.transpose();
 
         hrp::dmatrix Minv;
-        hrp::calcPseudoInverse(M, Minv,1.0e-2/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
+        hrp::calcPseudoInverse(M, Minv,1.0e-12/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
 
         hrp::dmatrix r = hrp::dmatrix::Zero(6+m_robot->numJoints(),m_robot->numJoints());
         r.block(6,0,m_robot->numJoints(),m_robot->numJoints()) = K;
@@ -711,9 +711,15 @@ public:
         if(debugloop){
             std::cerr << "K" << std::endl;
             std::cerr << K << std::endl;
+            Eigen::EigenSolver<hrp::dmatrix> es(M);
+            std::cerr << "eigen of M" << std::endl;
+            std::cerr << es.eigenvalues() << std::endl;
             std::cerr << "M" << std::endl;
             std::cerr << M << std::endl;
-
+            std::cerr << "Minv" << std::endl;
+            std::cerr << Minv << std::endl;
+            std::cerr << "M*Minv" << std::endl;
+            std::cerr << M*Minv << std::endl;
             std::cerr << "dF" << std::endl;
             std::cerr << dF << std::endl;
             std::cerr << "dqa" << std::endl;
