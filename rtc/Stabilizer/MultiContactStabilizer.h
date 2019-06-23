@@ -631,7 +631,7 @@ public:
         M.block(0,6+m_robot->numJoints(),6+m_robot->numJoints(),supportJ.rows()) += -supportJ.transpose();
 
         hrp::dmatrix Minv;
-        hrp::calcPseudoInverse(M, Minv,1.0e-3/*最大固有値の何倍以下の固有値を0とみなすか*/);
+        hrp::calcPseudoInverse(M, Minv,1.0e-2/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
 
         hrp::dmatrix r = hrp::dmatrix::Zero(6+m_robot->numJoints(),m_robot->numJoints());
         r.block(6,0,m_robot->numJoints(),m_robot->numJoints()) = K;
@@ -709,6 +709,11 @@ public:
         }
 
         if(debugloop){
+            std::cerr << "K" << std::endl;
+            std::cerr << K << std::endl;
+            std::cerr << "M" << std::endl;
+            std::cerr << M << std::endl;
+
             std::cerr << "dF" << std::endl;
             std::cerr << dF << std::endl;
             std::cerr << "dqa" << std::endl;
@@ -1347,10 +1352,15 @@ public:
             std::cerr << "nextwrench" << std::endl;
             std::cerr << actwrenchv + dF * command_dq << std::endl;
 
-            std::cerr << "P" << std::endl;
+            std::cerr << "nextP" << std::endl;
             std::cerr << CM_J * dqa * command_dq / dt << std::endl;
-            std::cerr << "L" << std::endl;
+            std::cerr << "nextL" << std::endl;
             std::cerr << MO_J * dqa * command_dq / dt << std::endl;
+
+            std::cerr << "supportvel" << std::endl;
+            std::cerr << supportJ * dqa * command_dq << std::endl;
+            std::cerr << "interactvel" << std::endl;
+            std::cerr << interactJ * dqa * command_dq << std::endl;
         }
 
         hrp::dvector cur_wrench = actwrenchv + dF * command_dq;
@@ -1389,9 +1399,9 @@ public:
             endeffector[i]->d_foot_rpy/*eef系*/ = hrp::rpyFromRot(endeffector[i]->ref_R_origin.transpose() * endeffector[i]->cur_R_origin);
 
             if(debugloop){
-                std::cerr << "d_foot_pos" << std::endl;
+                std::cerr << "d_foot_pos " << endeffector[i]->name << std::endl;
                 std::cerr << endeffector[i]->d_foot_pos << std::endl;
-                std::cerr << "d_foot_rpy" << std::endl;
+                std::cerr << "d_foot_rpy " << endeffector[i]->name << std::endl;
                 std::cerr << endeffector[i]->d_foot_rpy << std::endl;
             }
         }
