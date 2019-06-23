@@ -111,6 +111,7 @@ module OpenHRP
         double lower_cop_y_margin;
         double max_fz;
         double min_fz;
+        double target_max_fz;
         /// interact weight
         double pos_interact_weight;
         /// interact weight

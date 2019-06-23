@@ -20,6 +20,7 @@ public:
                              lower_cop_y_margin(-0.05),
                              max_fz(1000.0),
                              min_fz(25.0),
+                             target_max_fz(1000.0),
                              pos_interact_weight(1.0),
                              rot_interact_weight(1.0),
                              M_p(10),
@@ -333,8 +334,8 @@ public:
         case SURFACE:
             {
                 //垂直抗力
-                H(2,2) += 1.0 / std::pow(max_fz,2);
-                g[2] += act_force_eef[2] / max_fz / max_fz;
+                H(2,2) += 1.0 / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
+                g[2] += act_force_eef[2] / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
 
                 //x摩擦
                 getWrenchWeightforce(H,g,0,act_force_eef[0],std::max(friction_coefficient,act_friction_coefficient_x/3.0));
@@ -355,8 +356,8 @@ public:
         case POINT:
             {
                 //垂直抗力
-                H(2,2) += 1.0 / std::pow(max_fz,2);
-                g[2] += act_force_eef[2] / max_fz / max_fz;
+                H(2,2) += 1.0 / std::pow(target_max_fz,2);
+                g[2] += act_force_eef[2] / target_max_fz / target_max_fz;
 
                 //x摩擦
                 getWrenchWeightforce(H,g,0,act_force_eef[0],friction_coefficient);
@@ -422,6 +423,9 @@ public:
 
         min_fz = i_ccp.min_fz;
         std::cerr << "[" << instance_name << "]  " << name <<  " min_fz = " << min_fz << std::endl;
+
+        target_max_fz = i_ccp.target_max_fz;
+        std::cerr << "[" << instance_name << "]  " << name <<  " target_max_fz = " << target_max_fz << std::endl;
 
         pos_interact_weight = i_ccp.pos_interact_weight;
         std::cerr << "[" << instance_name << "]  pos_interact_weight = " << pos_interact_weight << std::endl;
@@ -502,6 +506,7 @@ public:
         i_ccp.lower_cop_y_margin = lower_cop_y_margin;
         i_ccp.max_fz = max_fz;
         i_ccp.min_fz = min_fz;
+        i_ccp.target_max_fz = target_max_fz;
         i_ccp.pos_interact_weight = pos_interact_weight;
         i_ccp.rot_interact_weight = rot_interact_weight;
         i_ccp.M_p = M_p;
@@ -545,6 +550,7 @@ public:
     double lower_cop_y_margin;
     double max_fz;
     double min_fz;
+    double target_max_fz;
     //遊脚インピーダンス
     bool is_ik_enable;//遊脚(!ref_contact)時に位置を制御するか,遊脚時に反力を考慮するか
     double pos_interact_weight;

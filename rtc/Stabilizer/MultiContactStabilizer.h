@@ -514,6 +514,11 @@ public:
         log_act_base_rpy/*act_footorigin系*/ = hrp::rpyFromRot(act_footorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
         
         if(debugloop){
+            for(size_t i = 0; i < eefnum ; i++){
+                std::cerr << "act_force_momnet_eef " << endeffector[i]->name <<std::endl;
+                std::cerr << endeffector[i]->act_force_eef <<std::endl;
+                std::cerr << endeffector[i]->act_moment_eef <<std::endl;
+            }
             std::cerr << "act_root_R" <<std::endl;
             std::cerr << act_root_R <<std::endl;
             std::cerr << "act_cog" <<std::endl;
@@ -1376,8 +1381,8 @@ public:
         }
 
         /*****************************************************************/
-        prev_P = CM_J * dqa * transition_smooth_gain * command_dq;
-        prev_L = MO_J * dqa * transition_smooth_gain * command_dq;
+        prev_P = CM_J * dqa * command_dq;
+        prev_L = MO_J * dqa * command_dq;
 
         hrp::dmatrix eefJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*eefnum,6+m_robot->numJoints());
         //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
