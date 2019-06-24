@@ -308,9 +308,10 @@ public:
 
     void getWrenchWeightforce(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue){
         double coefvalue2 = std::pow(coefvalue,2);
-        H(i,i) += 1.0 / std::pow(act_force_eef[2],2) / std::pow(coefvalue,2);
-        H(2,i) += -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
-        H(i,2) += -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
+        if(coefvalue2 == 0) coefvalue2 = 1e-16;
+        H(i,i) += 1.0 / std::pow(act_force_eef[2],2) / coefvalue2;
+        //H(2,i) += -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
+        //H(i,2) += -2.0 / std::pow(act_force_eef[2],3) / coefvalue2 * actvalue;
         H(2,2) += 3.0 / std::pow(act_force_eef[2],4) / coefvalue2 * std::pow(actvalue,2);
         g[i] += 1.0 / std::pow(act_force_eef[2],2) / coefvalue2 * actvalue;
         g[2] += -1.0 / std::pow(act_force_eef[2],3) / coefvalue2 * std::pow(actvalue,2);
@@ -318,13 +319,13 @@ public:
 
     void getWrenchWeightmoment(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue, const double midpoint){
         getWrenchWeightforce(H,g,i,actvalue,coefvalue);
-        double tmpcoef = std::pow(coefvalue,2)/midpoint;
+        double tmpcoef = (coefvalue == 0)? midpoint / 1e-16 : midpoint / std::pow(coefvalue,2);
         H(i,i) += 0.0;
-        H(2,i) += 1.0 / std::pow(act_force_eef[2],2) / tmpcoef;
-        H(i,2) += 1.0 / std::pow(act_force_eef[2],2) / tmpcoef;
-        H(2,2) += -2.0 / std::pow(act_force_eef[2],3) / tmpcoef * actvalue;
-        g[i] += -1.0 / act_force_eef[2] / tmpcoef;
-        g[2] += 1.0 / std::pow(act_force_eef[2],2) / tmpcoef * actvalue;
+        //H(2,i) += 1.0 / std::pow(act_force_eef[2],2) * tmpcoef;
+        //H(i,2) += 1.0 / std::pow(act_force_eef[2],2) * tmpcoef;
+        H(2,2) += -2.0 / std::pow(act_force_eef[2],3) * tmpcoef * actvalue;
+        g[i] += -1.0 / act_force_eef[2] * tmpcoef;
+        g[2] += 1.0 / std::pow(act_force_eef[2],2) * tmpcoef * actvalue;
     }
 
     void getWrenchWeight(hrp::dmatrix& H, hrp::dvector& g){

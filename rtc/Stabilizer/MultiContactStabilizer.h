@@ -234,6 +234,7 @@ public:
 
         //service parameter
         mcs_debug_ratio = 0;
+        mcs_sv_ratio = 1e-12;
         is_joint_enable.resize(m_robot->numJoints(),true);
         tau_weight = 1e0;
         tauvel_weight = 1e0;
@@ -636,7 +637,7 @@ public:
         M.block(0,6+m_robot->numJoints(),6+m_robot->numJoints(),supportJ.rows()) += -supportJ.transpose();
 
         hrp::dmatrix Minv;
-        hrp::calcPseudoInverse(M, Minv,1.0e-12/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
+        hrp::calcPseudoInverse(M, Minv,mcs_sv_ratio/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
 
         hrp::dmatrix r = hrp::dmatrix::Zero(6+m_robot->numJoints(),m_robot->numJoints());
         r.block(6,0,m_robot->numJoints(),m_robot->numJoints()) = K;
@@ -1100,8 +1101,8 @@ public:
                         max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * dt);
                         min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * dt);
                     }else{
-                        max = std::min(max,m_robot->joint(i)->uvlimit * dt);
-                        min = std::max(min,m_robot->joint(i)->lvlimit * dt);
+                        max = std::min(max,m_robot->joint(i)->uvlimit * dt - 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
+                        min = std::max(min,m_robot->joint(i)->lvlimit * dt + 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
                     }
                 }
 
@@ -1311,8 +1312,8 @@ public:
                 if(qpOASES::getSimpleStatus(status)==0){
                     if(debugloop){
                         std::cerr << "initial qp_solved" <<std::endl;
-                    }
                     qp_solved=true;
+                    }
                     real_t* xOpt = new real_t[state_len];
                     example->getPrimalSolution( xOpt );
                     for(size_t i=0; i<state_len;i++){
@@ -1496,6 +1497,9 @@ public:
         mcs_debug_ratio = i_stp.mcs_debug_ratio;
         std::cerr << "[" << instance_name << "]  mcs_debug_ratio = " << mcs_debug_ratio << std::endl;
 
+        mcs_sv_ratio = i_stp.mcs_sv_ratio;
+        std::cerr << "[" << instance_name << "]  mcs_sv_ratio = " << mcs_sv_ratio << std::endl;
+
         if(i_stp.is_joint_enable.length()!=is_joint_enable.size()){
             std::cerr << "[" << instance_name << "] set is_joint_enable failed. is_joint_enable size: " << i_stp.is_joint_enable.length() << ", joints: " << is_joint_enable.size() <<std::endl;
         }else{
@@ -1586,6 +1590,7 @@ public:
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
         i_stp.mcs_debug_ratio = mcs_debug_ratio;
+        i_stp.mcs_sv_ratio = mcs_sv_ratio;
         i_stp.is_joint_enable.length(m_robot->numJoints());
         for(size_t i = 0; i < m_robot->numJoints(); i++){
             i_stp.is_joint_enable[i] = is_joint_enable[i];
@@ -1793,7 +1798,7 @@ private:
 
     //サービスコールで設定
     unsigned int mcs_debug_ratio;
-
+    double mcs_sv_ratio;
     std::vector<bool> is_joint_enable;//トルクを評価するか
 
     double tau_weight;
