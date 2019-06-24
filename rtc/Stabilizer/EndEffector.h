@@ -64,14 +64,14 @@ public:
                              act_moment_eef(hrp::Vector3::Zero()),
                              act_contact_state(false),
                              prev_act_contact_state(false),
-                             cur_p_origin(hrp::Vector3::Zero()),
-                             cur_R_origin(hrp::Matrix33::Identity()),
                              cur_force_eef(hrp::Vector3::Zero()),
                              cur_moment_eef(hrp::Vector3::Zero()),
-                             d_foot_pos(hrp::Vector3::Zero()),
-                             d_foot_rpy(hrp::Vector3::Zero()),
-                             d_foot_pos1(hrp::Vector3::Zero()),
-                             d_foot_rpy1(hrp::Vector3::Zero()),
+                             prev_pos_vel(hrp::Vector3::Zero()),
+                             prev_ref_p(hrp::Vector3::Zero()),
+                             prev_prev_ref_p(hrp::Vector3::Zero()),
+                             prev_rot_vel(hrp::Vector3::Zero()),
+                             ref_w_eef(hrp::Vector3::Zero()),
+                             ref_dw_eef(hrp::Vector3::Zero()),
                              act_outside_upper_xcop_state(true),
                              act_outside_lower_xcop_state(true),
                              act_outside_upper_ycop_state(true),
@@ -559,8 +559,8 @@ public:
     double M_p, D_p, K_p, M_r, D_r, K_r;
     hrp::Matrix33 force_gain;
     hrp::Matrix33 moment_gain;
-    double pos_compensation_limit;//impedanceの上限
-    double rot_compensation_limit;//impedanceの上限
+    double pos_compensation_limit;//impedanceの上限//not used
+    double rot_compensation_limit;//impedanceの上限//not used
     double footorigin_weight;//footorigincoordsの導出に利用
     //接触行動
     double z_contact_weight;
@@ -595,14 +595,12 @@ public:
     hrp::Vector3 act_moment/*actworld系,eefまわり*/, act_moment_eef/*eef系,eefまわり*/;
     bool act_contact_state;
     bool prev_act_contact_state;
-    hrp::Vector3 cur_p_origin/*act_footorigin系*/;
-    hrp::Matrix33 cur_R_origin/*act_footorigin系*/;
     hrp::Vector3 cur_force_eef/*eef系*/;
-    hrp::Vector3 cur_moment_eef/*eef系,eefまわり*/;
-    hrp::Vector3 d_foot_pos/*eef系*/;
-    hrp::Vector3 d_foot_rpy/*eef系*/;
-    hrp::Vector3 d_foot_pos1/*eef系*/;
-    hrp::Vector3 d_foot_rpy1/*eef系*/;
+    hrp::Vector3 cur_moment_eef/*eef系*/;
+    hrp::Vector3 prev_pos_vel/*eef系*/;
+    hrp::Vector3 prev_ref_p/*refworld系*/, prev_prev_ref_p/*refworld系*/;
+    hrp::Vector3 prev_rot_vel/*eef系*/;
+    hrp::Vector3 ref_w_eef/*eef系*/, ref_dw_eef/*eef系*/;
     bool act_outside_upper_xcop_state;
     bool act_outside_lower_xcop_state;
     bool act_outside_upper_ycop_state;

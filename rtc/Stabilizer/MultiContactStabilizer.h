@@ -308,7 +308,12 @@ public:
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
         for(size_t i = 0; i < eefnum; i++){
             hrp::Link* target/*refworld系*/ = m_robot->link(endeffector[i]->link_name);
+            endeffector[i]->prev_prev_ref_p/*refworld系*/ = endeffector[i]->prev_ref_p/*refworld系*/;
+            endeffector[i]->prev_ref_p/*refworld系*/ = endeffector[i]->ref_p/*refworld系*/;
             endeffector[i]->ref_p/*refworld系*/ = target->p/*refworld系*/ + target->R * endeffector[i]->localp;
+            hrp::Vector3 ref_w_eef/*eef系*/ = matrix_logEx(endeffector[i]->ref_R/*refworld系*/.transpose() * target->R * endeffector[i]->localR);
+            endeffector[i]->ref_dw_eef/*eef系*/ = ref_w_eef/*eef系*/ - endeffector[i]->ref_w_eef/*eef系*/;
+            endeffector[i]->ref_w_eef/*eef系*/ = ref_w_eef/*eef系*/;
             endeffector[i]->ref_R/*refworld系*/ = target->R * endeffector[i]->localR;
             endeffector[i]->ref_force/*refworld系*/ = _ref_force[i]/*refworld系*/;
             endeffector[i]->ref_moment/*refworld系,eefまわり*/ = _ref_moment[i]/*refworld系,eefまわり*/;
@@ -402,6 +407,7 @@ public:
         m_robot->calcForwardKinematics();
         act_cog/*actworld系*/ = m_robot->calcCM();
 
+        bool act_contact_state_changed = false;
         for (int i = 0; i < eefnum;i++){
             hrp::Link* target/*actworld系*/ = m_robot->link(endeffector[i]->link_name);
             endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
@@ -413,7 +419,9 @@ public:
             endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * act_moment + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
             endeffector[i]->act_force_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force/*actworld系*/;
             endeffector[i]->act_moment_eef/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
+            bool act_contact_state_org = endeffector[i]->act_contact_state;
             act_contact_states[i] = endeffector[i]->isContact();
+            if(act_contact_state_org != endeffector[i]->act_contact_state) act_contact_state_changed = true;
         }
 
         act_total_force/*actworld系*/ = hrp::Vector3::Zero();
@@ -437,14 +445,14 @@ public:
             }
             ref_footorigin_p /= act_contact_eef.size();
             ref_footorigin_R = hrp::Matrix33::Identity();
-            
+
             for (size_t loop = 0; loop < 3; loop++){
                 const hrp::Vector3 act_footorigin_rpy = hrp::rpyFromRot(act_footorigin_R/*actworld系*/);
                 double act_footorigin_yaw = act_footorigin_rpy[2];
 
                 hrp::dvector error/*x,y,z,yaw,...*/ = hrp::dvector::Zero(act_contact_eef.size()*4);
                 hrp::dmatrix J/*xyzyaw... <-> footorigin xyzyaw*/ = hrp::dmatrix::Zero(act_contact_eef.size()*4,4);
-                
+
                 for (size_t i = 0; i< act_contact_eef.size(); i++){
                     Eigen::Vector4d tmperror;
                     tmperror.block<3,1>(0,0) = (act_contact_eef[i]->ref_p/*refworld系*/ - ref_footorigin_p/*refworld系*/) - act_footorigin_R/*actworld系*/.transpose() * (act_contact_eef[i]->act_p/*actworld系*/ - act_footorigin_p/*actworld系*/);
@@ -472,7 +480,7 @@ public:
                 const hrp::dmatrix Jt = J.transpose();
 
                 const hrp::dmatrix Jinv = (Jt * w * J).partialPivLu().inverse() * Jt * w;
-                
+
                 const hrp::dvector d_act_footorigin/*dx,dy,dz,dyaw*/ = Jinv * error;
                 act_footorigin_p/*actworld系*/ += d_act_footorigin.block<3,1>(0,0);
                 act_footorigin_yaw += d_act_footorigin[3];
@@ -505,7 +513,7 @@ public:
         for ( int i = 0; i < m_robot->numJoints(); i++ ) {
             m_robot->joint(i)->q = qcurv[i];
         }
-        
+
         log_act_cog/*act_footorigin系*/ = act_footorigin_R/*actworld系*/.transpose() * (act_cog/*refworld系*/ - act_footorigin_p);
         log_act_cogvel = hrp::Vector3::Zero()/*act_footorigin系*/;
         for(size_t i = 0; i < eefnum; i++){
@@ -513,7 +521,7 @@ public:
             log_act_moment_eef[i] = endeffector[i]->act_moment_eef/*eef系*/;
         }
         log_act_base_rpy/*act_footorigin系*/ = hrp::rpyFromRot(act_footorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
-        
+
         if(debugloop){
             for(size_t i = 0; i < eefnum ; i++){
                 std::cerr << "act_force_momnet_eef " << endeffector[i]->name <<std::endl;
@@ -814,7 +822,7 @@ public:
             hrp::dvector lbA = taumin - acttauv;
             hrp::dvector ubA = taumax - acttauv;
             hrp::dmatrix A = dtau;
-            
+
             As.push_back(A);
             lbAs.push_back(lbA);
             ubAs.push_back(ubA);
@@ -920,27 +928,20 @@ public:
 
             hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
             for (size_t i = 0; i < interact_eef.size(); i++){
-                hrp::Vector3 poscomp/*eef系*/ = (interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef-interact_eef[i]->ref_force_eef) * dt * dt
-                                                 + (2 * interact_eef[i]->M_p + interact_eef[i]->D_p * dt) * interact_eef[i]->d_foot_pos
-                                                 - interact_eef[i]->M_p * interact_eef[i]->d_foot_pos1)
-                    / (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt);
-                for(size_t j=0; j< 3;j++){
-                    if(poscomp[j] > interact_eef[i]->pos_compensation_limit) poscomp[j] = interact_eef[i]->pos_compensation_limit;
-                    if(poscomp[j] < - interact_eef[i]->pos_compensation_limit) poscomp[j] = - interact_eef[i]->pos_compensation_limit;
-                }
-                hrp::Vector3 target_p/*footorigin系*/ = interact_eef[i]->ref_p_origin + interact_eef[i]->ref_R_origin * poscomp;
-                hrp::Vector3 rpycomp/*eef系*/ = ((transition_smooth_gain * interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef-interact_eef[i]->ref_moment_eef) * dt * dt
-                                         + (2 * interact_eef[i]->M_r + interact_eef[i]->D_r * dt) * interact_eef[i]->d_foot_rpy
-                                         - interact_eef[i]->M_r * interact_eef[i]->d_foot_rpy1) /
-                                        (interact_eef[i]->M_r + interact_eef[i]->D_r * dt + interact_eef[i]->K_r * dt * dt));
-                for(size_t j=0; j< 3;j++){
-                    if(rpycomp[j] > interact_eef[i]->rot_compensation_limit) rpycomp[j] = interact_eef[i]->rot_compensation_limit;
-                    if(rpycomp[j] < - interact_eef[i]->rot_compensation_limit) rpycomp[j] = - interact_eef[i]->rot_compensation_limit;
-                }
-                hrp::Matrix33 target_R/*footorigin系*/ = interact_eef[i]->ref_R_origin * hrp::rotFromRpy(rpycomp)/*eef系*/;
+                delta_interact_eef.block<3,1>(i*6,0) =
+                    (interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef-interact_eef[i]->ref_force_eef) * dt * dt
+                     + interact_eef[i]->act_R_origin.transpose() * (interact_eef[i]->ref_p_origin - interact_eef[i]->act_p_origin) * interact_eef[i]->K_p * dt * dt
+                     + interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - interact_eef[i]->prev_ref_p) * interact_eef[i]->D_p * dt
+                     + (interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - 2 * interact_eef[i]->prev_ref_p + interact_eef[i]->prev_prev_ref_p) + interact_eef[i]->prev_pos_vel) * interact_eef[i]->M_p
+                     ) / (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt);
 
-                delta_interact_eef.block<3,1>(i*6,0) = interact_eef[i]->act_R_origin.transpose() * (target_p - interact_eef[i]->act_p_origin);//TODO innerloop が無いが大丈夫か
-                delta_interact_eef.block<3,1>(i*6+3,0) = matrix_logEx(interact_eef[i]->act_R_origin.transpose() * target_R);//TODO innerloop が無いが大丈夫か
+                delta_interact_eef.block<3,1>(i*6+3,0) =
+                    (interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef-interact_eef[i]->ref_moment_eef) * dt * dt
+                     + matrix_logEx(interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin) * interact_eef[i]->K_r * dt * dt
+                     + interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_w_eef * interact_eef[i]->D_r * dt
+                     + (interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_dw_eef + interact_eef[i]->prev_rot_vel) * interact_eef[i]->M_r
+                     ) / (interact_eef[i]->M_r + interact_eef[i]->D_r * dt + interact_eef[i]->K_r * dt * dt);
+
                 if(interact_eef[i]->ref_contact_state){
                     delta_interact_eef[i*6+2] = - interact_eef[i]->z_contact_vel*dt;
                     Wint(6*i+2,6*i+2) = intvel_weight * interact_eef[i]->z_contact_weight / dt;
@@ -948,7 +949,7 @@ public:
             }
 
             H += dqa.transpose() * interactJ.transpose() * Wint * interactJ * dqa;
-            g += delta_interact_eef.transpose() * Wint * interactJ * dqa;
+            g += -delta_interact_eef.transpose() * Wint * interactJ * dqa;
 
             if(debugloop){
                 std::cerr << "interact eef" << std::endl;
@@ -1399,23 +1400,10 @@ public:
                 eefJ.block<6,1>(i*6,6+endeffector[i]->jpe->joint(j)->jointId)=JJ.block<6,1>(0,j);
             }
         }
-        hrp::dvector eefvel = eefJ * dqa * command_dq;
+        hrp::dvector eefvel = eefJ * dqa * transition_smooth_gain * command_dq;
         for(size_t i=0; i < eefnum; i++){
-            endeffector[i]->d_foot_pos1/*eef系*/ = endeffector[i]->d_foot_pos;
-            endeffector[i]->d_foot_rpy1/*eef系*/ = endeffector[i]->d_foot_rpy;
-
-            endeffector[i]->cur_p_origin = endeffector[i]->act_p_origin/*act_footorigin系*/ + endeffector[i]->act_R_origin/*act_footorigin系*/ * eefvel.block<3,1>(6*i,0)/*eef系*/;
-            endeffector[i]->cur_R_origin = endeffector[i]->act_R_origin/*act_footorigin系*/ * hrp::rotFromRpy(eefvel.block<3,1>(6*i+3,0))/*eef系*/;
-
-            endeffector[i]->d_foot_pos/*eef系*/ = endeffector[i]->ref_R_origin.transpose() * (endeffector[i]->cur_p_origin - endeffector[i]->ref_p_origin);
-            endeffector[i]->d_foot_rpy/*eef系*/ = hrp::rpyFromRot(endeffector[i]->ref_R_origin.transpose() * endeffector[i]->cur_R_origin);
-
-            if(debugloop){
-                std::cerr << "d_foot_pos " << endeffector[i]->name << std::endl;
-                std::cerr << endeffector[i]->d_foot_pos << std::endl;
-                std::cerr << "d_foot_rpy " << endeffector[i]->name << std::endl;
-                std::cerr << endeffector[i]->d_foot_rpy << std::endl;
-            }
+            endeffector[i]->prev_pos_vel/*eef系*/ = eefvel.block<3,1>(6*i,0)/*eef系*/;
+            endeffector[i]->prev_rot_vel/*eef系*/ = eefvel.block<3,1>(6*i+3,0)/*eef系*/;
         }
 
         for(int j=0; j < m_robot->numJoints(); ++j){
@@ -1430,9 +1418,15 @@ public:
         log_d_cog_pos = hrp::Vector3::Zero();
         {
             for(size_t i = 0; i < eefnum; i++){
-                log_d_foot_pos[i] = endeffector[i]->d_foot_pos;
-                log_d_foot_rpy[i] = endeffector[i]->d_foot_rpy;
-                
+                log_d_foot_pos[i] = endeffector[i]->ref_R_origin.transpose() * (endeffector[i]->act_p_origin - endeffector[i]->ref_p_origin);
+                log_d_foot_rpy[i] = hrp::rpyFromRot(endeffector[i]->ref_R_origin.transpose() * endeffector[i]->act_R_origin);
+                if(debugloop){
+                    std::cerr << "d_foot_pos " << endeffector[i]->name << std::endl;
+                    std::cerr << log_d_foot_pos[i] << std::endl;
+                    std::cerr << "d_foot_rpy " << endeffector[i]->name << std::endl;
+                    std::cerr << log_d_foot_rpy[i] << std::endl;
+                }
+
                 if(endeffector[i]->is_ik_enable && endeffector[i]->act_contact_state){
                     log_cur_force_eef[i] = endeffector[i]->cur_force_eef/*eef系*/;
                     log_cur_moment_eef[i] = endeffector[i]->cur_moment_eef/*eef系*/;
@@ -1480,12 +1474,8 @@ public:
         }
 
         for(size_t i=0; i< eefnum;i++){
-            endeffector[i]->cur_p_origin = endeffector[i]->ref_p;
-            endeffector[i]->cur_R_origin = endeffector[i]->ref_R;
-            endeffector[i]->d_foot_pos=hrp::Vector3::Zero();
-            endeffector[i]->d_foot_rpy=hrp::Vector3::Zero();
-            endeffector[i]->d_foot_pos1=hrp::Vector3::Zero();
-            endeffector[i]->d_foot_rpy1=hrp::Vector3::Zero();
+            endeffector[i]->prev_pos_vel/*eef系*/ = hrp::Vector3::Zero();
+            endeffector[i]->prev_rot_vel/*eef系*/ = hrp::Vector3::Zero();
         }
 
         prev_P = hrp::Vector3::Zero();
