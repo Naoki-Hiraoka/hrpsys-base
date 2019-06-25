@@ -942,6 +942,13 @@ public:
                      + (interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_dw_eef + interact_eef[i]->prev_rot_vel) * interact_eef[i]->M_r
                      ) / (interact_eef[i]->M_r + interact_eef[i]->D_r * dt + interact_eef[i]->K_r * dt * dt);
 
+                for(size_t j=0;j<3;j++){
+                    if(delta_interact_eef[i*6+j]>interact_eef[i]->pos_compensation_limit*dt)delta_interact_eef[i*6+j]=interact_eef[i]->pos_compensation_limit*dt;
+                    if(delta_interact_eef[i*6+j]<-interact_eef[i]->pos_compensation_limit*dt)delta_interact_eef[i*6+j]=-interact_eef[i]->pos_compensation_limit*dt;
+                    if(delta_interact_eef[i*6+3+j]>interact_eef[i]->rot_compensation_limit*dt)delta_interact_eef[i*6+3+j]=interact_eef[i]->rot_compensation_limit*dt;
+                    if(delta_interact_eef[i*6+3+j]<-interact_eef[i]->rot_compensation_limit*dt)delta_interact_eef[i*6+3+j]=-interact_eef[i]->rot_compensation_limit*dt;
+                }
+
                 if(interact_eef[i]->ref_contact_state){
                     delta_interact_eef[i*6+2] = - interact_eef[i]->z_contact_vel*dt;
                     Wint(6*i+2,6*i+2) = intvel_weight * interact_eef[i]->z_contact_weight / dt;
@@ -1151,7 +1158,7 @@ public:
         //USE_QPOASES を ON にすること
         bool qp_solved=false;
         hrp::dvector command_dq = hrp::dvector::Zero(H.cols());
-        {
+        if(support_eef.size()>0){
             const size_t state_len = H.cols();
             size_t inequality_len = 0;
             for(size_t i = 0 ; i < As.size(); i ++){
