@@ -147,37 +147,42 @@ RTC::ReturnCode_t StateHolder::onInitialize()
   m_baseRpy.data.y = m_basePose.data.orientation.y = rpy[2];
   m_zmp.data.x = m_zmp.data.y = m_zmp.data.z = 0.0;
 
-  // Setting for wrench data ports (real + virtual)
-  std::vector<std::string> fsensor_names;
-  //   find names for real force sensors
-  for ( unsigned int k = 0; k < lis->length(); k++ ) {
-    OpenHRP::SensorInfoSequence& sensors = lis[k].sensors;
-    for ( unsigned int l = 0; l < sensors.length(); l++ ) {
-      if ( std::string(sensors[l].type) == "Force" ) {
-        fsensor_names.push_back(std::string(sensors[l].name));
+  // Setting for wrench data ports (each endeffector)
+  std::vector<std::string> wrench_names;
+
+  coil::vstring contact_end_effectors_str = coil::split(prop["contact_end_effectors"], ",");//ここから
+  if (contact_end_effectors_str.size() > 0) {
+      size_t prop_num = 10;
+      size_t num = contact_end_effectors_str.size()/prop_num;
+      for (size_t i = 0; i < num; i++) {
+          std::string name;
+          coil::stringTo(name, contact_end_effectors_str[i*prop_num].c_str());
+          wrench_names.push_back(name);
       }
-    }
+  }else{
+      coil::vstring end_effectors_str = coil::split(prop["end_effectors"], ",");
+      if (end_effectors_str.size() > 0) {
+          size_t prop_num = 10;
+          size_t num = end_effectors_str.size()/prop_num;
+          for (size_t i = 0; i < num; i++) {
+              std::string name;
+              coil::stringTo(name, end_effectors_str[i*prop_num].c_str());
+              wrench_names.push_back(name);
+          }
+      }
   }
-  int npforce = fsensor_names.size();
-  //   find names for virtual force sensors
-  coil::vstring virtual_force_sensor = coil::split(prop["virtual_force_sensor"], ",");
-  unsigned int nvforce = virtual_force_sensor.size()/15;
-  for (unsigned int i=0; i<nvforce; i++){
-    fsensor_names.push_back(virtual_force_sensor[i*15+0]);
-  }
-  //   add ports for all force sensors
-  unsigned int nforce  = npforce + nvforce;
-  m_wrenches.resize(nforce);
-  m_wrenchesIn.resize(nforce);
-  m_wrenchesOut.resize(nforce);
-  for (unsigned int i=0; i<nforce; i++){
-    m_wrenchesIn[i] = new InPort<TimedDoubleSeq>(std::string(fsensor_names[i]+"In").c_str(), m_wrenches[i]);
-    m_wrenchesOut[i] = new OutPort<TimedDoubleSeq>(std::string(fsensor_names[i]+"Out").c_str(), m_wrenches[i]);
+
+  m_wrenches.resize(wrench_names.size());
+  m_wrenchesIn.resize(wrench_names.size());
+  m_wrenchesOut.resize(wrench_names.size());
+  for (unsigned int i=0; i<wrench_names.size(); i++){
+    m_wrenchesIn[i] = new InPort<TimedDoubleSeq>(std::string(wrench_names[i]+"WrenchIn").c_str(), m_wrenches[i]);
+    m_wrenchesOut[i] = new OutPort<TimedDoubleSeq>(std::string(wrench_names[i]+"WrenchOut").c_str(), m_wrenches[i]);
     m_wrenches[i].data.length(6);
     m_wrenches[i].data[0] = m_wrenches[i].data[1] = m_wrenches[i].data[2] = 0.0;
     m_wrenches[i].data[3] = m_wrenches[i].data[4] = m_wrenches[i].data[5] = 0.0;
-    registerInPort(std::string(fsensor_names[i]+"In").c_str(), *m_wrenchesIn[i]);
-    registerOutPort(std::string(fsensor_names[i]+"Out").c_str(), *m_wrenchesOut[i]);
+    registerInPort(std::string(wrench_names[i]+"WrenchIn").c_str(), *m_wrenchesIn[i]);
+    registerOutPort(std::string(wrench_names[i]+"WrenchOut").c_str(), *m_wrenchesOut[i]);
   }
 
   

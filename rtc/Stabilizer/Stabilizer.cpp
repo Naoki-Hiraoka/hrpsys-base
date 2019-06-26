@@ -212,7 +212,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
     return RTC::RTC_ERROR;
   }
 
-  // Setting for wrench data ports (real + virtual)
+  // Setting for actual wrench data ports (real + virtual)
   std::vector<std::string> force_sensor_names;
 
   // Find names for real force sensors
@@ -238,31 +238,17 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   int nforce = npforce + nvforce;
   m_wrenches.resize(nforce);
   m_wrenchesIn.resize(nforce);
-  m_ref_wrenches.resize(nforce);
-  m_ref_wrenchesIn.resize(nforce);
-  m_limbCOPOffset.resize(nforce);
-  m_limbCOPOffsetIn.resize(nforce);
-  std::cerr << "[" << m_profile.instance_name << "] force sensor ports (" << npforce << ")" << std::endl;
+  std::cerr << "[" << m_profile.instance_name << "] force sensor ports (" << nforce << ")" << std::endl;
   for (unsigned int i=0; i<nforce; ++i) {
       std::string force_sensor_name = force_sensor_names[i];
       // actual inport
       m_wrenchesIn[i] = new RTC::InPort<RTC::TimedDoubleSeq>(force_sensor_name.c_str(), m_wrenches[i]);
       m_wrenches[i].data.length(6);
       registerInPort(force_sensor_name.c_str(), *m_wrenchesIn[i]);
-      // referecen inport
-      m_ref_wrenchesIn[i] = new RTC::InPort<RTC::TimedDoubleSeq>(std::string(force_sensor_name+"Ref").c_str(), m_ref_wrenches[i]);
-      m_ref_wrenches[i].data.length(6);
-      registerInPort(std::string(force_sensor_name+"Ref").c_str(), *m_ref_wrenchesIn[i]);
       std::cerr << "[" << m_profile.instance_name << "]   name = " << force_sensor_name << std::endl;
   }
-  std::cerr << "[" << m_profile.instance_name << "] limbCOPOffset ports (" << npforce << ")" << std::endl;
-  for (unsigned int i=0; i<nforce; ++i) {
-      std::string force_sensor_name = force_sensor_names[i];
-      std::string nm("limbCOPOffset_"+force_sensor_name);
-      m_limbCOPOffsetIn[i] = new RTC::InPort<RTC::TimedPoint3D>(nm.c_str(), m_limbCOPOffset[i]);
-      registerInPort(nm.c_str(), *m_limbCOPOffsetIn[i]);
-      std::cerr << "[" << m_profile.instance_name << "]   name = " << nm << std::endl;
-  }
+
+  std::vector<std::string> wrench_names;
 
   // setting from conf file
   // rleg,TARGET_LINK,BASE_LINK,x,y,z,rx,ry,rz,rth #<=pos + rot (axis+angle)
@@ -352,6 +338,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
       std::cerr << "[" << m_profile.instance_name << "]   target = " << m_robot->link(ikp.target_name)->name << ", base = " << ee_base << ", sensor_name = " << ikp.sensor_name << std::endl;
       std::cerr << "[" << m_profile.instance_name << "]   offset_pos = " << ikp.localp.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "    [", "]")) << "[m]" << std::endl;
       prev_act_force_z.push_back(0.0);
+      wrench_names.push_back(ee_name);
     }
 
     m_contactStates.data.length(num);
@@ -362,11 +349,15 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
     size_t cee_prop_num = 10;
     if (contact_end_effectors_str.size() > 0) {
         size_t ceenum = contact_end_effectors_str.size()/cee_prop_num;
+        wrench_names.resize(ceenum);
         m_contactStates.data.length(ceenum);
         m_controlSwingSupportTime.data.length(ceenum);
         for (size_t i = 0; i < ceenum; i++){
             m_contactStates.data[i] = false;
             m_controlSwingSupportTime.data[i] = 1.0;
+            std::string ee_name;
+            coil::stringTo(ee_name, contact_end_effectors_str[i*cee_prop_num].c_str());
+            wrench_names[i]=ee_name;
         }
         for (size_t i = end_effectors_str.size()/prop_num; i < ceenum; i++){
             ref_force_eef.push_back(hrp::Vector3::Zero());
@@ -380,6 +371,29 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
         }
     }
   }
+
+  m_ref_wrenches.resize(wrench_names.size());
+  m_ref_wrenchesIn.resize(wrench_names.size());
+  m_limbCOPOffset.resize(wrench_names.size());
+  m_limbCOPOffsetIn.resize(wrench_names.size());
+  std::cerr << "[" << m_profile.instance_name << "] ref wrench ports (" << wrench_names.size() << ")" << std::endl;
+  for (unsigned int i=0; i<wrench_names.size(); ++i) {
+      std::string force_sensor_name = wrench_names[i];
+      // referecen inport
+      m_ref_wrenchesIn[i] = new RTC::InPort<RTC::TimedDoubleSeq>(std::string(force_sensor_name+"WrenchRef").c_str(), m_ref_wrenches[i]);
+      m_ref_wrenches[i].data.length(6);
+      registerInPort(std::string(force_sensor_name+"WrenchRef").c_str(), *m_ref_wrenchesIn[i]);
+      std::cerr << "[" << m_profile.instance_name << "]   name = " << force_sensor_name +"Wrench" << std::endl;
+  }
+  std::cerr << "[" << m_profile.instance_name << "] limbCOPOffset ports (" << wrench_names.size() << ")" << std::endl;
+  for (unsigned int i=0; i<wrench_names.size(); ++i) {
+      std::string force_sensor_name = wrench_names[i];
+      std::string nm("limbCOPOffset_"+force_sensor_name+"Wrench");
+      m_limbCOPOffsetIn[i] = new RTC::InPort<RTC::TimedPoint3D>(nm.c_str(), m_limbCOPOffset[i]);
+      registerInPort(nm.c_str(), *m_limbCOPOffsetIn[i]);
+      std::cerr << "[" << m_profile.instance_name << "]   name = " << nm << std::endl;
+  }
+
 
   std::vector<std::pair<hrp::Link*, hrp::Link*> > interlocking_joints;
   readInterlockingJointsParamFromProperties(interlocking_joints, m_robot, prop["interlocking_joints"], std::string(m_profile.instance_name));

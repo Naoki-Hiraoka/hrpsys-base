@@ -175,6 +175,7 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
     // Generate FIK
     fik = fikPtr(new SimpleFullbodyInverseKinematicsSolver(m_robot, std::string(m_profile.instance_name), m_dt));
 
+    std::vector<std::string> wrench_names;
     // setting from conf file
     // rleg,TARGET_LINK,BASE_LINK
     coil::vstring end_effectors_str = coil::split(prop["end_effectors"], ",");
@@ -229,6 +230,7 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
         std::cerr << "[" << m_profile.instance_name << "]   offset_pos = " << tp.localPos.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "    [", "]")) << "[m]" << std::endl;
         std::cerr << "[" << m_profile.instance_name << "]   has_toe_joint = " << (tp.has_toe_joint?"true":"false") << std::endl;
         contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
+        wrench_names.push_back(ee_name);
       }
       m_contactStates.data.length(num);
       m_toeheelRatio.data.length(num);
@@ -249,11 +251,13 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
     size_t cee_prop_num = 10;
     if (contact_end_effectors_str.size() > 0) {
       contact_states_index_map.clear();
+      wrench_names.clear();
       size_t ceenum = contact_end_effectors_str.size()/cee_prop_num;
       for (size_t i = 0; i < ceenum; i++) {
         std::string ee_name;
         coil::stringTo(ee_name, contact_end_effectors_str[i*cee_prop_num].c_str());
         contact_states_index_map.insert(std::pair<std::string, size_t>(ee_name, i));
+        wrench_names.push_back(ee_name);
       }
       m_contactStates.data.length(ceenum);
       m_controlSwingSupportTime.data.length(ceenum);
@@ -317,55 +321,37 @@ RTC::ReturnCode_t AutoBalancer::onInitialize()
     m_walkingStates.data = false;
     fix_leg_coords = coordinates();
 
-    // load virtual force sensors
-    readVirtualForceSensorParamFromProperties(m_vfs, m_robot, prop["virtual_force_sensor"], std::string(m_profile.instance_name));
-    // ref force port
-    unsigned int npforce = m_robot->numSensors(hrp::Sensor::FORCE);
-    unsigned int nvforce = m_vfs.size();
-    unsigned int nforce  = npforce + nvforce;
-    // check number of force sensors
-    if (nforce < m_contactStates.data.length()) {
-        std::cerr << "[" << m_profile.instance_name << "] WARNING! This robot model has less force sensors(" << nforce;
-        std::cerr << ") than end-effector settings(" << m_contactStates.data.length() << ") !" << std::endl;
-    }
+    // Setting for wrench data ports (each endeffector)
+    m_ref_force.resize(wrench_names.size());
+    m_ref_forceIn.resize(wrench_names.size());
+    m_force.resize(wrench_names.size());
+    m_ref_forceOut.resize(wrench_names.size());
+    m_limbCOPOffset.resize(wrench_names.size());
+    m_limbCOPOffsetOut.resize(wrench_names.size());
 
-    m_ref_force.resize(nforce);
-    m_ref_forceIn.resize(nforce);
-    m_force.resize(nforce);
-    m_ref_forceOut.resize(nforce);
-    m_limbCOPOffset.resize(nforce);
-    m_limbCOPOffsetOut.resize(nforce);
-    for (unsigned int i=0; i<npforce; i++){
-        sensor_names.push_back(m_robot->sensor(hrp::Sensor::FORCE, i)->name);
-    }
-    for (unsigned int i=0; i<nvforce; i++){
-        for ( std::map<std::string, hrp::VirtualForceSensorParam>::iterator it = m_vfs.begin(); it != m_vfs.end(); it++ ) {
-            if (it->second.id == (int)i) sensor_names.push_back(it->first);
-        }
-    }
     // set ref force port
-    std::cerr << "[" << m_profile.instance_name << "] force sensor ports (" << nforce << ")" << std::endl;
-    for (unsigned int i=0; i<nforce; i++){
-        m_ref_forceIn[i] = new InPort<TimedDoubleSeq>(std::string("ref_"+sensor_names[i]).c_str(), m_ref_force[i]);
+    std::cerr << "[" << m_profile.instance_name << "] ref wrench ports (" << wrench_names.size() << ")" << std::endl;
+    for (unsigned int i=0; i<wrench_names.size(); i++){
+        m_ref_forceIn[i] = new InPort<TimedDoubleSeq>(std::string("ref_"+wrench_names[i]+"Wrench").c_str(), m_ref_force[i]);
         m_ref_force[i].data.length(6);
-        registerInPort(std::string("ref_"+sensor_names[i]).c_str(), *m_ref_forceIn[i]);
-        std::cerr << "[" << m_profile.instance_name << "]   name = " << std::string("ref_"+sensor_names[i]) << std::endl;
+        registerInPort(std::string("ref_"+wrench_names[i]+"Wrench").c_str(), *m_ref_forceIn[i]);
+        std::cerr << "[" << m_profile.instance_name << "]   name = " << std::string("ref_"+wrench_names[i]+"Wrench") << std::endl;
         ref_forces.push_back(hrp::Vector3(0,0,0));
         ref_moments.push_back(hrp::Vector3(0,0,0));
     }
     // set force port
-    for (unsigned int i=0; i<nforce; i++){
-        m_ref_forceOut[i] = new OutPort<TimedDoubleSeq>(std::string(sensor_names[i]).c_str(), m_force[i]);
+    for (unsigned int i=0; i<wrench_names.size(); i++){
+        m_ref_forceOut[i] = new OutPort<TimedDoubleSeq>(std::string(wrench_names[i]+"Wrench").c_str(), m_force[i]);
         m_force[i].data.length(6);
         m_force[i].data[0] = m_force[i].data[1] = m_force[i].data[2] = 0.0;
         m_force[i].data[3] = m_force[i].data[4] = m_force[i].data[5] = 0.0;
-        registerOutPort(std::string(sensor_names[i]).c_str(), *m_ref_forceOut[i]);
-        std::cerr << "[" << m_profile.instance_name << "]   name = " << std::string(sensor_names[i]) << std::endl;
+        registerOutPort(std::string(wrench_names[i]+"Wrench").c_str(), *m_ref_forceOut[i]);
+        std::cerr << "[" << m_profile.instance_name << "]   name = " << std::string(wrench_names[i]) << std::endl;
     }
     // set limb cop offset port
-    std::cerr << "[" << m_profile.instance_name << "] limbCOPOffset ports (" << nforce << ")" << std::endl;
-    for (unsigned int i=0; i<nforce; i++){
-        std::string nm("limbCOPOffset_"+sensor_names[i]);
+    std::cerr << "[" << m_profile.instance_name << "] limbCOPOffset ports (" << wrench_names.size() << ")" << std::endl;
+    for (unsigned int i=0; i<wrench_names.size(); i++){
+        std::string nm("limbCOPOffset_"+wrench_names[i]+"Wrench");
         m_limbCOPOffsetOut[i] = new OutPort<TimedPoint3D>(nm.c_str(), m_limbCOPOffset[i]);
         registerOutPort(nm.c_str(), *m_limbCOPOffsetOut[i]);
         m_limbCOPOffset[i].data.x = m_limbCOPOffset[i].data.y = m_limbCOPOffset[i].data.z = 0.0;
