@@ -65,6 +65,7 @@ CollisionDetector::CollisionDetector(RTC::Manager* manager)
       m_servoStateIn("servoStateIn", m_servoState),
       m_qOut("q", m_q),
       m_beepCommandOut("beepCommand", m_beepCommand),
+      m_collisioninfoOut("collisioninfo", m_collisioninfo),
       m_CollisionDetectorServicePort("CollisionDetectorService"),
       // </rtc-template>
 #ifdef USE_HRPSYSUTIL
@@ -117,6 +118,7 @@ RTC::ReturnCode_t CollisionDetector::onInitialize()
     // Set OutPort buffer
     addOutPort("q", m_qOut);
     addOutPort("beepCommand", m_beepCommandOut);
+    addOutPort("collisioninfo", m_collisioninfoOut);
   
     // Set service provider to Ports
     m_CollisionDetectorServicePort.registerProvider("service0", "CollisionDetectorService", m_service0);
@@ -211,7 +213,7 @@ RTC::ReturnCode_t CollisionDetector::onInitialize()
                                                                   m_robot->link(name2), m_VclipLinks[m_robot->link(name2)->index], 0));
 	}
     }
-
+    
     if ( prop["collision_loop"] != "" ) {
         coil::stringTo(m_collision_loop, prop["collision_loop"].c_str());
         std::cerr << "[" << m_profile.instance_name << "] set collision_loop: " << m_collision_loop << std::endl;
@@ -287,6 +289,12 @@ RTC::ReturnCode_t CollisionDetector::onInitialize()
 
     collision_beep_freq = static_cast<int>(1.0/(3.0*m_dt)); // 3 times / 1[s]
     m_beepCommand.data.length(bc.get_num_beep_info());
+    m_collisioninfo.data.length(m_pair.size()*9);//0: index of link1, 1: index of link2, 2: distance-tolerance, 3-5: nearest point of link1, 6-8: nearest point of link2
+    for(size_t i=0; i < m_pair.size(); i++){
+        for(size_t j=0;j<9;j++){
+            m_collisioninfo.data[i*9+j]=0;
+        }
+    }
     return RTC::RTC_OK;
 }
 
@@ -422,7 +430,7 @@ RTC::ReturnCode_t CollisionDetector::onExecute(RTC::UniqueId ec_id)
             // n : sub_size*n ... m_pair.size()               // 9 .. 10
             if ( sub_size*m_loop_for_check <= i && i < sub_size*(m_loop_for_check+1) ) {
                 CollisionLinkPair* c = it->second;
-                c->distance = c->pair->computeDistance(c->point0.data(), c->point1.data());
+                c->distance = c->pair->computeDistance(c->point0.data(), c->point1.data(),c->point0local.data(), c->point1local.data());
                 //std::cerr << i << ":" << (c->distance<=c->pair->getTolerance() ) << "/" << c->distance << " ";
             }
         }
@@ -640,6 +648,21 @@ RTC::ReturnCode_t CollisionDetector::onExecute(RTC::UniqueId ec_id)
         m_state.safe_posture = m_safe_posture;
         m_state.recover_time = m_recover_time;
         m_state.loop_for_check = m_loop_for_check;
+
+        {
+            m_collisioninfo.tm = m_qRef.tm;
+            std::map<std::string, CollisionLinkPair *>::iterator it = m_pair.begin();
+            for(size_t i=0; it != m_pair.end();it++, i++){
+                m_collisioninfo.data[i*9+0]=it->second->pair->link(0)->index;
+                m_collisioninfo.data[i*9+1]=it->second->pair->link(1)->index;
+                m_collisioninfo.data[i*9+2]=it->second->distance - it->second->pair->getTolerance();
+                for(size_t j=0;j<3;j++){
+                    m_collisioninfo.data[i*9+3+j]=it->second->point0local[j];
+                    m_collisioninfo.data[i*9+6+j]=it->second->point1local[j];
+                }
+            }
+            m_collisioninfoOut.write();
+        }
     }
     if (is_beep_port_connected) {
       bc.setDataPort(m_beepCommand);
@@ -754,7 +777,7 @@ bool CollisionDetector::enable(void)
     for (unsigned int i = 0; it != m_pair.end(); it++, i++){
         CollisionLinkPair* c = it->second;
         VclipLinkPairPtr p = c->pair;
-        c->distance = c->pair->computeDistance(c->point0.data(), c->point1.data());
+        c->distance = c->pair->computeDistance(c->point0.data(), c->point1.data(),c->point0local.data(), c->point1local.data());
         if ( c->distance <= c->pair->getTolerance() ) {
             hrp::JointPathPtr jointPath = m_robot->getJointPath(p->link(0),p->link(1));
             std::cerr << "[" << m_profile.instance_name << "] CollisionDetector cannot be enabled because of collision" << std::endl;

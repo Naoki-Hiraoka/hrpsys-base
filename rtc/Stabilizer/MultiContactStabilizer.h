@@ -252,7 +252,7 @@ public:
         sync2referencetime = 2.0;
         mcs_passive_vel = 0.034907;//2[degree/sec]
         mcs_passive_torquedirection.resize(m_robot->numJoints(),0.0);
-
+        mcs_collisionthre=0.001;
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
     }
@@ -553,6 +553,7 @@ public:
 
     void calcMultiContactControl(hrp::BodyPtr& m_robot/*refworld系*/,
                                  const RTC::TimedDoubleSeq& pgain,
+                                 const RTC::TimedDoubleSeq& collisioninfo,
                                  hrp::Vector3& log_current_base_pos/*refworld系*/,
                                  hrp::Vector3& log_current_base_rpy/*refworld系*/,
                                  std::vector<hrp::Vector3>& log_cur_force_eef/*eef系,eefまわり*/,
@@ -1576,6 +1577,9 @@ public:
         }
         std::cerr << "]" <<std::endl;
 
+        mcs_collisionthre = i_stp.mcs_collisionthre;
+        std::cerr << "[" << instance_name << "]  mcs_collisionthre = " << mcs_collisionthre << std::endl;
+
         if (i_stp.mcs_eeparams.length() == eefnum){
             for(size_t i = 0; i < eefnum; i++){
                 endeffector[i]->setParameter(i_stp.mcs_eeparams[i],instance_name);
@@ -1612,6 +1616,7 @@ public:
         i_stp.mcs_sync2referencetime = sync2referencetime;
         i_stp.mcs_passive_vel = mcs_passive_vel;
         i_stp.mcs_passive_torquedirection.length(m_robot->numJoints());
+        i_stp.mcs_collisionthre = mcs_collisionthre;
         for (size_t i = 0; i < m_robot->numJoints(); i++) {
             i_stp.mcs_passive_torquedirection[i] = mcs_passive_torquedirection[i];
         }
@@ -1631,7 +1636,7 @@ public:
                     is_reference[l->jointId] = false;
                     prevpassive[l->jointId] = false;
                     sync2activecnt[l->jointId] = 0.0;
-                    sync2referencecnt[l->jointId] = 0.0;                    
+                    sync2referencecnt[l->jointId] = 0.0;
                 }else{
                     is_passive[l->jointId] = true;
                     is_reference[l->jointId] = false;
@@ -1813,6 +1818,7 @@ private:
     double sync2activetime;
     double sync2referencetime;
     double mcs_passive_vel;//not used
+    double mcs_collisionthre;
     std::vector<double> mcs_passive_torquedirection;//not used
     };
 

@@ -78,6 +78,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_pgainIn("pgainIn",m_pgain),
     m_tempIn("tempIn",m_temp),
     m_surfacetempIn("surfacetempIn",m_surfacetemp),
+    m_collisioninfoIn("collisioninfoIn",m_collisioninfo),
     m_qRefOut("q", m_qRef),
     m_tauOut("tau", m_tau),
     m_zmpOut("zmp", m_zmp),
@@ -149,6 +150,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addInPort("pgainIn", m_pgainIn);
   addInPort("tempIn", m_tempIn);
   addInPort("surfacetempIn", m_surfacetempIn);
+  addInPort("collisioninfoIn", m_collisioninfoIn);
 
   // Set OutPort buffer
   addOutPort("q", m_qRefOut);
@@ -714,6 +716,9 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
   }
   if (m_surfacetempIn.isNew()) {
     m_surfacetempIn.read();
+  }
+  if (m_collisioninfoIn.isNew()) {
+    m_collisioninfoIn.read();
   }
 
   if (is_legged_robot) {
@@ -1828,6 +1833,7 @@ void Stabilizer::calcEEForceMomentControl() {
         if(m_pgain.data.length() == m_robot->numJoints()){
             multicontactstabilizer.calcMultiContactControl(m_robot,
                                                            m_pgain,
+                                                           m_collisioninfo,
                                                            current_base_pos,
                                                            current_base_rpy,
                                                            current_force_eef,

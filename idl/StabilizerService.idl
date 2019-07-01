@@ -310,6 +310,8 @@ module OpenHRP
       double mcs_sync2referencetime;
       /// if >0: torque>=0 / if <0: torque<=0 / if =0: no constraint
       sequence<double> mcs_passive_torquedirection;
+      /// collision avoidance thre
+      double mcs_collisionthre;
       /// Sequence of all end-effector params
       sequence<EndEffectorParam> mcs_eeparams;
       // common

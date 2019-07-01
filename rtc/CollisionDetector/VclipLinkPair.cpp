@@ -16,15 +16,15 @@ VclipLinkPair::~VclipLinkPair()
 
 bool VclipLinkPair::checkCollision()
 {
-    double p1[3], p2[3];
-    double len = computeDistance(p1,p2);
+    double p1[3], p2[3], p1local[3], p2local[3];
+    double len = computeDistance(p1,p2,p1local,p2local);
     if ( len < tolerance_ ) {
         return true;
     }
     return false;
 }
 
-double VclipLinkPair::computeDistance(double *q1, double *q2)
+double VclipLinkPair::computeDistance(double *q1, double *q2,double *q1local, double *q2local)
 {
     Vclip::Mat3 R1, R2;
     Vclip::Vect3 T1, T2;
@@ -54,6 +54,8 @@ double VclipLinkPair::computeDistance(double *q1, double *q2)
     P2.xformPoint(cp2, cp2g);
     q1[0] = cp1g.x; q1[1] = cp1g.y; q1[2] = cp1g.z;
     q2[0] = cp2g.x; q2[1] = cp2g.y; q2[2] = cp2g.z;
+    q1local[0] = cp1[0]; q1local[1] = cp1[1]; q1local[2] = cp1[2];
+    q2local[0] = cp2[0]; q2local[1] = cp2[1]; q2local[2] = cp2[2];
 
     return len;
 }

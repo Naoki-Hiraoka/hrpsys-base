@@ -413,6 +413,8 @@ class HrpsysConfigurator(object):
             if self.te:
                 connectPorts(self.te.port("tempOut"), self.st.port("tempIn"))
                 connectPorts(self.te.port("surfacetempOut"), self.st.port("surfacetempIn"))
+            if self.co:
+                connectPorts(self.co.port("collisioninfo"), self.st.port("collisioninfoIn"))
             if rtm.findPort(self.rh.ref, "tau") != None:
                 connectPorts(self.rh.port("tau"), self.st.port("acttau"))
 

@@ -6,7 +6,7 @@ public:
     VclipLinkPair(hrp::Link* link0, Vclip::Polyhedron* pqp_model0, hrp::Link* link1, Vclip::Polyhedron* pqp_model1, double tolerance=0);
     ~VclipLinkPair();
     bool checkCollision();
-    double computeDistance(double *q1, double *q2);
+    double computeDistance(double *q1, double *q2m, double *q1local, double *q2local);
     hrp::Link* link(int index) { return links_[index]; }
     double getTolerance() { return tolerance_; }
     void setTolerance(double t) { tolerance_ = t; }

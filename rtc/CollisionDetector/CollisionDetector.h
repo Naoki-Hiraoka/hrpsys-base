@@ -141,7 +141,9 @@ class CollisionDetector
   OutPort<TimedDoubleSeq> m_qOut;
   TimedLongSeq m_beepCommand;
   OutPort<TimedLongSeq> m_beepCommandOut;
-  
+  TimedDoubleSeq m_collisioninfo;
+  OutPort<TimedDoubleSeq> m_collisioninfoOut;
+
   // </rtc-template>
 
   // CORBA Port declaration
@@ -167,11 +169,12 @@ class CollisionDetector
  private:
   class CollisionLinkPair {
   public:
-      CollisionLinkPair(VclipLinkPairPtr i_pair) : point0(hrp::Vector3(0,0,0)), point1(hrp::Vector3(0,0,0)), distance(0) {
+      CollisionLinkPair(VclipLinkPairPtr i_pair) : point0(hrp::Vector3(0,0,0)), point1(hrp::Vector3(0,0,0)), point0local(hrp::Vector3(0,0,0)), point1local(hrp::Vector3(0,0,0)), distance(0) {
           pair = i_pair;
       }
       VclipLinkPairPtr pair;
       hrp::Vector3 point0, point1;
+      hrp::Vector3 point0local, point1local;
       double distance;
   };
 #ifdef USE_HRPSYSUTIL
