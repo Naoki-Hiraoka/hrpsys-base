@@ -29,6 +29,7 @@
 #include "../ImpedanceController/JointPathEx.h"
 #include "../ImpedanceController/RatsMatrix.h"
 #include "../TorqueFilter/IIRFilter.h"
+#include "../SoftErrorLimiter/beep.h"
 
 // </rtc-template>
 
@@ -160,6 +161,8 @@ class Stabilizer
   RTC::TimedDoubleSeq m_qCurrent;
   RTC::TimedDoubleSeq m_qRef;
   RTC::TimedDoubleSeq m_tau;
+  RTC::TimedAngularVelocity3D m_rate;
+  RTC::TimedAcceleration3D m_acc;
   RTC::TimedOrientation3D m_rpy;
   RTC::TimedPoint3D m_zmpRef;
   RTC::TimedPoint3D m_zmp;
@@ -188,11 +191,15 @@ class Stabilizer
   RTC::TimedDoubleSeq m_allRefWrench;
   RTC::TimedDoubleSeq m_allEEComp;
   RTC::TimedDoubleSeq m_debugData;
+  RTC::TimedDoubleSeq m_SegwaySensors;
+  RTC::TimedLongSeq m_beepCommand;
   
   // DataInPort declaration
   // <rtc-template block="inport_declare">
   RTC::InPort<RTC::TimedDoubleSeq> m_qCurrentIn;
   RTC::InPort<RTC::TimedDoubleSeq> m_qRefIn;
+  RTC::InPort<RTC::TimedAngularVelocity3D> m_rateIn;
+  RTC::InPort<RTC::TimedAcceleration3D> m_accIn;
   RTC::InPort<RTC::TimedOrientation3D> m_rpyIn;
   RTC::InPort<RTC::TimedPoint3D> m_zmpRefIn;
   RTC::InPort<RTC::TimedPoint3D> m_basePosIn;
@@ -204,6 +211,7 @@ class Stabilizer
   RTC::InPort<RTC::TimedDoubleSeq> m_qRefSeqIn;
   RTC::InPort<RTC::TimedBoolean> m_walkingStatesIn;
   RTC::InPort<RTC::TimedPoint3D> m_sbpCogOffsetIn;
+  RTC::InPort<RTC::TimedDoubleSeq> m_SegwaySensorsIn;
 
   std::vector<RTC::TimedDoubleSeq> m_wrenches;
   std::vector<RTC::InPort<RTC::TimedDoubleSeq> *> m_wrenchesIn;
@@ -233,6 +241,7 @@ class Stabilizer
   RTC::OutPort<RTC::TimedDoubleSeq> m_allRefWrenchOut;
   RTC::OutPort<RTC::TimedDoubleSeq> m_allEECompOut;
   RTC::OutPort<RTC::TimedDoubleSeq> m_debugDataOut;
+  RTC::OutPort<RTC::TimedLongSeq> m_beepCommandOut;
   
   // </rtc-template>
 
@@ -309,6 +318,7 @@ class Stabilizer
   std::vector<double> prev_act_force_z;
   double zmp_origin_off, transition_smooth_gain, d_pos_z_root, limb_stretch_avoidance_time_const, limb_stretch_avoidance_vlimit[2], root_rot_compensation_limit[2];
   boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > act_cogvel_filter;
+  boost::shared_ptr<FirstOrderLowPassFilter<double> > differential_av_yaw_error_filter, differential2_av_yaw_error_filter, differential2_av_yaw_error_LPF_filter, differential_lv_x_error_filter, differential2_lv_x_error_filter, differential_m_rate_data_avz_filter, differential_segway_lv_x_act_filter;
   OpenHRP::StabilizerService::STAlgorithm st_algorithm;
   SimpleZMPDistributor* szd;
   std::vector<std::vector<Eigen::Vector2d> > support_polygon_vetices, margined_support_polygon_vetices;
@@ -323,7 +333,15 @@ class Stabilizer
   double rdx, rdy, rx, ry;
   // EEFM ST
   double eefm_k1[2], eefm_k2[2], eefm_k3[2], eefm_zmp_delay_time_const[2], eefm_body_attitude_control_gain[2], eefm_body_attitude_control_time_const[2];
-  double eefm_pos_time_const_swing, eefm_pos_transition_time, eefm_pos_margin_time, eefm_gravitational_acceleration;
+  double eefm_pos_time_const_swing, eefm_pos_transition_time, eefm_pos_margin_time, eefm_gravitational_acceleration, segway_av_yaw_pgain, segway_av_yaw_igain, segway_av_yaw_dgain, segway_lv_x_pgain, segway_lv_x_igain, segway_lv_x_dgain;
+  bool segway_learning_mode;
+  hrp::Vector3 segway_learning_grad_J, segway_learning_av_yaw_pid_gain, segway_learning_rate_pid;
+  bool segway_learning_mode_lv_x;
+  bool segway_ride_mode;
+  bool segway_learning_mode_after_ride;
+  bool segway_learning_mode_during_ride;
+  double segway_learning_rate_etaQ, segway_learning_rate_etaR;
+  hrp::Vector3 segway_learning_grad_J_lv_x, segway_learning_lv_x_pid_gain, segway_learning_rate_pid_lv_x;
   std::vector<double> eefm_swing_damping_force_thre, eefm_swing_damping_moment_thre;
   hrp::Vector3 new_refzmp, rel_cog, ref_zmp_aux, diff_foot_origin_ext_moment;
   hrp::Vector3 pos_ctrl;
@@ -334,6 +352,8 @@ class Stabilizer
   double total_mass, transition_time, cop_check_margin, contact_decision_threshold;
   std::vector<double> cp_check_margin, tilt_margin;
   OpenHRP::StabilizerService::EmergencyCheckMode emergency_check_mode;
+  double segway_av_yaw_target, segway_lv_x_target, segway_lv_x_act;
+  BeepClient bc;
 };
 
 

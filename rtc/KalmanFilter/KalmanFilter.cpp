@@ -41,10 +41,12 @@ KalmanFilter::KalmanFilter(RTC::Manager* manager)
   : RTC::DataFlowComponentBase(manager),
     // <rtc-template block="initializer">
     m_rateIn("rate", m_rate),
-    m_accIn("acc", m_acc),
+    m_accIn("acc", m_accRaw),
     m_accRefIn("accRef", m_accRef),
     m_rpyIn("rpyIn", m_rate),
     m_qCurrentIn("qCurrent", m_qCurrent),
+    m_rateOut("rateOut", m_rateO),
+    m_accOut("accOut", m_acc),
     m_rpyOut("rpy", m_rpy),
     m_rpyRawOut("rpy_raw", m_rpyRaw),
     m_baseRpyCurrentOut("baseRpyCurrent", m_baseRpyCurrent),
@@ -83,6 +85,8 @@ RTC::ReturnCode_t KalmanFilter::onInitialize()
   addInPort("qCurrent", m_qCurrentIn);
 
   // Set OutPort buffer
+  addOutPort("rateOut", m_rateOut);
+  addOutPort("accOut", m_accOut);
   addOutPort("rpy", m_rpyOut);
   addOutPort("rpy_raw", m_rpyRawOut);
   addOutPort("baseRpyCurrent", m_baseRpyCurrentOut);
@@ -207,7 +211,7 @@ RTC::ReturnCode_t KalmanFilter::onExecute(RTC::UniqueId ec_id)
   if (m_accIn.isNew()){
     m_accIn.read();
 
-    Eigen::Vector3d acc = m_sensorR * hrp::Vector3(m_acc.data.ax-sx_ref+acc_offset(0), m_acc.data.ay-sy_ref+acc_offset(1), m_acc.data.az-sz_ref+acc_offset(2)); // transform to imaginary acc data
+    Eigen::Vector3d acc = m_sensorR * hrp::Vector3(m_accRaw.data.ax-sx_ref+acc_offset(0), m_accRaw.data.ay-sy_ref+acc_offset(1), m_accRaw.data.az-sz_ref+acc_offset(2)); // transform to imaginary acc data
     acc = sensorR_offset * acc;
     Eigen::Vector3d gyro = m_sensorR * hrp::Vector3(m_rate.data.avx, m_rate.data.avy, m_rate.data.avz); // transform to imaginary rate data
     gyro = sensorR_offset * gyro;
@@ -241,11 +245,21 @@ RTC::ReturnCode_t KalmanFilter::onExecute(RTC::UniqueId ec_id)
     m_baseRpyCurrent.data.r = baseRpyCurrent(0);
     m_baseRpyCurrent.data.p = baseRpyCurrent(1);
     m_baseRpyCurrent.data.y = baseRpyCurrent(2);
+    m_rateO.data.avx = gyro(0);
+    m_rateO.data.avy = gyro(1);
+    m_rateO.data.avz = gyro(2);
+    m_acc.data.ax = acc(0);
+    m_acc.data.ay = acc(1);
+    m_acc.data.az = acc(2);
     // add time stamp
-    m_rpyRaw.tm = m_acc.tm;
-    m_rpy.tm = m_acc.tm;
-    m_baseRpyCurrent.tm = m_acc.tm;
+    m_rateO.tm = m_rate.tm;
+    m_acc.tm = m_accRaw.tm;
+    m_rpyRaw.tm = m_accRaw.tm;
+    m_rpy.tm = m_accRaw.tm;
+    m_baseRpyCurrent.tm = m_accRaw.tm;
 
+    m_rateOut.write();
+    m_accOut.write();
     m_rpyOut.write();
     m_rpyRawOut.write();
     m_baseRpyCurrentOut.write();

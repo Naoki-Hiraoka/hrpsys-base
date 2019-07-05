@@ -185,6 +185,44 @@ module OpenHRP
       DblArray3 eefm_swing_rot_damping_gain;
       /// Position damping gain for swing leg [N/(m/s)] (x,y,z)
       DblArray3 eefm_swing_pos_damping_gain;
+      /// Yaw-direction minisegway control P gain
+      double segway_av_yaw_pgain;
+      /// Yaw-direction minisegway control I gain
+      double segway_av_yaw_igain;
+      /// Yaw-direction minisegway control D gain
+      double segway_av_yaw_dgain;
+      /// X-direction minisegway control P gain
+      double segway_lv_x_pgain;
+      /// X-direction minisegway control I gain
+      double segway_lv_x_igain;
+      /// X-direction minisegway control D gain
+      double segway_lv_x_dgain;
+      /// minisegway ride mode ON/OFF
+      boolean segway_ride_mode;
+      /// minisegway PID learning mode ON/OFF (after ride)
+      boolean segway_learning_mode_after_ride;
+      /// minisegway damping learning mode ON/OFF (during ride)
+      boolean segway_learning_mode_during_ride;
+      /// minisegway PID learning mode ON/OFF
+      boolean segway_learning_mode;
+      /// minisegway PID learning gradient vector
+      DblArray3 segway_learning_grad_J;
+      /// minisegway PID learning updated PID gain vector
+      DblArray3 segway_learning_av_yaw_pid_gain;
+      /// minisegway PID learning rate vector
+      DblArray3 segway_learning_rate_pid;
+      /// minisegway PID learning mode ON/OFF (linear velocity x)
+      boolean segway_learning_mode_lv_x;
+      /// minisegway PID learning gradient vector (linear velocity x)
+      DblArray3 segway_learning_grad_J_lv_x;
+      /// minisegway PID learning updated PID gain vector (linear velocity x)
+      DblArray3 segway_learning_lv_x_pid_gain;
+      /// minisegway PID learning rate vector (linear velocity x)
+      DblArray3 segway_learning_rate_pid_lv_x;
+      /// minisegway damping learning rate (etaQ)
+      double segway_learning_rate_etaQ;
+      /// minisegway damping learning rate (etaR)
+      double segway_learning_rate_etaR;
       /// Sequence of all end-effector force/moment distribution weight
       sequence<sequence<double, 6> > eefm_ee_forcemoment_distribution_weight;
       // common
