@@ -58,6 +58,7 @@ SoftErrorLimiter::SoftErrorLimiter(RTC::Manager* manager)
     m_pgainIn("pgainIn",m_pgain),
     m_tauIn("tauIn",m_tau),
     m_tauMaxIn("tauMaxIn",m_tauMax),
+    m_tempIn("tempIn",m_temp),
     m_servoStateIn("servoStateIn", m_servoState),
     m_qOut("q", m_qRef),
     m_servoStateOut("servoStateOut", m_servoState),
@@ -96,6 +97,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
   addInPort("pgainIn", m_pgainIn);
   addInPort("tauIn", m_tauIn);
   addInPort("tauMaxIn", m_tauMaxIn);
+  addInPort("tempIn", m_tempIn);
   addInPort("servoState", m_servoStateIn);
   
   // Set OutPort buffer
@@ -174,6 +176,25 @@ RTC::ReturnCode_t SoftErrorLimiter::onInitialize()
           coil::stringTo(hardware_pgains[i], hardware_pgains_params[i].c_str());
       }
   }
+
+  // set limit of motor temperature
+  coil::vstring motorTemperatureLimitFromConf = coil::split(prop["motor_temperature_limit"], ",");
+  m_motorTemperatureLimit.resize(m_robot->numJoints());
+  if (motorTemperatureLimitFromConf.size() != m_robot->numJoints()) {
+    std::cerr << "[" << m_profile.instance_name << "] [WARN]: size of motor_temperature_limit is " << motorTemperatureLimitFromConf.size() << ", not equal to " << m_robot->numJoints() << std::endl;
+    for (unsigned int i = 0; i < m_robot->numJoints(); i++) {
+      m_motorTemperatureLimit[i] = 80.0;
+    }
+  } else {
+    for (unsigned int i = 0; i < m_robot->numJoints(); i++) {
+      coil::stringTo(m_motorTemperatureLimit[i], motorTemperatureLimitFromConf[i].c_str());
+    }
+  }
+  std::cerr <<  "[" << m_profile.instance_name << "] " << "motor_temperature_limit: ";
+  for(int i = 0; i < m_motorTemperatureLimit.size(); i++) {
+      std::cerr << m_motorTemperatureLimit[i] << " ";
+  }
+  std::cerr << std::endl;
 
   // read ignored joint
   m_joint_mask.resize(m_robot->numJoints(), false);
@@ -258,6 +279,9 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
   }
   if (m_tauMaxIn.isNew()) {
     m_tauMaxIn.read();
+  }
+  if (m_tempIn.isNew()) {
+    m_tempIn.read();
   }
   if (m_servoStateIn.isNew()) {
     m_servoStateIn.read();
@@ -369,7 +393,7 @@ RTC::ReturnCode_t SoftErrorLimiter::onExecute(RTC::UniqueId ec_id)
           if (!productrange_isempty){
               double limit = std::abs(m_robot->m_servoErrorLimit[i]);
 
-              if (m_pgain.data.length() == m_qCurrent.data.length() && m_pgain.data.length() == hardware_pgains.size() && m_tau.data.length() == m_pgain.data.length()){
+              if (m_pgain.data.length() == m_qCurrent.data.length() && m_pgain.data.length() == hardware_pgains.size() && m_tau.data.length() == m_pgain.data.length() && m_temp.data.length() == m_robot->numJoints() && m_temp.data[i] > m_motorTemperatureLimit[i]*0.8){
                   double taumax = std::abs(m_robot->m_tauLimit[i]);
                   if (m_pgain.data.length() == m_tauMax.data.length()){
                       taumax = std::min(taumax, std::abs(m_tauMax.data[i]));

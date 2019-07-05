@@ -112,6 +112,7 @@ class SoftErrorLimiter
   TimedDoubleSeq m_pgain;
   TimedDoubleSeq m_tau;
   TimedDoubleSeq m_tauMax;
+  TimedDoubleSeq m_temp;
   OpenHRP::TimedLongSeqSeq m_servoState;
   TimedLongSeq m_beepCommand;
 
@@ -122,6 +123,7 @@ class SoftErrorLimiter
   InPort<TimedDoubleSeq> m_pgainIn;
   InPort<TimedDoubleSeq> m_tauIn;
   InPort<TimedDoubleSeq> m_tauMaxIn;
+  InPort<TimedDoubleSeq> m_tempIn;
   InPort<OpenHRP::TimedLongSeqSeq> m_servoStateIn;
   
   // </rtc-template>
@@ -163,6 +165,7 @@ class SoftErrorLimiter
   // If m_beepCommand is connected to BeeperRTC, is_beep_port_connected is true.
   bool is_beep_port_connected;
   std::vector<double> hardware_pgains;
+  hrp::dvector m_motorTemperatureLimit;
 };
 
 
