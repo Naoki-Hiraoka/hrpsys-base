@@ -47,9 +47,12 @@ ThermoEstimator::ThermoEstimator(RTC::Manager* manager)
     m_qCurrentInIn("qCurrentIn", m_qCurrentIn),
     m_servoStateInIn("servoStateIn", m_servoStateIn),
     m_tempOutOut("tempOut", m_tempOut),
-    m_servoStateOutOut("servoStateOut", m_servoStateOut),    
+    m_surfacetempOutOut("surfacetempOut", m_surfacetempOut),
+    m_servoStateOutOut("servoStateOut", m_servoStateOut),
+    m_ThermoEstimatorServicePort("ThermoEstimatorService"),
     // </rtc-template>
-    m_debugLevel(0)
+    m_debugLevel(0),
+    care_surface(false)
 {
 }
 
@@ -76,13 +79,16 @@ RTC::ReturnCode_t ThermoEstimator::onInitialize()
 
   // Set OutPort buffer
   addOutPort("tempOut", m_tempOutOut);
+  addOutPort("surfacetempOut", m_surfacetempOutOut);
   addOutPort("servoStateOut", m_servoStateOutOut);
   
   // Set service provider to Ports
+  m_ThermoEstimatorServicePort.registerProvider("service0", "ThermoEstimatorService", m_service0);
   
   // Set service consumers to Ports
   
   // Set CORBA Service Ports
+  addPort(m_ThermoEstimatorServicePort);
   
   // </rtc-template>
 
@@ -107,8 +113,11 @@ RTC::ReturnCode_t ThermoEstimator::onInitialize()
               << std::endl;
   }
 
+  m_service0.Estimator(this);
+
   // init outport
   m_tempOut.data.length(m_robot->numJoints());
+  m_surfacetempOut.data.length(m_robot->numJoints());
   m_servoStateIn.data.length(m_robot->numJoints());
   m_servoStateOut.data.length(m_robot->numJoints());
   
@@ -123,7 +132,24 @@ RTC::ReturnCode_t ThermoEstimator::onInitialize()
   // set motor heat parameters
   m_motorHeatParams.resize(m_robot->numJoints());
   coil::vstring motorHeatParamsFromConf = coil::split(prop["motor_heat_params"], ",");
-  if (motorHeatParamsFromConf.size() != 2 * m_robot->numJoints()) {
+  if (motorHeatParamsFromConf.size() == 5 * m_robot->numJoints()) {
+      for (unsigned int i = 0; i < m_robot->numJoints(); i++) {
+      m_motorHeatParams[i].temperature = m_ambientTemp;
+      m_motorHeatParams[i].surface_temperature = m_ambientTemp;
+      coil::stringTo(m_motorHeatParams[i].currentCoeffs, motorHeatParamsFromConf[5 * i].c_str());
+      coil::stringTo(m_motorHeatParams[i].R1, motorHeatParamsFromConf[5 * i + 1].c_str());
+      coil::stringTo(m_motorHeatParams[i].R2, motorHeatParamsFromConf[5 * i + 2].c_str());
+      coil::stringTo(m_motorHeatParams[i].core_C, motorHeatParamsFromConf[5 * i + 3].c_str());
+      coil::stringTo(m_motorHeatParams[i].surface_C, motorHeatParamsFromConf[5 * i + 4].c_str());
+      }
+      this->care_surface = true;
+      if (m_debugLevel > 0) {
+          std::cerr <<  "motorHeatParams is " << std::endl;
+          for (unsigned int i = 0; i < m_robot->numJoints(); i++) {
+              std::cerr << m_motorHeatParams[i].currentCoeffs << " " << m_motorHeatParams[i].R1 << " " << m_motorHeatParams[i].R2 << " " << m_motorHeatParams[i].core_C << " " << m_motorHeatParams[i].surface_C << std::endl;
+          }
+      }
+  }else if (motorHeatParamsFromConf.size() != 2 * m_robot->numJoints()) {
     std::cerr << "[" << m_profile.instance_name << "] [WARN]: size of motorHeatParams is " << motorHeatParamsFromConf.size() << ", not equal to 2 * " << m_robot->numJoints() << std::endl;
     // motorHeatParam has default values itself
   } else {
@@ -266,6 +292,9 @@ RTC::ReturnCode_t ThermoEstimator::onExecute(RTC::UniqueId ec_id)
       calculateJointTemperature(jointTorque[i], m_motorHeatParams[i]);
       // output
       m_tempOut.data[i] = m_motorHeatParams[i].temperature;
+      if (this->care_surface) {
+          m_surfacetempOut.data[i] = m_motorHeatParams[i].surface_temperature;
+      }
     }
     if (isDebug()) {
       std::cerr << std::endl << "temperature  : ";
@@ -274,7 +303,12 @@ RTC::ReturnCode_t ThermoEstimator::onExecute(RTC::UniqueId ec_id)
       }
       std::cerr << std::endl;
     }
+    m_tempOut.tm = m_tauIn.tm;
     m_tempOutOut.write();
+    if (this->care_surface) {
+        m_surfacetempOut.tm = m_tauIn.tm;
+        m_surfacetempOutOut.write();
+    }
   }
 
   // overwrite temperature in servoState if temperature is calculated correctly
@@ -282,13 +316,15 @@ RTC::ReturnCode_t ThermoEstimator::onExecute(RTC::UniqueId ec_id)
       && m_servoStateIn.data.length() ==  m_robot->numJoints()) {
     for (unsigned int i = 0; i < m_servoStateIn.data.length(); i++) {
       size_t len = m_servoStateIn.data[i].length();
-      m_servoStateOut.data[i].length(len + 1); // expand extra_data for temperature
+      m_servoStateOut.data[i].length(len + 2); // expand extra_data for temperature
       for (unsigned int j = 0; j < len; j++) {
         m_servoStateOut.data[i][j] = m_servoStateIn.data[i][j];
       }
       // servoStateOut is int, but extra data will be casted to float in HrpsysSeqStateROSBridge
       float tmp_temperature = static_cast<float>(m_motorHeatParams[i].temperature);
       std::memcpy(&(m_servoStateOut.data[i][len]), &tmp_temperature, sizeof(float));
+      float tmp_surface_temperature = static_cast<float>(m_motorHeatParams[i].surface_temperature);
+      std::memcpy(&(m_servoStateOut.data[i][len+1]), &tmp_surface_temperature, sizeof(float));
     }
   } else { // pass servoStateIn to servoStateOut
     m_servoStateOut.data.length(m_servoStateIn.data.length());
@@ -336,6 +372,18 @@ RTC::ReturnCode_t ThermoEstimator::onExecute(RTC::UniqueId ec_id)
   }
 */
 
+bool ThermoEstimator::setSurfaceTemperature(const char *jname, double temperature)
+{
+    hrp::Link *l = NULL;
+    if ((l = m_robot->link(jname))){
+        m_motorHeatParams[l->jointId].surface_temperature = temperature;
+    }else{
+        std::cerr << "[" << m_profile.instance_name << "] Invalid joint name of setSurfaceTemperature " << jname << "!" << std::endl;
+        return false;
+    }
+    return true;
+}
+
 void ThermoEstimator::estimateJointTorqueFromJointError(hrp::dvector &error, hrp::dvector &tau)
 {
   if (error.size() == m_robot->numJoints()
@@ -366,6 +414,7 @@ void ThermoEstimator::estimateJointTorqueFromJointError(hrp::dvector &error, hrp
 
 void ThermoEstimator::calculateJointTemperature(double tau, MotorHeatParam& param)
 {
+  if (!this->care_surface){
   // from Design of High Torque and High Speed Leg Module for High Power Humanoid (Junichi Urata et al.)
   // Tnew = T + (((Re*K^2/C) * tau^2) - ((1/RC) * (T - Ta))) * dt
   double currentHeat, radiation;
@@ -373,6 +422,14 @@ void ThermoEstimator::calculateJointTemperature(double tau, MotorHeatParam& para
   radiation = -param.thermoCoeffs * (param.temperature - m_ambientTemp);
   param.temperature = param.temperature + (currentHeat + radiation) * m_dt;
   return;
+  }else{
+      double Qin, Qmid, Qout;
+      Qin = param.currentCoeffs * std::pow(tau, 2);
+      Qmid = (param.temperature - param.surface_temperature) / param.R1;
+      Qout = (param.surface_temperature - m_ambientTemp) / param.R2;
+      param.temperature += (Qin - Qmid) / param.core_C * m_dt;
+      param.surface_temperature += (Qmid - Qout) / param.surface_C * m_dt;
+  }
 }
 
 bool ThermoEstimator::isDebug(int cycle)

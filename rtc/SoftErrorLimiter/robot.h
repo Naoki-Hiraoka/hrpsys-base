@@ -32,4 +32,5 @@ public:
     //boost::interprocess::interprocess_semaphore wait_sem;
 
     std::vector<double> m_servoErrorLimit;
+    std::vector<double> m_tauLimit;
 };

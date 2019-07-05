@@ -530,6 +530,7 @@ class HrpsysConfigurator(object):
         if self.tl:
             if self.te:
                 connectPorts(self.te.port("tempOut"), self.tl.port("tempIn"))
+                connectPorts(self.te.port("surfacetempOut"), self.tl.port("surfacetempIn"))
 
         # connection for tc
         if self.tc:
@@ -545,6 +546,13 @@ class HrpsysConfigurator(object):
         # connection for el
         if self.el:
             connectPorts(self.rh.port("q"), self.el.port("qCurrent"))
+            connectPorts(self.rh.port("pgain"), self.el.port("pgainIn"))
+            if self.tl:
+                connectPorts(self.tl.port("tauMax"), self.el.port("tauMaxIn"))
+            if self.tf:
+                connectPorts(self.tf.port("tauOut"), self.el.port("tauIn"))
+            else:
+                connectPorts(self.rh.port("tau"), self.el.port("tauIn"))
 
         # connection for es
         if self.es:

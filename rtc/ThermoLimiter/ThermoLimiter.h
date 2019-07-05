@@ -112,12 +112,14 @@ class ThermoLimiter
   
   // </rtc-template>
   TimedDoubleSeq m_tempIn;
+  TimedDoubleSeq m_surfacetempIn;
   TimedDoubleSeq m_tauMaxOut;
   TimedLongSeq m_beepCommandOut;
   
   // DataInPort declaration
   // <rtc-template block="inport_declare">
   InPort<TimedDoubleSeq> m_tempInIn;
+  InPort<TimedDoubleSeq> m_surfacetempInIn;
   
   // </rtc-template>
 
@@ -153,8 +155,10 @@ class ThermoLimiter
   hrp::dvector m_motorTemperatureLimit;
   hrp::BodyPtr m_robot;
   std::vector<MotorHeatParam> m_motorHeatParams;
+  std::vector<bool> tempmax_over;
   coil::Mutex m_mutex;
   BeepClient bc;
+  bool care_surface;
 
   void calcMaxTorqueFromTemperature(hrp::dvector &tauMax);
   double calcEmergencyRatio(RTC::TimedDoubleSeq &current, hrp::dvector &max, double alarmRatio, std::string &prefix);

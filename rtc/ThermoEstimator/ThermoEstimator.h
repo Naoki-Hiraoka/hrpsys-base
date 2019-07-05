@@ -27,7 +27,7 @@
 
 // Service implementation headers
 // <rtc-template block="service_impl_h">
-// #include "ThermoEstimator_impl.h"
+#include "ThermoEstimatorService_impl.h"
 
 // </rtc-template>
 
@@ -103,7 +103,8 @@ class ThermoEstimator
   // no corresponding operation exists in OpenRTm-aist-0.2.0
   // virtual RTC::ReturnCode_t onRateChanged(RTC::UniqueId ec_id);
 
-
+  bool setSurfaceTemperature(const char *jname, double temperature);
+    
  protected:
   // Configuration variable declaration
   // <rtc-template block="config_declare">
@@ -115,6 +116,7 @@ class ThermoEstimator
   OpenHRP::TimedLongSeqSeq m_servoStateIn;
 
   TimedDoubleSeq m_tempOut;
+  TimedDoubleSeq m_surfacetempOut;
   OpenHRP::TimedLongSeqSeq m_servoStateOut;
 
   // DataInPort declaration
@@ -129,24 +131,25 @@ class ThermoEstimator
   // DataOutPort declaration
   // <rtc-template block="outport_declare">
   OutPort<TimedDoubleSeq> m_tempOutOut;
+  OutPort<TimedDoubleSeq> m_surfacetempOutOut;
   OutPort<OpenHRP::TimedLongSeqSeq> m_servoStateOutOut;
   
   // </rtc-template>
 
   // CORBA Port declaration
   // <rtc-template block="corbaport_declare">
-  
+  RTC::CorbaPort m_ThermoEstimatorServicePort;
+
   // </rtc-template>
 
   // Service declaration
   // <rtc-template block="service_declare">
-  //RTC::CorbaPort m_ThermoEstimatorServicePort;
+  ThermoEstimatorService_impl m_service0;
   
   // </rtc-template>
 
   // Consumer declaration
   // <rtc-template block="consumer_declare">
-  //ThermoEstimatorService_impl m_ThermoEstimatorService;
   
   // </rtc-template>
 
@@ -159,6 +162,7 @@ class ThermoEstimator
   double m_ambientTemp; // Ta
   std::vector<MotorHeatParam> m_motorHeatParams;
   hrp::dvector m_error2tau;
+  bool care_surface;
   void estimateJointTorqueFromJointError(hrp::dvector &error, hrp::dvector &tau);
   void calculateJointTemperature(double tau, MotorHeatParam& param);
   bool isDebug(int cycle = 200);

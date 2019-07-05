@@ -15,6 +15,10 @@ bool robot::init() {
   for (unsigned int i=0; i<numJoints(); i++){
     m_servoErrorLimit[i] = DEFAULT_ANGLE_ERROR_LIMIT;
   }
+  m_tauLimit.resize(numJoints());
+  for (unsigned int i=0; i<numJoints(); i++){
+    m_tauLimit[i] = this->joint(i)->climit * this->joint(i)->gearRatio * this->joint(i)->torqueConst;
+  }
   return true;
 }
 
