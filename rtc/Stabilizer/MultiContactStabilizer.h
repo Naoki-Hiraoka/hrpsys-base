@@ -537,7 +537,7 @@ public:
         //7.67639696  4.58959131 -0.17237698
         mcs_k1 = 0.0;
         mcs_k2 = 0.0;
-        mcs_k3 = 0.0;
+        mcs_k3 = 1e2;
 
         
         mcs_joint_torque_distribution_weight.resize(m_robot->numJoints());
@@ -1098,10 +1098,10 @@ public:
                 std::cerr << "ubA" << std::endl;
                 std::cerr << ubA << std::endl;
 
-                nexttaua = a;
-                nexttaub = b;
                 acttau = b - supportJ.transpose() * select_matrix * D * Tinv * d_support_foot;
             }
+            nexttaua = a;
+            nexttaub = b;
         }
         /*****************************************************************/
         //wrench
@@ -1444,6 +1444,72 @@ public:
 
         }
 
+        //taumax minimize
+        {
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(H.rows()+1,H.cols()+1);
+            tmpH.block(0,0,H.rows(),H.cols()) = H;
+            H = tmpH;
+            H(H.rows()-1,H.cols()-1) = mcs_k3;
+
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(g.rows(),g.cols()+1);
+            tmpg.block(0,0,g.rows(),g.cols()) = g;
+            g=tmpg;
+            g(0,g.cols()-1)=0.0;
+
+            for(size_t i=0; i < As.size(); i++){
+                hrp::dmatrix tmpA=hrp::dmatrix::Zero(As[i].rows(),As[i].cols()+1);
+                tmpA.block(0,0,As[i].rows(),As[i].cols())=As[i];
+                As[i]=tmpA;
+            }
+            hrp::dmatrix W = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num);
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                if(ik_enable_joint_states[i]){
+                    if(is_passive[i]) W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = 0.0;
+                    else if(mcs_joint_torque_distribution_weight[i]>0) W(6+ik_enable_joint_map[i],6+ik_enable_joint_map[i]) = std::sqrt(mcs_joint_torque_distribution_weight[i]);
+                }
+            }
+            {
+                hrp::dmatrix A = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num+1);
+                hrp::dvector lbA = hrp::dvector::Zero(6+ik_enable_joint_num);
+                hrp::dvector ubA = hrp::dvector::Zero(6+ik_enable_joint_num);
+                A.block(0,0,A.rows(),A.cols()-1)=- W * nexttaua;
+                for(size_t i=0; i < A.rows();i++){
+                    A(i,A.cols()-1)=1.0;
+                }
+                lbA=W * nexttaub;
+                for(size_t i=0; i < ubA.rows();i++){
+                    ubA[i]=1e10;
+                }
+                As.push_back(A);
+                lbAs.push_back(lbA);
+                ubAs.push_back(ubA);
+            }
+            {
+                hrp::dmatrix A = hrp::dmatrix::Zero(6+ik_enable_joint_num,6+ik_enable_joint_num+1);
+                hrp::dvector lbA = hrp::dvector::Zero(6+ik_enable_joint_num);
+                hrp::dvector ubA = hrp::dvector::Zero(6+ik_enable_joint_num);
+                A.block(0,0,A.rows(),A.cols()-1)= W * nexttaua;
+                for(size_t i=0; i < A.rows();i++){
+                    A(i,A.cols()-1)=1.0;
+                }
+                lbA=- W * nexttaub;
+                for(size_t i=0; i < ubA.rows();i++){
+                    ubA[i]=1e10;
+                }
+                As.push_back(A);
+                lbAs.push_back(lbA);
+                ubAs.push_back(ubA);
+            }
+            hrp::dvector tmpub = hrp::dvector::Zero(ub.rows()+1);
+            tmpub.block(0,0,ub.rows(),1)=ub;
+            ub=tmpub;
+            ub[ub.rows()-1]=1e10;
+            hrp::dvector tmplb = hrp::dvector::Zero(lb.rows()+1);
+            tmplb.block(0,0,lb.rows(),1)=lb;
+            lb=tmplb;
+            lb[lb.rows()-1]=0.0;
+        }
+
         if(debug){
             std::cerr << "H" << std::endl;
             std::cerr << H << std::endl;
@@ -1479,9 +1545,9 @@ public:
         
         //USE_QPOASES を ON にすること
         bool qp_solved=false;
-        hrp::dvector command_dq = hrp::dvector::Zero(6+ik_enable_joint_num);
+        hrp::dvector command_dq = hrp::dvector::Zero(6+ik_enable_joint_num+1);
         {
-            const size_t state_len = 6+ik_enable_joint_num;
+            const size_t state_len = 6+ik_enable_joint_num+1;
             size_t inequality_len = 0;
             for(size_t i = 0 ; i < As.size(); i ++){
                 inequality_len += As[i].rows();
@@ -1678,13 +1744,15 @@ public:
 
 
         if(!qp_solved)std::cerr << "qp fail" <<std::endl;
-        
+
         if(debug){
             std::cerr << "qp_solved" << std::endl;
             std::cerr << qp_solved << std::endl;
             std::cerr << "command_dq" << std::endl;
             std::cerr << command_dq << std::endl;
-
+        }
+        command_dq = command_dq.block(0,0,command_dq.rows()-1,1);
+        if(debug){
             std::cerr << "acttau" << std::endl;
             std::cerr << acttau << std::endl;
             std::cerr << "nexttau" << std::endl;
