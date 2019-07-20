@@ -1449,7 +1449,7 @@ public:
             hrp::dmatrix tmpH = hrp::dmatrix::Zero(H.rows()+1,H.cols()+1);
             tmpH.block(0,0,H.rows(),H.cols()) = H;
             H = tmpH;
-            H(H.rows()-1,H.cols()-1) = 1e6 * mcs_k3;
+            H(H.rows()-1,H.cols()-1) = 1e8 * mcs_k3;
 
             hrp::dmatrix tmpg = hrp::dmatrix::Zero(g.rows(),g.cols()+1);
             tmpg.block(0,0,g.rows(),g.cols()) = g;
@@ -1474,7 +1474,7 @@ public:
                 hrp::dvector ubA = hrp::dvector::Zero(6+ik_enable_joint_num);
                 A.block(0,0,A.rows(),A.cols()-1)=- W * nexttaua;
                 for(size_t i=0; i < A.rows();i++){
-                    A(i,A.cols()-1)=1e3;
+                    A(i,A.cols()-1)=1e4;
                 }
                 lbA=W * nexttaub;
                 for(size_t i=0; i < ubA.rows();i++){
@@ -1490,7 +1490,7 @@ public:
                 hrp::dvector ubA = hrp::dvector::Zero(6+ik_enable_joint_num);
                 A.block(0,0,A.rows(),A.cols()-1)= W * nexttaua;
                 for(size_t i=0; i < A.rows();i++){
-                    A(i,A.cols()-1)=1e3;
+                    A(i,A.cols()-1)=1e4;
                 }
                 lbA=- W * nexttaub;
                 for(size_t i=0; i < ubA.rows();i++){
@@ -1638,7 +1638,7 @@ public:
             }else{
                 options.printLevel = qpOASES::PL_NONE;
             }
-            
+            options.printLevel = qpOASES::PL_HIGH;
             //copied from eus_qpoases
             boost::shared_ptr<qpOASES::SQProblem> example;
             std::pair<int, int> tmp_pair(state_len, inequality_len);
