@@ -239,6 +239,7 @@ public:
         tau_weight = 1e0;
         tauvel_weight = 1e0;
         temp_safe_time = 100;//[s]
+        temp_danger_time = 10;//[s]
         force_weight = 1e0;
         forcevel_weight = 1e0;
         intvel_weight = 1e0;
@@ -247,6 +248,12 @@ public:
         L_weight = 1e0;
         Lvel_weight = 1e0;
         reference_weight = 1e-3;
+        etau_weight = 1e1;
+        etauvel_weight = 1e1;
+        eforce_weight = 1e1;
+        eforcevel_weight = 1e1;
+        tau_weight = 1e1;
+        tauvel_weight = 1e1;
 
         sync2activetime = 2.0;
         sync2referencetime = 2.0;
@@ -569,7 +576,7 @@ public:
         coil::Guard<coil::Mutex> guard(m_mutex);
         const hrp::Vector3 gravity(0, 0, 9.80665);
 
-        // 現在のロボットの姿勢へ
+        // actualのロボットの姿勢へ
         m_robot->rootLink()->R = act_root_R/*actworld系*/;
         m_robot->rootLink()->p = act_root_p/*actworld系*/;
         for (size_t i = 0; i < m_robot->numJoints(); i++) {
@@ -579,7 +586,8 @@ public:
         m_robot->calcCM();//link->wc
         m_robot->rootLink()->calcSubMassCM();//link->subm,submwc
 
-        std::vector<boost::shared_ptr<EndEffector> > cnt_enable_eef;
+        //トルクヤコビアンを求める
+        std::vector<boost::shared_ptr<EndEffector> > cnt_enable_eef;//トルクヤコビアンの計算に、反力を考慮するeef
         for(size_t i = 0; i < eefnum; i++){
             if(endeffector[i]->is_ik_enable || endeffector[i]->act_contact_state){
                 cnt_enable_eef.push_back(endeffector[i]);
@@ -613,11 +621,14 @@ public:
             std::cerr << Jcnt <<std::endl;
         }
 
+        //関節Pゲイン行列
         hrp::dmatrix K = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
         for(size_t i = 0; i < m_robot->numJoints(); i++){
             K(i,i) = pgain.data[i] * hardware_pgains[i];
         }
 
+
+        //支持脚
         std::vector<boost::shared_ptr<EndEffector> > support_eef;
         for(size_t i = 0; i < eefnum;i++){
             if(endeffector[i]->act_contact_state) support_eef.push_back(endeffector[i]);
@@ -638,6 +649,7 @@ public:
             }
         }
 
+        //位置制御matrix
         hrp::dmatrix M = hrp::dmatrix::Zero(6+m_robot->numJoints()+supportJ.rows(),6+m_robot->numJoints()+supportJ.rows());
         M.block(0,0,6+m_robot->numJoints(),6+m_robot->numJoints()) += Jgrav;
         M.block(0,0,6+m_robot->numJoints(),6+m_robot->numJoints()) += -Jcnt;
@@ -658,19 +670,20 @@ public:
         // \Delta \tau = dtau \Delta q^c
         hrp::dmatrix dtau = K - K * dqa.block(6,0,m_robot->numJoints(),m_robot->numJoints());
 
-        //acttauv
-
+        // F^a
         hrp::dvector actwrenchv(supportJ.rows());
         for(size_t i =0; i < support_eef.size(); i++){
             actwrenchv.block<3,1>(i*6,0) = support_eef[i]->act_force_eef;
             actwrenchv.block<3,1>(i*6+3,0) = support_eef[i]->act_moment_eef;
         }
 
-        std::vector<boost::shared_ptr<EndEffector> > interact_eef;
+                std::vector<boost::shared_ptr<EndEffector> > interact_eef;
         for(size_t i = 0; i < eefnum;i++){
             if(!(endeffector[i]->act_contact_state) && endeffector[i]->is_ik_enable)interact_eef.push_back(endeffector[i]);
         }
 
+
+        //遊脚
         hrp::dmatrix interactJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*interact_eef.size(),6+m_robot->numJoints());
         //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
         for(size_t i=0;i<interact_eef.size();i++){
@@ -686,6 +699,7 @@ public:
             }
         }
 
+        //重心ヤコビアン、角運動量ヤコビアン
         hrp::dmatrix tmp_CM_J;
         m_robot->calcCMJacobian(NULL,tmp_CM_J);//CM_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順
         hrp::dmatrix CM_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
@@ -698,6 +712,8 @@ public:
         MO_J.block<3,6>(0,0) = tmp_MO_J.block<3,6>(0,m_robot->numJoints());
         MO_J.block(0,0,3,m_robot->numJoints()) = tmp_MO_J.block(0,0,3,m_robot->numJoints());
 
+
+        //関節角度上下限
         hrp::dvector llimit = hrp::dvector::Zero(m_robot->numJoints());
         hrp::dvector ulimit = hrp::dvector::Zero(m_robot->numJoints());
         for(size_t i = 0 ; i < m_robot->numJoints() ; i++){
@@ -743,111 +759,191 @@ public:
             std::cerr << dtau << std::endl;
         }
 
-        // hrp::dmatrix select_matrix = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
-        // hrp::dmatrix select_matrix_bar = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
-        // for(size_t i = 0 ; i < support_eef.size() ; i++){
-        //     for(size_t j = 0; j < 3;j++){
-        //         select_matrix(i*6+j,i*6+j) = 1.0;
-        //         select_matrix_bar(i*6+j,i*6+j) = 0.0;
-        //     }
-        //     if(!support_eef[i]->act_outside_upper_xcop_state && !support_eef[i]->act_outside_lower_xcop_state){
-        //         select_matrix(i*6+4,i*6+4) = 1.0;
-        //         select_matrix_bar(i*6+4,i*6+4) = 0.0;
-        //     }else{
-        //         select_matrix(i*6+4,i*6+4) = 0.0;
-        //         select_matrix_bar(i*6+4,i*6+4) = 1.0;
-        //     }
-        //     if(!support_eef[i]->act_outside_upper_ycop_state && !support_eef[i]->act_outside_lower_ycop_state){
-        //         select_matrix(i*6+3,i*6+3) = 1.0;
-        //         select_matrix_bar(i*6+3,i*6+3) = 0.0;
-        //     }else{
-        //         select_matrix(i*6+3,i*6+3) = 0.0;
-        //         select_matrix_bar(i*6+3,i*6+3) = 1.0;
-        //     }
-        //     select_matrix(i*6+5,i*6+5) = 1.0;
-        //     select_matrix_bar(i*6+5,i*6+5) = 0.0;
-        // }
+        std::vector<hrp::dmatrix> cc_C;
+        std::vector<hrp::dvector> cc_lb;
+        std::vector<hrp::dvector> cc_ub;
+        size_t num_cc = 0;
+        for(size_t i=0; i < support_eef.size(); i++){
+            support_eef[i]->getContactConstraint(cc_C[i],cc_lb[i],cc_ub[i]);
+            num_cc += cc_C[i].rows();
+        }
 
         /****************************************************************/
-
-        hrp::dmatrix H = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
-        hrp::dmatrix g = hrp::dmatrix::Zero(1,m_robot->numJoints());
+        /*
+          x = [\Delta q^c, \Delta e_\tau^c, \Delta e_F^c, maxmct]
+         */
+        size_t state_len = m_robot->numJoints() + m_robot->numJoints() + num_cc + 1;
+        size_t q_pos = 0;
+        size_t etau_pos = m_robot->numJoints();
+        size_t eforce_pos = m_robot->numJoints() + m_robot->numJoints();
+        size_t maxtau_pos = m_robot->numJoints() + m_robot->numJoints() + num_cc;
+        hrp::dmatrix H = hrp::dmatrix::Zero(state_len, state_len);
+        hrp::dmatrix g = hrp::dmatrix::Zero(1,state_len);
         std::vector<hrp::dmatrix> As;
         std::vector<hrp::dvector> lbAs;
         std::vector<hrp::dvector> ubAs;
-        hrp::dvector lb;
-        hrp::dvector ub;
+        hrp::dvector lb = hrp::dmatrix::Zero(1,state_len);
+        hrp::dvector ub = hrp::dmatrix::Zero(1,state_len);
+        for(size_t i=0; i < state_len; i++){
+            lb[i] = -1e10;
+            ub[i] = 1e10;
+        }
 
         /*****************************************************************/
-        //torque
+        //spacial momentum
         {
-            //value
-            hrp::dmatrix Wtau = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
-            hrp::dvector taumaxv = hrp::dvector::Zero(m_robot->numJoints());
-            for (size_t i = 0; i < m_robot->numJoints(); i++){
-                if(is_joint_enable[i]){
-                    double squaremaxtau = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
-                    double targetsqureTauMax = (motorTemperatureLimit[i] - ambientTemp - motorTempPredParams[i][1] * (motorTempPredParams[i][2] * ambientTemp + motorTempPredParams[i][3] * coiltemp[i] + motorTempPredParams[i][4]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][6] * temp_safe_time) - motorTempPredParams[i][7] * (motorTempPredParams[i][8] * ambientTemp + motorTempPredParams[i][9] * coiltemp[i] + motorTempPredParams[i][10]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][12] * temp_safe_time)) / (motorTempPredParams[i][0] + motorTempPredParams[i][1] * motorTempPredParams[i][5] * std::exp(motorTempPredParams[i][6] * temp_safe_time) + motorTempPredParams[i][7] * motorTempPredParams[i][11] * std::exp(motorTempPredParams[i][12] * temp_safe_time));
-                    if(targetsqureTauMax>0 && targetsqureTauMax > squaremaxtau*1e-4){
-                        squaremaxtau = std::min(targetsqureTauMax,squaremaxtau);
-                    }else{
-                        squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
-                    }
-                    Wtau(i,i) = 1.0 / squaremaxtau;
-                    taumaxv[i] = std::sqrt(squaremaxtau);
-                }
-            }
-
-            H += dtau.transpose() * (tau_weight * Wtau) * dtau;
-            g += acttauv.transpose() * (tau_weight * Wtau) * dtau;
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());
 
             //velocity
-            H += dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau;
+            hrp::dmatrix WP = hrp::dmatrix::Zero(3,3);
+            for (size_t i = 0; i < 3; i++){
+                WP(i,i) = P_weight / dt;
+            }
+
+            tmpH += dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa;
+
+            //accleration
+            hrp::dmatrix WPvel = hrp::dmatrix::Zero(3,3);
+            for (size_t i = 0; i < 3; i++){
+                WPvel(i,i) = Pvel_weight / std::pow(dt,2);
+            }
+
+            tmpH += dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa;
+            tmpg += -prev_P.transpose() * WPvel * CM_J * dqa;
+
+            H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+            if(debugloop){
+                std::cerr << "centroid" << std::endl;
+                std::cerr << "CM_J" << std::endl;
+                std::cerr << CM_J << std::endl;
+                std::cerr << "WP" << std::endl;
+                std::cerr << WP << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr <<  dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa <<std::endl;
+                std::cerr << "WPvel" << std::endl;
+                std::cerr << WPvel << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << -prev_P.transpose() * WPvel * CM_J * dqa <<std::endl;
+            }
+        }
+
+
+        /*****************************************************************/
+        //angular momentum
+        {
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());
+
+            //velocity
+            hrp::dmatrix WL = hrp::dmatrix::Zero(3,3);
+            for (size_t i = 0; i < 3; i++){
+                WL(i,i) = L_weight / dt;
+            }
+
+            tmpH += dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa;
+
+            //accleration
+            hrp::dmatrix WLvel = hrp::dmatrix::Zero(3,3);
+            for (size_t i = 0; i < 3; i++){
+                WLvel(i,i) = Lvel_weight / std::pow(dt,2);
+            }
+
+            tmpH += dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa;
+            tmpg += -prev_L.transpose() * WLvel * MO_J * dqa;
+
+            H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+
+            if(debugloop){
+                std::cerr << "centroid" << std::endl;
+                std::cerr << "MO_J" << std::endl;
+                std::cerr << MO_J << std::endl;
+                std::cerr << "WL" << std::endl;
+                std::cerr << WL << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa <<std::endl;
+                std::cerr << "WLvel" << std::endl;
+                std::cerr << WLvel << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << -prev_L.transpose() * WLvel * MO_J * dqa <<std::endl;
+            }
+        }
+
+        /*****************************************************************/
+        //joint torque constraint
+        {
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//e_\tau^c
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//e_\tau^c
+
+
+            hrp::dmatrix Wetau = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
+            hrp::dvector taumaxv = hrp::dvector::Zero(m_robot->numJoints());
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                double squaremaxtau = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
+                double targetsqureTauMax = (motorTemperatureLimit[i] - ambientTemp - motorTempPredParams[i][1] * (motorTempPredParams[i][2] * ambientTemp + motorTempPredParams[i][3] * coiltemp[i] + motorTempPredParams[i][4]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][6] * temp_danger_time) - motorTempPredParams[i][7] * (motorTempPredParams[i][8] * ambientTemp + motorTempPredParams[i][9] * coiltemp[i] + motorTempPredParams[i][10]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][12] * temp_danger_time)) / (motorTempPredParams[i][0] + motorTempPredParams[i][1] * motorTempPredParams[i][5] * std::exp(motorTempPredParams[i][6] * temp_danger_time) + motorTempPredParams[i][7] * motorTempPredParams[i][11] * std::exp(motorTempPredParams[i][12] * temp_danger_time));
+                if(targetsqureTauMax>0 && targetsqureTauMax > squaremaxtau*1e-4){//avoid to small value
+                    squaremaxtau = std::min(targetsqureTauMax,squaremaxtau);
+                }else{
+                    squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
+                }
+
+                if(is_joint_enable[i]){
+                    taumaxv[i] = std::sqrt(squaremaxtau);
+                }else{
+                    taumaxv[i] = 1e10;
+                }
+                Wetau(i,i) = 1.0 / squaremaxtau;
+            }
+
+            hrp::dvector actetauv = hrp::dvector::Zero(m_robot->numJoints());
+            for(size_t i=0; i < m_robot->numJoints(); i++){
+                if(acttauv[i] > taumaxv[i]) actetauv[i] = taumaxv[i] - acttauv[i];
+                if(acttauv[i] < -taumaxv[i]) actetauv[i] = -taumaxv[i] - acttauv[i];
+            }
+
+            tmpH += (etau_weight * Wetau);
+            tmpg += actetauv.transpose() * (etau_weight * Wetau);
+
+            //velocity
+            tmpH += (etauvel_weight / dt * Wetau);
+
+            H.block(etau_pos,etau_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,etau_pos,tmpg.rows(),tmpg.cols()) += tmpg;
 
             //min max
-            hrp::dvector taumin=hrp::dvector::Zero(m_robot->numJoints());
-            hrp::dvector taumax=hrp::dvector::Zero(m_robot->numJoints());
-            for(size_t i=0; i < m_robot->numJoints(); i++){
-                if(is_joint_enable[i]){
-                    if(acttauv[i] < -m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst) taumin[i] = acttauv[i];
-                    else taumin[i] =- m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                    if(acttauv[i] > m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst) taumax[i] = acttauv[i];
-                    else taumax[i] =+ m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                    //taumin[i]=(is_passive[i]&&mcs_passive_torquedirection[i]>0)?0:- m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                    //taumax[i]=(is_passive[i]&&mcs_passive_torquedirection[i]<0)?0:+ m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst;
-                }else{
-                    taumin[i] = -1e10;
-                    taumax[i] = 1e10;
-                }
-            }
-            hrp::dvector lbA = taumin - acttauv;
-            hrp::dvector ubA = taumax - acttauv;
-            hrp::dmatrix A = dtau;
+            // -taumaxv < acttauv + dtau * \Delta q^c + actetauv + \Delta e_\tau^c < taumaxv
+            hrp::dvector lbA = - taumaxv - acttauv - actetauv;
+            hrp::dvector ubA = taumaxv - acttauv - actetauv;
+            hrp::dmatrix A = hrp::dmatrix::Zero(m_robot->numJoints(),state_len);
+            A.block(0,q_pos,m_robot->numJoints(),m_robot->numJoints()) = dtau;
+            A.block(0,etau_pos,m_robot->numJoints(),m_robot->numJoints()) = hrp::dmatrix::Identity(m_robot->numJoints(),m_robot->numJoints());
 
             As.push_back(A);
             lbAs.push_back(lbA);
             ubAs.push_back(ubA);
 
             if(debugloop){
-                std::cerr << "torque" << std::endl;
+                std::cerr << "etorque" << std::endl;
                 std::cerr << "acttauv" << std::endl;
                 std::cerr << acttauv << std::endl;
                 std::cerr << "taumaxv" << std::endl;
                 std::cerr << taumaxv << std::endl;
-                std::cerr << "Wtau" << std::endl;
-                std::cerr << (tau_weight * Wtau) << std::endl;
+                std::cerr << "actetauv" << std::endl;
+                std::cerr << actetauv << std::endl;
+                std::cerr << "Wetau" << std::endl;
+                std::cerr << Wetau << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dtau.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
+                std::cerr << (etau_weight * Wetau) <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << acttauv.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
-                std::cerr << "Wtauvel" << std::endl;
-                std::cerr << tauvel_weight / dt * Wtau << std::endl;
+                std::cerr << actetauv.transpose() * (etau_weight * Wetau) <<std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau <<std::endl;
-                std::cerr << "taumin" << std::endl;
-                std::cerr << taumin << std::endl;
-                std::cerr << "taumax" << std::endl;
-                std::cerr << taumax << std::endl;
+                std::cerr << (etauvel_weight / dt * Wetau) <<std::endl;
                 std::cerr << "A" << std::endl;
                 std::cerr << A << std::endl;
                 std::cerr << "lbA" << std::endl;
@@ -858,67 +954,93 @@ public:
         }
 
         /*****************************************************************/
-        //wrench
+        //contact wrench constraint
         if(support_eef.size()>0){
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(num_cc, num_cc);//e_F^c
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,num_cc);//e_F^c
+
             //value
-            hrp::dmatrix Wforce = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
-            hrp::dvector Wforceg = hrp::dvector::Zero(6*support_eef.size());
+            hrp::dmatrix Weforce = hrp::dmatrix::Zero(num_cc,num_cc);
+            std::vector<hrp::dvector> acteforcevs;
+            hrp::dvector acteforcev;
+            size_t tmp_num_cc=0;
             for (size_t i = 0; i < support_eef.size(); i++){
-                hrp::dmatrix tmpH;
-                hrp::dvector tmpg;
-                support_eef[i]->getWrenchWeight(tmpH,tmpg);
-                Wforce.block<6,6>(i*6,i*6)=tmpH;
-                Wforceg.block<6,1>(i*6,0)=tmpg;
+                hrp::dmatrix W;
+                support_eef[i]->getEWrenchWeight(W);
+                Weforce.block(tmp_num_cc,tmp_num_cc,W.rows(),W.cols())=W;
+
+                hrp::dvector l = cc_lb[i] - cc_C[i] * actwrenchv.block<6,1>(6*i,0);
+                hrp::dvector u = cc_ub[i] - cc_C[i] * actwrenchv.block<6,1>(6*i,0);
+
+                hrp::dvector tmpacteforcev = hrp::dvector::Zero(W.rows());
+                for(size_t j=0; j < W.rows(); j++){
+                    if (l[j] > 0.0) tmpacteforcev[j] = l[j];
+                    if (u[j] < 0.0) tmpacteforcev[j] = u[j];
+                }
+                acteforcevs.push_back(tmpacteforcev);
+                acteforcev.block(tmp_num_cc,0,tmpacteforcev.rows(),tmpacteforcev.cols()) = tmpacteforcev;
+
+                tmp_num_cc += W.rows();
             }
 
-            H += dF.transpose() * (Wforce * force_weight) * dF;
-            g += (Wforceg.transpose() * force_weight) * dF;
+            tmpH += (eforce_weight * Weforce);
+            tmpg += acteforcev.transpose() * (eforce_weight * Weforce);
 
             //velocity
-            H += dF.transpose() * (forcevel_weight / dt * Wforce) * dF;
+            tmpH += (eforcevel_weight / dt * Weforce);
+
+            H.block(eforce_pos,eforce_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,eforce_pos,tmpg.rows(),tmpg.cols()) += tmpg;
 
             //min max
+            tmp_num_cc = 0;
             for(size_t i = 0 ; i < support_eef.size() ; i++){
-                hrp::dmatrix C;
-                hrp::dvector lb;
-                hrp::dvector ub;
-                support_eef[i]->getContactConstraint(C,lb,ub);
-                As.push_back(C * dF.block(i*6,0,6,dF.cols()));
-                lbAs.push_back(lb-C*actwrenchv.block<6,1>(6*i,0));
-                ubAs.push_back(ub-C*actwrenchv.block<6,1>(6*i,0));
+                hrp::dvector lbA = cc_lb[i]-cc_C[i]*actwrenchv.block<6,1>(6*i,0) - acteforcevs[i];
+                hrp::dvector ubA = cc_ub[i]-cc_C[i]*actwrenchv.block<6,1>(6*i,0) - acteforcevs[i];
+                hrp::dmatrix A = hrp::dmatrix::Zero(lbA.rows(),state_len);
+                A.block(0,q_pos,A.rows(),m_robot->numJoints()) = cc_C[i] * dF.block(i*6,0,6,dF.cols());
+                A.block(0,eforce_pos+tmp_num_cc,A.rows(),A.rows()) = hrp::dmatrix::Identity(A.rows(),A.rows());
+
+                tmp_num_cc += A.rows();
+
+                As.push_back(A);
+                lbAs.push_back(lbA);
+                ubAs.push_back(ubA);
 
                 if(debugloop){
-                    std::cerr << "C" << std::endl;
-                    std::cerr << C << std::endl;
-                    std::cerr << "lb" << std::endl;
-                    std::cerr << lb << std::endl;
-                    std::cerr << "ub" << std::endl;
-                    std::cerr << ub << std::endl;
+                    std::cerr << "A" << std::endl;
+                    std::cerr << A << std::endl;
+                    std::cerr << "lbA" << std::endl;
+                    std::cerr << lbA << std::endl;
+                    std::cerr << "ubA" << std::endl;
+                    std::cerr << ubA << std::endl;
                 }
             }
 
             if(debugloop){
-                std::cerr << "wrench" << std::endl;
+                std::cerr << "ewrench" << std::endl;
                 std::cerr << "actwrenchv" << std::endl;
                 std::cerr << actwrenchv << std::endl;
-                std::cerr << "Wforce" << std::endl;
-                std::cerr << Wforce << std::endl;
-                std::cerr << "Wforceg" << std::endl;
-                std::cerr << Wforceg << std::endl;
+                std::cerr << "acteforcev" << std::endl;
+                std::cerr << acteforcev << std::endl;
+                std::cerr << "Weforce" << std::endl;
+                std::cerr << Weforce << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dF.transpose() * (Wforce * force_weight) * dF <<std::endl;
+                std::cerr << (eforce_weight * Weforce) <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << (Wforceg.transpose() * force_weight) * dF <<std::endl;
-                std::cerr << "Wforcevel" << std::endl;
-                std::cerr << forcevel_weight / dt * Wforce << std::endl;
+                std::cerr << acteforcev.transpose() * (eforce_weight * Weforce) <<std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dF.transpose() * (forcevel_weight / dt * Wforce) * dF <<std::endl;
+                std::cerr << (eforcevel_weight / dt * Weforce) <<std::endl;
             }
         }
+
 
         /*****************************************************************/
         //interact eef
         if(interact_eef.size()>0){
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//q
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//q
+
             hrp::dmatrix Wint = hrp::dmatrix::Zero(6*interact_eef.size(),6*interact_eef.size());
             for (size_t i = 0; i < interact_eef.size(); i++){
                 for(size_t j = 0; j < 3; j++){
@@ -956,8 +1078,12 @@ public:
                 }
             }
 
-            H += dqa.transpose() * interactJ.transpose() * Wint * interactJ * dqa;
-            g += -delta_interact_eef.transpose() * Wint * interactJ * dqa;
+            tmpH += dqa.transpose() * interactJ.transpose() * Wint * interactJ * dqa;
+            tmpg += -delta_interact_eef.transpose() * Wint * interactJ * dqa;
+
+            H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+
 
             if(debugloop){
                 std::cerr << "interact eef" << std::endl;
@@ -972,89 +1098,172 @@ public:
             }
         }
 
+
         /*****************************************************************/
-        //spacial momentum
+        //torque
         {
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//q
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//q
+
+            //value
+            hrp::dmatrix Wtau = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
+            hrp::dvector taumaxv = hrp::dvector::Zero(m_robot->numJoints());
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                if(is_joint_enable[i]){
+                    double squaremaxtau = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
+                    double targetsqureTauMax = (motorTemperatureLimit[i] - ambientTemp - motorTempPredParams[i][1] * (motorTempPredParams[i][2] * ambientTemp + motorTempPredParams[i][3] * coiltemp[i] + motorTempPredParams[i][4]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][6] * temp_safe_time) - motorTempPredParams[i][7] * (motorTempPredParams[i][8] * ambientTemp + motorTempPredParams[i][9] * coiltemp[i] + motorTempPredParams[i][10]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][12] * temp_safe_time)) / (motorTempPredParams[i][0] + motorTempPredParams[i][1] * motorTempPredParams[i][5] * std::exp(motorTempPredParams[i][6] * temp_safe_time) + motorTempPredParams[i][7] * motorTempPredParams[i][11] * std::exp(motorTempPredParams[i][12] * temp_safe_time));
+                    if(targetsqureTauMax>0 && targetsqureTauMax > squaremaxtau*1e-4){
+                        squaremaxtau = std::min(targetsqureTauMax,squaremaxtau);
+                    }else{
+                        squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
+                    }
+                    Wtau(i,i) = 1.0 / squaremaxtau;
+                    taumaxv[i] = std::sqrt(squaremaxtau);
+                }
+            }
+
+            tmpH += dtau.transpose() * (tau_weight * Wtau) * dtau;
+            tmpg += acttauv.transpose() * (tau_weight * Wtau) * dtau;
+
             //velocity
-            hrp::dmatrix WP = hrp::dmatrix::Zero(3,3);
-            for (size_t i = 0; i < 3; i++){
-                WP(i,i) = P_weight / dt;
-            }
+            tmpH += dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau;
 
-            H += dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa;
-
-            //accleration
-            hrp::dmatrix WPvel = hrp::dmatrix::Zero(3,3);
-            for (size_t i = 0; i < 3; i++){
-                WPvel(i,i) = Pvel_weight / std::pow(dt,2);
-            }
-
-            H += dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa;
-            g += -prev_P.transpose() * WPvel * CM_J * dqa;
+            H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
 
             if(debugloop){
-                std::cerr << "centroid" << std::endl;
-                std::cerr << "CM_J" << std::endl;
-                std::cerr << CM_J << std::endl;
-                std::cerr << "WP" << std::endl;
-                std::cerr << WP << std::endl;
+                std::cerr << "torque" << std::endl;
+                std::cerr << "acttauv" << std::endl;
+                std::cerr << acttauv << std::endl;
+                std::cerr << "taumaxv" << std::endl;
+                std::cerr << taumaxv << std::endl;
+                std::cerr << "Wtau" << std::endl;
+                std::cerr << (tau_weight * Wtau) << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr <<  dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa <<std::endl;
-                std::cerr << "WPvel" << std::endl;
-                std::cerr << WPvel << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa <<std::endl;
+                std::cerr << dtau.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << -prev_P.transpose() * WPvel * CM_J * dqa <<std::endl;
+                std::cerr << acttauv.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
+                std::cerr << "Wtauvel" << std::endl;
+                std::cerr << tauvel_weight / dt * Wtau << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau <<std::endl;
+            }
+
+
+            //taumax minimize
+            hrp::dmatrix Wtaumax = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                if(is_joint_enable[i]){
+                    Wtaumax(i,i) = taumaxv[i];
+                }
+            }
+            hrp::dvector tmptaumax = Wtaumax * acttauv;
+            double acttaumax = 0;
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                if(std::abs(tmptaumax[i]) > acttaumax){
+                    acttaumax = std::abs(tmptaumax[i]);
+                }
+            }
+
+            H(maxtau_pos,maxtau_pos) = taumax_weight;
+            g(0,maxtau_pos) = acttaumax * taumax_weight;
+
+            //velocity
+            H(maxtau_pos,maxtau_pos) = taumaxvel_weight / dt;
+
+            {
+                hrp::dmatrix A = hrp::dmatrix::Zero(m_robot->numJoints(),state_len);
+                hrp::dvector lbA = hrp::dvector::Zero(m_robot->numJoints());
+                hrp::dvector ubA = hrp::dvector::Zero(m_robot->numJoints());
+                A.block(0,q_pos,A.rows(),m_robot->numJoints())=- Wtaumax * dtau;
+                for(size_t i=0; i < A.rows();i++){
+                    A(i,maxtau_pos)=1.0;
+                }
+                lbA=Wtaumax * acttauv;
+                for(size_t i=0; i < ubA.rows();i++){
+                    ubA[i]=1e10;
+                }
+                As.push_back(A);
+                lbAs.push_back(lbA);
+                ubAs.push_back(ubA);
+            }
+            {
+                hrp::dmatrix A = hrp::dmatrix::Zero(m_robot->numJoints(),state_len);
+                hrp::dvector lbA = hrp::dvector::Zero(m_robot->numJoints());
+                hrp::dvector ubA = hrp::dvector::Zero(m_robot->numJoints());
+                A.block(0,q_pos,A.rows(),m_robot->numJoints())=Wtaumax * dtau;
+                for(size_t i=0; i < A.rows();i++){
+                    A(i,maxtau_pos)=1.0;
+                }
+                lbA=-Wtaumax * acttauv;
+                for(size_t i=0; i < ubA.rows();i++){
+                    ubA[i]=1e10;
+                }
+                As.push_back(A);
+                lbAs.push_back(lbA);
+                ubAs.push_back(ubA);
             }
         }
 
+
         /*****************************************************************/
-        //angular momentum
-        {
+        //wrench
+        if(support_eef.size()>0){
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//q
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//q
+
+            //value
+            hrp::dmatrix Wforce = hrp::dmatrix::Zero(6*support_eef.size(),6*support_eef.size());
+            hrp::dvector Wforceg = hrp::dvector::Zero(6*support_eef.size());
+            for (size_t i = 0; i < support_eef.size(); i++){
+                hrp::dmatrix tmpH;
+                hrp::dvector tmpg;
+                support_eef[i]->getWrenchWeight(tmpH,tmpg);
+                Wforce.block<6,6>(i*6,i*6)=tmpH;
+                Wforceg.block<6,1>(i*6,0)=tmpg;
+            }
+
+            H += dF.transpose() * (Wforce * force_weight) * dF;
+            g += (Wforceg.transpose() * force_weight) * dF;
+
             //velocity
-            hrp::dmatrix WL = hrp::dmatrix::Zero(3,3);
-            for (size_t i = 0; i < 3; i++){
-                WL(i,i) = L_weight / dt;
-            }
+            H += dF.transpose() * (forcevel_weight / dt * Wforce) * dF;
 
-            H += dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa;
-
-            //accleration
-            hrp::dmatrix WLvel = hrp::dmatrix::Zero(3,3);
-            for (size_t i = 0; i < 3; i++){
-                WLvel(i,i) = Lvel_weight / std::pow(dt,2);
-            }
-
-            H += dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa;
-            g += -prev_L.transpose() * WLvel * MO_J * dqa;
+            H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
 
             if(debugloop){
-                std::cerr << "centroid" << std::endl;
-                std::cerr << "MO_J" << std::endl;
-                std::cerr << MO_J << std::endl;
-                std::cerr << "WL" << std::endl;
-                std::cerr << WL << std::endl;
+                std::cerr << "wrench" << std::endl;
+                std::cerr << "actwrenchv" << std::endl;
+                std::cerr << actwrenchv << std::endl;
+                std::cerr << "Wforce" << std::endl;
+                std::cerr << Wforce << std::endl;
+                std::cerr << "Wforceg" << std::endl;
+                std::cerr << Wforceg << std::endl;
                 std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa <<std::endl;
-                std::cerr << "WLvel" << std::endl;
-                std::cerr << WLvel << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa <<std::endl;
+                std::cerr << dF.transpose() * (Wforce * force_weight) * dF <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << -prev_L.transpose() * WLvel * MO_J * dqa <<std::endl;
+                std::cerr << (Wforceg.transpose() * force_weight) * dF <<std::endl;
+                std::cerr << "Wforcevel" << std::endl;
+                std::cerr << forcevel_weight / dt * Wforce << std::endl;
+                std::cerr << "H" << std::endl;
+                std::cerr << dF.transpose() * (forcevel_weight / dt * Wforce) * dF <<std::endl;
             }
         }
+
 
         /*****************************************************************/
         //redundant q
         {
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//q
             hrp::dmatrix Wq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
                 Wq(i,i) = reference_weight / dt;
             }
 
-            H += Wq;
+            tmpH += Wq;
+
+            H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
 
             if(debugloop){
                 std::cerr << "q" << std::endl;
@@ -1064,6 +1273,11 @@ public:
                 std::cerr << Wq <<std::endl;
             }
         }
+
+
+        /*****************************************************************/
+        // collision avoidance
+        // TODO
 
         /*****************************************************************/
         //min-max
@@ -1119,8 +1333,8 @@ public:
                 l[i] = min;
             }
 
-            ub = u;
-            lb = l;
+            ub.block(q_pos,0,u.rows(),u.cols()) = u;
+            lb.block(q_pos,0,l.rows(),l.cols()) = l;
 
             if(debugloop){
                 std::cerr << "u" << std::endl;
@@ -1131,6 +1345,7 @@ public:
 
         }
 
+        
         /****************************************************/
         if(debugloop){
             std::cerr << "H" << std::endl;
@@ -1158,7 +1373,7 @@ public:
         /*****************************************************************/
         //USE_QPOASES を ON にすること
         bool qp_solved=false;
-        hrp::dvector command_dq = hrp::dvector::Zero(H.cols());
+        hrp::dvector xopt = hrp::dvector::Zero(H.cols());
         if(support_eef.size()>0){
             const size_t state_len = H.cols();
             size_t inequality_len = 0;
@@ -1284,7 +1499,7 @@ public:
                     real_t* xOpt = new real_t[state_len];
                     example->getPrimalSolution( xOpt );
                     for(size_t i=0; i<state_len;i++){
-                        command_dq[i]=xOpt[i];
+                        xopt[i]=xOpt[i];
                     }
                     delete[] xOpt;
                 }else{
@@ -1326,7 +1541,7 @@ public:
                     real_t* xOpt = new real_t[state_len];
                     example->getPrimalSolution( xOpt );
                     for(size_t i=0; i<state_len;i++){
-                        command_dq[i]=xOpt[i];
+                        xopt[i]=xOpt[i];
                     }
                     delete[] xOpt;
                 }else{
@@ -1348,12 +1563,19 @@ public:
 
 
         if(!qp_solved)std::cerr << "qp fail" <<std::endl;
+        hrp::dvector command_dq = xopt.block(q_pos,0,m_robot->numJoints(),1);
 
         if(debugloop){
             std::cerr << "qp_solved" << std::endl;
             std::cerr << qp_solved << std::endl;
-            std::cerr << "command_dq" << std::endl;
+            std::cerr << "dq" << std::endl;
             std::cerr << command_dq << std::endl;
+            std::cerr << "detau" << std::endl;
+            std::cerr << xopt.block(etau_pos,0,m_robot->numJoints(),1) << std::endl;
+            std::cerr << "deforce" << std::endl;
+            std::cerr << xopt.block(eforce_pos,0,num_cc,1) << std::endl;
+            std::cerr << "mct" << std::endl;
+            std::cerr << xopt[command_dq.rows()-1] << std::endl;
             std::cerr << "qact" << std::endl;
             std::cerr << qactv << std::endl;
             std::cerr << "dqact" << std::endl;
@@ -1384,7 +1606,7 @@ public:
             std::cerr << interactJ * dqa * command_dq << std::endl;
         }
 
-        hrp::dvector cur_wrench = actwrenchv + dF * command_dq;
+                hrp::dvector cur_wrench = actwrenchv + dF * command_dq;
         for(size_t i=0; i < support_eef.size();i++){
             support_eef[i]->cur_force_eef = cur_wrench.block<3,1>(i*6,0);
             support_eef[i]->cur_moment_eef = cur_wrench.block<3,1>(i*6+3,0);
@@ -1466,6 +1688,8 @@ public:
         if(debugloop){
             std::cerr << "calcMultiContactControl end" << std::endl;
         }
+
+
     }
 
     void sync_2_st(){//初期化
@@ -1532,11 +1756,8 @@ public:
         temp_safe_time = i_stp.temp_safe_time;
         std::cerr << "[" << instance_name << "]  temp_safe_time = " << temp_safe_time << std::endl;
 
-        force_weight = i_stp.force_weight;
-        std::cerr << "[" << instance_name << "]  force_weight = " << force_weight << std::endl;
-
-        forcevel_weight = i_stp.forcevel_weight;
-        std::cerr << "[" << instance_name << "]  forcevel_weight = " << forcevel_weight << std::endl;
+        temp_danger_time = i_stp.temp_danger_time;
+        std::cerr << "[" << instance_name << "]  temp_danger_time = " << temp_danger_time << std::endl;
 
         intvel_weight = i_stp.intvel_weight;
         std::cerr << "[" << instance_name << "]  intvel_weight = " << intvel_weight << std::endl;
@@ -1555,6 +1776,25 @@ public:
 
         reference_weight = i_stp.reference_weight;
         std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
+
+        etau_weight = i_stp.etau_weight;
+        std::cerr << "[" << instance_name << "]  etau_weight = " << etau_weight << std::endl;
+
+        etauvel_weight = i_stp.etauvel_weight;
+        std::cerr << "[" << instance_name << "]  etauvel_weight = " << etauvel_weight << std::endl;
+
+        eforce_weight = i_stp.eforce_weight;
+        std::cerr << "[" << instance_name << "]  eforce_weight = " << eforce_weight << std::endl;
+
+        eforcevel_weight = i_stp.eforcevel_weight;
+        std::cerr << "[" << instance_name << "]  eforcevel_weight = " << eforcevel_weight << std::endl;
+
+        taumax_weight = i_stp.taumax_weight;
+        std::cerr << "[" << instance_name << "]  taumax_weight = " << taumax_weight << std::endl;
+
+        taumaxvel_weight = i_stp.taumaxvel_weight;
+        std::cerr << "[" << instance_name << "]  taumaxvel_weight = " << taumaxvel_weight << std::endl;
+
 
         sync2activetime = i_stp.mcs_sync2activetime;
         sync2referencetime = i_stp.mcs_sync2referencetime;
@@ -1603,6 +1843,7 @@ public:
         i_stp.tau_weight = tau_weight;
         i_stp.tauvel_weight = tauvel_weight;
         i_stp.temp_safe_time = temp_safe_time;
+        i_stp.temp_danger_time = temp_danger_time;
         i_stp.force_weight = force_weight;
         i_stp.forcevel_weight = forcevel_weight;
         i_stp.intvel_weight = intvel_weight;
@@ -1611,6 +1852,12 @@ public:
         i_stp.L_weight = L_weight;
         i_stp.Lvel_weight = Lvel_weight;
         i_stp.reference_weight = reference_weight;
+        i_stp.etau_weight = etau_weight;
+        i_stp.etauvel_weight = etauvel_weight;
+        i_stp.eforce_weight = eforce_weight;
+        i_stp.eforcevel_weight = eforcevel_weight;
+        i_stp.taumax_weight = taumax_weight;
+        i_stp.taumaxvel_weight = taumaxvel_weight;
 
         i_stp.mcs_sync2activetime = sync2activetime;
         i_stp.mcs_sync2referencetime = sync2referencetime;
@@ -1806,6 +2053,7 @@ private:
     double tau_weight;
     double tauvel_weight;
     double temp_safe_time;
+    double temp_danger_time;
     double force_weight;
     double forcevel_weight;
     double intvel_weight;
@@ -1814,6 +2062,12 @@ private:
     double L_weight;
     double Lvel_weight;
     double reference_weight;
+    double etau_weight;
+    double etauvel_weight;
+    double eforce_weight;
+    double eforcevel_weight;
+    double taumax_weight;
+    double taumaxvel_weight;
 
     double sync2activetime;
     double sync2referencetime;

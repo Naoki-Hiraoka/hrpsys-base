@@ -284,8 +284,10 @@ module OpenHRP
       double tau_weight;
       /// tauvel weight
       double tauvel_weight;
-      /// temperature sage time
+      /// temperature safe time
       double temp_safe_time;
+      /// temperature danger time
+      double temp_danger_time;
       /// force weight
       double force_weight;
       /// force vel weight
@@ -302,6 +304,18 @@ module OpenHRP
       double Lvel_weight;
       /// reference weight
       double reference_weight;
+      /// etau weight
+      double etau_weight;
+      /// etauvel weight
+      double etauvel_weight;
+      /// eforce weight
+      double eforce_weight;
+      /// eforce vel weight
+      double eforcevel_weight;
+      /// taumax weight
+      double taumax_weight;
+      /// taumaxvel weight
+      double taumaxvel_weight;
       /// joint passive velocity [rad/s]
       double mcs_passive_vel;
       /// joint passive2active time [s]
