@@ -759,13 +759,21 @@ public:
             std::cerr << dtau << std::endl;
         }
 
-        std::vector<hrp::dmatrix> cc_C;
-        std::vector<hrp::dvector> cc_lb;
-        std::vector<hrp::dvector> cc_ub;
+        std::vector<hrp::dmatrix> cc_C(support_eef.size());
+        std::vector<hrp::dvector> cc_lb(support_eef.size());
+        std::vector<hrp::dvector> cc_ub(support_eef.size());
         size_t num_cc = 0;
         for(size_t i=0; i < support_eef.size(); i++){
             support_eef[i]->getContactConstraint(cc_C[i],cc_lb[i],cc_ub[i]);
             num_cc += cc_C[i].rows();
+            if(debugloop){
+                std::cerr << "cc_C" << std::endl;
+                std::cerr << cc_C[i] << std::endl;
+                std::cerr << "cc_lb" << std::endl;
+                std::cerr << cc_lb[i] << std::endl;
+                std::cerr << "cc_ub" << std::endl;
+                std::cerr << cc_ub[i] << std::endl;
+            }
         }
 
         /****************************************************************/
@@ -788,6 +796,9 @@ public:
             lb[i] = -1e10;
             ub[i] = 1e10;
         }
+
+        std::vector<hrp::dmatrix> eachH;
+        std::vector<hrp::dmatrix> eachg;
 
         /*****************************************************************/
         //spacial momentum
@@ -820,14 +831,21 @@ public:
                 std::cerr << CM_J << std::endl;
                 std::cerr << "WP" << std::endl;
                 std::cerr << WP << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr <<  dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa <<std::endl;
                 std::cerr << "WPvel" << std::endl;
                 std::cerr << WPvel << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa <<std::endl;
+                std::cerr << thisH <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << -prev_P.transpose() * WPvel * CM_J * dqa <<std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
         }
 
@@ -841,7 +859,7 @@ public:
             //velocity
             hrp::dmatrix WL = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                WL(i,i) = L_weight / dt;
+                WL(i,i) = L_weight / std::pow(m_robot->totalMass(),2) / dt;
             }
 
             tmpH += dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa;
@@ -849,7 +867,7 @@ public:
             //accleration
             hrp::dmatrix WLvel = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                WLvel(i,i) = Lvel_weight / std::pow(dt,2);
+                WLvel(i,i) = Lvel_weight / std::pow(m_robot->totalMass(),2) / std::pow(dt,2);
             }
 
             tmpH += dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa;
@@ -864,14 +882,21 @@ public:
                 std::cerr << MO_J << std::endl;
                 std::cerr << "WL" << std::endl;
                 std::cerr << WL << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa <<std::endl;
                 std::cerr << "WLvel" << std::endl;
                 std::cerr << WLvel << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa <<std::endl;
+                std::cerr << thisH <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << -prev_L.transpose() * WLvel * MO_J * dqa <<std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
         }
 
@@ -938,18 +963,24 @@ public:
                 std::cerr << actetauv << std::endl;
                 std::cerr << "Wetau" << std::endl;
                 std::cerr << Wetau << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << (etau_weight * Wetau) <<std::endl;
-                std::cerr << "g" << std::endl;
-                std::cerr << actetauv.transpose() * (etau_weight * Wetau) <<std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << (etauvel_weight / dt * Wetau) <<std::endl;
                 std::cerr << "A" << std::endl;
                 std::cerr << A << std::endl;
                 std::cerr << "lbA" << std::endl;
                 std::cerr << lbA << std::endl;
                 std::cerr << "ubA" << std::endl;
                 std::cerr << ubA << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(etau_pos,etau_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,etau_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
+                std::cerr << "H" << std::endl;
+                std::cerr << thisH <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << thisg <<std::endl;
             }
         }
 
@@ -962,7 +993,7 @@ public:
             //value
             hrp::dmatrix Weforce = hrp::dmatrix::Zero(num_cc,num_cc);
             std::vector<hrp::dvector> acteforcevs;
-            hrp::dvector acteforcev;
+            hrp::dvector acteforcev = hrp::dvector::Zero(num_cc);
             size_t tmp_num_cc=0;
             for (size_t i = 0; i < support_eef.size(); i++){
                 hrp::dmatrix W;
@@ -1025,12 +1056,19 @@ public:
                 std::cerr << acteforcev << std::endl;
                 std::cerr << "Weforce" << std::endl;
                 std::cerr << Weforce << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(eforce_pos,eforce_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,eforce_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << (eforce_weight * Weforce) <<std::endl;
+                std::cerr << thisH <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << acteforcev.transpose() * (eforce_weight * Weforce) <<std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << (eforcevel_weight / dt * Weforce) <<std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
         }
 
@@ -1091,10 +1129,19 @@ public:
                 std::cerr << Wint << std::endl;
                 std::cerr << "delta_interact_eef" << std::endl;
                 std::cerr << delta_interact_eef << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << dqa.transpose() * interactJ.transpose() * Wint * interactJ * dqa<<std::endl;
+                std::cerr << thisH <<std::endl;
                 std::cerr << "g" << std::endl;
-                std::cerr << delta_interact_eef.transpose() * Wint * interactJ * dqa <<std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
         }
 
@@ -1139,14 +1186,22 @@ public:
                 std::cerr << taumaxv << std::endl;
                 std::cerr << "Wtau" << std::endl;
                 std::cerr << (tau_weight * Wtau) << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << dtau.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
-                std::cerr << "g" << std::endl;
-                std::cerr << acttauv.transpose() * (tau_weight * Wtau) * dtau <<std::endl;
                 std::cerr << "Wtauvel" << std::endl;
                 std::cerr << tauvel_weight / dt * Wtau << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+
+                thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << dtau.transpose() * (tauvel_weight / dt * Wtau) * dtau <<std::endl;
+                std::cerr << thisH <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
 
 
@@ -1154,7 +1209,7 @@ public:
             hrp::dmatrix Wtaumax = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
                 if(is_joint_enable[i]){
-                    Wtaumax(i,i) = taumaxv[i];
+                    Wtaumax(i,i) = 1.0 / taumaxv[i];
                 }
             }
             hrp::dvector tmptaumax = Wtaumax * acttauv;
@@ -1165,11 +1220,11 @@ public:
                 }
             }
 
-            H(maxtau_pos,maxtau_pos) = taumax_weight;
-            g(0,maxtau_pos) = acttaumax * taumax_weight;
+            H(maxtau_pos,maxtau_pos) += taumax_weight;
+            g(0,maxtau_pos) += acttaumax * taumax_weight;
 
             //velocity
-            H(maxtau_pos,maxtau_pos) = taumaxvel_weight / dt;
+            H(maxtau_pos,maxtau_pos) += taumaxvel_weight / dt;
 
             {
                 hrp::dmatrix A = hrp::dmatrix::Zero(m_robot->numJoints(),state_len);
@@ -1181,11 +1236,21 @@ public:
                 }
                 lbA=Wtaumax * acttauv;
                 for(size_t i=0; i < ubA.rows();i++){
+                    lbA[i] -= acttaumax;
                     ubA[i]=1e10;
                 }
                 As.push_back(A);
                 lbAs.push_back(lbA);
                 ubAs.push_back(ubA);
+
+                if(debugloop){
+                    std::cerr << "A" << std::endl;
+                    std::cerr << A << std::endl;
+                    std::cerr << "lbA" << std::endl;
+                    std::cerr << lbA << std::endl;
+                    std::cerr << "ubA" << std::endl;
+                    std::cerr << ubA << std::endl;
+                }
             }
             {
                 hrp::dmatrix A = hrp::dmatrix::Zero(m_robot->numJoints(),state_len);
@@ -1197,12 +1262,49 @@ public:
                 }
                 lbA=-Wtaumax * acttauv;
                 for(size_t i=0; i < ubA.rows();i++){
+                    lbA[i] -= acttaumax;
                     ubA[i]=1e10;
                 }
                 As.push_back(A);
                 lbAs.push_back(lbA);
                 ubAs.push_back(ubA);
+
+                if(debugloop){
+                    std::cerr << "A" << std::endl;
+                    std::cerr << A << std::endl;
+                    std::cerr << "lbA" << std::endl;
+                    std::cerr << lbA << std::endl;
+                    std::cerr << "ubA" << std::endl;
+                    std::cerr << ubA << std::endl;
+                }
             }
+
+            if(debugloop){
+                std::cerr << "taumax" << std::endl;
+                std::cerr << "acttauv" << std::endl;
+                std::cerr << acttauv << std::endl;
+                std::cerr << "Wtaumax" << std::endl;
+                std::cerr << Wtaumax << std::endl;
+                std::cerr << "tmptaumax" << std::endl;
+                std::cerr << tmptaumax << std::endl;
+                std::cerr << "acttaumax" << std::endl;
+                std::cerr << acttaumax << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH(maxtau_pos,maxtau_pos) += taumax_weight;
+                thisg(0,maxtau_pos) += acttaumax * taumax_weight;
+                thisH(maxtau_pos,maxtau_pos) += taumaxvel_weight / dt;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
+                std::cerr << "H" << std::endl;
+                std::cerr << thisH <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << thisg <<std::endl;
+
+            }
+
         }
 
 
@@ -1223,11 +1325,11 @@ public:
                 Wforceg.block<6,1>(i*6,0)=tmpg;
             }
 
-            H += dF.transpose() * (Wforce * force_weight) * dF;
-            g += (Wforceg.transpose() * force_weight) * dF;
+            tmpH += dF.transpose() * (Wforce * force_weight) * dF;
+            tmpg += (Wforceg.transpose() * force_weight) * dF;
 
             //velocity
-            H += dF.transpose() * (forcevel_weight / dt * Wforce) * dF;
+            tmpH += dF.transpose() * (forcevel_weight / dt * Wforce) * dF;
 
             H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
             g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
@@ -1240,14 +1342,21 @@ public:
                 std::cerr << Wforce << std::endl;
                 std::cerr << "Wforceg" << std::endl;
                 std::cerr << Wforceg << std::endl;
-                std::cerr << "H" << std::endl;
-                std::cerr << dF.transpose() * (Wforce * force_weight) * dF <<std::endl;
-                std::cerr << "g" << std::endl;
-                std::cerr << (Wforceg.transpose() * force_weight) * dF <<std::endl;
                 std::cerr << "Wforcevel" << std::endl;
                 std::cerr << forcevel_weight / dt * Wforce << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << dF.transpose() * (forcevel_weight / dt * Wforce) * dF <<std::endl;
+                std::cerr << thisH <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
         }
 
@@ -1258,7 +1367,7 @@ public:
             hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//q
             hrp::dmatrix Wq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wq(i,i) = reference_weight / dt;
+                Wq(i,i) = reference_weight / std::max(std::pow(m_robot->joint(i)->uvlimit,2), std::pow(m_robot->joint(i)->lvlimit,2)) / dt;
             }
 
             tmpH += Wq;
@@ -1269,8 +1378,18 @@ public:
                 std::cerr << "q" << std::endl;
                 std::cerr << "Wq" << std::endl;
                 std::cerr << Wq << std::endl;
+
+                hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
+                hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
+                thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                eachH.push_back(thisH);
+                eachg.push_back(thisg);
+
                 std::cerr << "H" << std::endl;
-                std::cerr << Wq <<std::endl;
+                std::cerr << thisH <<std::endl;
+                std::cerr << "g" << std::endl;
+                std::cerr << thisg <<std::endl;
+
             }
         }
 
@@ -1480,7 +1599,7 @@ public:
             }
             if (!is_initial) {
                 example->setOptions( options );
-                int nWSR = 100;
+                int nWSR = 1000;
                 //debugloop
                 struct timeval s, e;
                 if(debugloop){
@@ -1522,7 +1641,7 @@ public:
                 //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
                 sqp_map[tmp_pair]=example;
                 example->setOptions( options );
-                int nWSR = 100;
+                int nWSR = 1000;
                 //debug
                 struct timeval s, e;
                 if(debugloop){
@@ -1575,7 +1694,13 @@ public:
             std::cerr << "deforce" << std::endl;
             std::cerr << xopt.block(eforce_pos,0,num_cc,1) << std::endl;
             std::cerr << "mct" << std::endl;
-            std::cerr << xopt[command_dq.rows()-1] << std::endl;
+            std::cerr << xopt[xopt.rows()-1] << std::endl;
+            std::cerr << "total cost " << std::endl;
+            std::cerr << xopt.transpose() * H * xopt + 2 * g * xopt << std::endl;
+            for(size_t i=0; i < eachH.size(); i++){
+                std::cerr << "cost " << i << std::endl;
+                std::cerr << xopt.transpose() * eachH[i] * xopt + 2 * eachg[i] * xopt << std::endl;
+            }
             std::cerr << "qact" << std::endl;
             std::cerr << qactv << std::endl;
             std::cerr << "dqact" << std::endl;

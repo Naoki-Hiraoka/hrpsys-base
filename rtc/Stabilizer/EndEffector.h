@@ -21,8 +21,8 @@ public:
                              max_fz(1000.0),
                              min_fz(25.0),
                              target_max_fz(1000.0),
-                             pos_interact_weight(1.0),
-                             rot_interact_weight(1.0),
+                             pos_interact_weight(1.0 / std::pow(0.025,2)),
+                             rot_interact_weight(1.0 / std::pow(10.0/180.0*M_PI,2)),
                              M_p(10),
                              D_p(200),
                              K_p(400),
@@ -291,14 +291,18 @@ public:
                         C(constraint_idx+6,0)= -Y;
                         C(constraint_idx+7,0)= -Y;
                     }else{
-                        C(constraint_idx+0,2)= -mu*Y;
-                        C(constraint_idx+1,2)= -mu*Y;
-                        C(constraint_idx+2,2)= -mu*Y;
-                        C(constraint_idx+3,2)= -mu*Y;
-                        C(constraint_idx+4,2)= mu*Y;
-                        C(constraint_idx+5,2)= mu*Y;
-                        C(constraint_idx+6,2)= mu*Y;
-                        C(constraint_idx+7,2)= mu*Y;
+                        double sign = 0;
+                        if(act_force_eef[0]>0) sign = 1;
+                        else sign = -1;
+
+                        C(constraint_idx+0,2)+= -mu*Y *sign;
+                        C(constraint_idx+1,2)+= -mu*Y *sign;
+                        C(constraint_idx+2,2)+= mu*Y *sign;
+                        C(constraint_idx+3,2)+= mu*Y *sign;
+                        C(constraint_idx+4,2)+= mu*Y *sign;
+                        C(constraint_idx+5,2)+= mu*Y *sign;
+                        C(constraint_idx+6,2)+= -mu*Y *sign;
+                        C(constraint_idx+7,2)+= -mu*Y *sign;
                     }
 
                     if(std::abs(act_force_eef[1]) < mu * act_force_eef[2]){
@@ -311,14 +315,18 @@ public:
                         C(constraint_idx+6,1)= X;
                         C(constraint_idx+7,1)= -X;
                     }else{
-                        C(constraint_idx+0,2)= -mu*X;
-                        C(constraint_idx+1,2)= mu*X;
-                        C(constraint_idx+2,2)= -mu*X;
-                        C(constraint_idx+3,2)= mu*X;
-                        C(constraint_idx+4,2)= mu*X;
-                        C(constraint_idx+5,2)= -mu*X;
-                        C(constraint_idx+6,2)= mu*X;
-                        C(constraint_idx+7,2)= -mu*X;
+                        double sign = 0;
+                        if(act_force_eef[1]>0) sign = 1;
+                        else sign = -1;
+
+                        C(constraint_idx+0,2)+= -mu*X *sign;
+                        C(constraint_idx+1,2)+= mu*X *sign;
+                        C(constraint_idx+2,2)+= -mu*X *sign;
+                        C(constraint_idx+3,2)+= mu*X *sign;
+                        C(constraint_idx+4,2)+= mu*X *sign;
+                        C(constraint_idx+5,2)+= -mu*X *sign;
+                        C(constraint_idx+6,2)+= mu*X *sign;
+                        C(constraint_idx+7,2)+= -mu*X *sign;
                     }
 
                     if(act_moment_eef[0] < upper_cop_y_margin * act_force_eef[2] && act_moment_eef[0] > lower_cop_y_margin * act_force_eef[2]){
@@ -332,23 +340,27 @@ public:
                         C(constraint_idx+6,3)= mu;
                         C(constraint_idx+7,3)= mu;
 
-                        C(constraint_idx+0,2)= mu*offset;
-                        C(constraint_idx+1,2)= mu*offset;
-                        C(constraint_idx+2,2)= -mu*offset;
-                        C(constraint_idx+3,2)= -mu*offset;
-                        C(constraint_idx+4,2)= mu*offset;
-                        C(constraint_idx+5,2)= mu*offset;
-                        C(constraint_idx+6,2)= -mu*offset;
-                        C(constraint_idx+7,2)= -mu*offset;
+                        C(constraint_idx+0,2)+= mu*offset;
+                        C(constraint_idx+1,2)+= mu*offset;
+                        C(constraint_idx+2,2)+= -mu*offset;
+                        C(constraint_idx+3,2)+= -mu*offset;
+                        C(constraint_idx+4,2)+= mu*offset;
+                        C(constraint_idx+5,2)+= mu*offset;
+                        C(constraint_idx+6,2)+= -mu*offset;
+                        C(constraint_idx+7,2)+= -mu*offset;
                     }else{
-                        C(constraint_idx+0,2)= -mu*Y;
-                        C(constraint_idx+1,2)= -mu*Y;
-                        C(constraint_idx+2,2)= mu*Y;
-                        C(constraint_idx+3,2)= mu*Y;
-                        C(constraint_idx+4,2)= -mu*Y;
-                        C(constraint_idx+5,2)= -mu*Y;
-                        C(constraint_idx+6,2)= mu*Y;
-                        C(constraint_idx+7,2)= mu*Y;
+                        double sign = 0;
+                        if(act_moment_eef[0]>0) sign = 1;
+                        else sign = -1;
+
+                        C(constraint_idx+0,2)+= -mu*Y *sign;
+                        C(constraint_idx+1,2)+= -mu*Y *sign;
+                        C(constraint_idx+2,2)+= mu*Y *sign;
+                        C(constraint_idx+3,2)+= mu*Y *sign;
+                        C(constraint_idx+4,2)+= -mu*Y *sign;
+                        C(constraint_idx+5,2)+= -mu*Y *sign;
+                        C(constraint_idx+6,2)+= mu*Y *sign;
+                        C(constraint_idx+7,2)+= mu*Y *sign;
                     }
 
                     if(-act_moment_eef[1] < upper_cop_x_margin * act_force_eef[2] && -act_moment_eef[1] > lower_cop_x_margin * act_force_eef[2]){
@@ -362,23 +374,26 @@ public:
                         C(constraint_idx+6,4)= -mu;
                         C(constraint_idx+7,4)= mu;
 
-                        C(constraint_idx+0,2)= -mu*offset;
-                        C(constraint_idx+1,2)= mu*offset;
-                        C(constraint_idx+2,2)= -mu*offset;
-                        C(constraint_idx+3,2)= mu*offset;
-                        C(constraint_idx+4,2)= -mu*offset;
-                        C(constraint_idx+5,2)= mu*offset;
-                        C(constraint_idx+6,2)= -mu*offset;
-                        C(constraint_idx+7,2)= mu*offset;
+                        C(constraint_idx+0,2)+= -mu*offset;
+                        C(constraint_idx+1,2)+= mu*offset;
+                        C(constraint_idx+2,2)+= -mu*offset;
+                        C(constraint_idx+3,2)+= mu*offset;
+                        C(constraint_idx+4,2)+= -mu*offset;
+                        C(constraint_idx+5,2)+= mu*offset;
+                        C(constraint_idx+6,2)+= -mu*offset;
+                        C(constraint_idx+7,2)+= mu*offset;
                     }else{
-                        C(constraint_idx+0,2)= -mu*Y;
-                        C(constraint_idx+1,2)= mu*Y;
-                        C(constraint_idx+2,2)= -mu*Y;
-                        C(constraint_idx+3,2)= mu*Y;
-                        C(constraint_idx+4,2)= -mu*Y;
-                        C(constraint_idx+5,2)= mu*Y;
-                        C(constraint_idx+6,2)= -mu*Y;
-                        C(constraint_idx+7,2)= mu*Y;
+                        double sign = 0;
+                        if(act_moment_eef[1]>0) sign = 1;
+                        else sign = -1;
+                        C(constraint_idx+0,2)+= -mu*X *sign;
+                        C(constraint_idx+1,2)+= mu*X *sign;
+                        C(constraint_idx+2,2)+= -mu*X *sign;
+                        C(constraint_idx+3,2)+= mu*X *sign;
+                        C(constraint_idx+4,2)+= -mu*X *sign;
+                        C(constraint_idx+5,2)+= mu*X *sign;
+                        C(constraint_idx+6,2)+= -mu*X *sign;
+                        C(constraint_idx+7,2)+= mu*X *sign;
                     }
 
                     constraint_idx +=8;

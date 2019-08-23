@@ -112,9 +112,9 @@ module OpenHRP
         double max_fz;
         double min_fz;
         double target_max_fz;
-        /// interact weight
+        /// interact weight. o(1 / pos_compensation_limit^2)
         double pos_interact_weight;
-        /// interact weight
+        /// interact weight. o(1 / rot_compensation_limit^2)
         double rot_interact_weight;
         /// Position mass [N/(m/s^2)]
         double M_p;
