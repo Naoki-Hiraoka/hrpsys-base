@@ -677,7 +677,7 @@ public:
             actwrenchv.block<3,1>(i*6+3,0) = support_eef[i]->act_moment_eef;
         }
 
-                std::vector<boost::shared_ptr<EndEffector> > interact_eef;
+        std::vector<boost::shared_ptr<EndEffector> > interact_eef;
         for(size_t i = 0; i < eefnum;i++){
             if(!(endeffector[i]->act_contact_state) && endeffector[i]->is_ik_enable)interact_eef.push_back(endeffector[i]);
         }
@@ -1885,6 +1885,12 @@ public:
 
         temp_danger_time = i_stp.temp_danger_time;
         std::cerr << "[" << instance_name << "]  temp_danger_time = " << temp_danger_time << std::endl;
+
+        force_weight = i_stp.force_weight;
+        std::cerr << "[" << instance_name << "]  force_weight = " << force_weight << std::endl;
+
+        forcevel_weight = i_stp.forcevel_weight;
+        std::cerr << "[" << instance_name << "]  forcevel_weight = " << forcevel_weight << std::endl;
 
         intvel_weight = i_stp.intvel_weight;
         std::cerr << "[" << instance_name << "]  intvel_weight = " << intvel_weight << std::endl;
