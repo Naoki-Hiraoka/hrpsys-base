@@ -247,6 +247,7 @@ public:
         Pvel_weight = 1e0;
         L_weight = 1e0;
         Lvel_weight = 1e0;
+        vel_weight = 1e-3;
         reference_weight = 1e-3;
         etau_weight = 1e1;
         etauvel_weight = 1e1;
@@ -1367,14 +1368,28 @@ public:
         //redundant q
         {
             hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());//q
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//q
             hrp::dmatrix Wq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wq(i,i) = reference_weight / std::max(std::pow(m_robot->joint(i)->uvlimit,2), std::pow(m_robot->joint(i)->lvlimit,2)) / dt;
+                Wq(i,i) = vel_weight / std::max(std::pow(m_robot->joint(i)->uvlimit,2), std::pow(m_robot->joint(i)->lvlimit,2)) / dt;
             }
 
             tmpH += Wq;
 
+            hrp::dmatrix Wqref = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                Wq(i,i) = reference_weight / std::max(std::pow(m_robot->joint(i)->uvlimit,2), std::pow(m_robot->joint(i)->lvlimit,2)) / dt;
+            }
+
+            hrp::dvector midqvel = hrp::dvector::Zero(m_robot->numJoints());
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                midqvel[i] = ((ulimit[i] + llimit[i]) / 2.0 - qcurv[i]) * dt;
+            }
+            tmpH += Wqref;
+            tmpg += - midqvel.transpose() * Wqref;
+
             H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+            g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
 
             if(debugloop){
                 std::cerr << "q" << std::endl;
@@ -1384,6 +1399,7 @@ public:
                 hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
                 hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
                 thisH.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
+                thisg.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
                 eachH.push_back(thisH);
                 eachg.push_back(thisg);
 
@@ -1907,6 +1923,9 @@ public:
         Lvel_weight = i_stp.Lvel_weight;
         std::cerr << "[" << instance_name << "]  Lvel_weight = " << Lvel_weight << std::endl;
 
+        vel_weight = i_stp.vel_weight;
+        std::cerr << "[" << instance_name << "]  vel_weight = " << vel_weight << std::endl;
+
         reference_weight = i_stp.reference_weight;
         std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
 
@@ -1984,6 +2003,7 @@ public:
         i_stp.Pvel_weight = Pvel_weight;
         i_stp.L_weight = L_weight;
         i_stp.Lvel_weight = Lvel_weight;
+        i_stp.vel_weight = vel_weight;
         i_stp.reference_weight = reference_weight;
         i_stp.etau_weight = etau_weight;
         i_stp.etauvel_weight = etauvel_weight;
@@ -2194,6 +2214,7 @@ private:
     double Pvel_weight;
     double L_weight;
     double Lvel_weight;
+    double vel_weight;
     double reference_weight;
     double etau_weight;
     double etauvel_weight;

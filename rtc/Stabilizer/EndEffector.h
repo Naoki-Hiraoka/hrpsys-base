@@ -239,165 +239,179 @@ public:
                 ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
-                //回転摩擦 他の拘束条件が満たされていないと解なしになる->解があるように
-                {
-                    double mu = friction_coefficient;
-                    double X = (upper_cop_x_margin - lower_cop_x_margin) / 2.0;
-                    double Y = (upper_cop_y_margin - lower_cop_y_margin) / 2.0;
-
-                    lb[constraint_idx+0] = 0.0;
-                    lb[constraint_idx+1] = 0.0;
-                    lb[constraint_idx+2] = 0.0;
-                    lb[constraint_idx+3] = 0.0;
-                    lb[constraint_idx+4] = -1e10;
-                    lb[constraint_idx+5] = -1e10;
-                    lb[constraint_idx+6] = -1e10;
-                    lb[constraint_idx+7] = -1e10;
-
-                    ub[constraint_idx+0] = 1e10;
-                    ub[constraint_idx+1] = 1e10;
-                    ub[constraint_idx+2] = 1e10;
-                    ub[constraint_idx+3] = 1e10;
-                    ub[constraint_idx+4] = 0.0;
-                    ub[constraint_idx+5] = 0.0;
-                    ub[constraint_idx+6] = 0.0;
-                    ub[constraint_idx+7] = 0.0;
-
-                    C(constraint_idx+0,5)= -1;
-                    C(constraint_idx+1,5)= -1;
-                    C(constraint_idx+2,5)= -1;
-                    C(constraint_idx+3,5)= -1;
-                    C(constraint_idx+4,5)= -1;
-                    C(constraint_idx+5,5)= -1;
-                    C(constraint_idx+6,5)= -1;
-                    C(constraint_idx+7,5)= -1;
-
-                    C(constraint_idx+0,2)= mu * (X+Y);
-                    C(constraint_idx+1,2)= mu * (X+Y);
-                    C(constraint_idx+2,2)= mu * (X+Y);
-                    C(constraint_idx+3,2)= mu * (X+Y);
-                    C(constraint_idx+4,2)= -mu * (X+Y);
-                    C(constraint_idx+5,2)= -mu * (X+Y);
-                    C(constraint_idx+6,2)= -mu * (X+Y);
-                    C(constraint_idx+7,2)= -mu * (X+Y);
-
-                    if(std::abs(act_force_eef[0]) < mu * act_force_eef[2]){
-                        C(constraint_idx+0,0)= -Y;
-                        C(constraint_idx+1,0)= -Y;
-                        C(constraint_idx+2,0)= Y;
-                        C(constraint_idx+3,0)= Y;
-                        C(constraint_idx+4,0)= Y;
-                        C(constraint_idx+5,0)= Y;
-                        C(constraint_idx+6,0)= -Y;
-                        C(constraint_idx+7,0)= -Y;
-                    }else{
-                        double sign = 0;
-                        if(act_force_eef[0]>0) sign = 1;
-                        else sign = -1;
-
-                        C(constraint_idx+0,2)+= -mu*Y *sign;
-                        C(constraint_idx+1,2)+= -mu*Y *sign;
-                        C(constraint_idx+2,2)+= mu*Y *sign;
-                        C(constraint_idx+3,2)+= mu*Y *sign;
-                        C(constraint_idx+4,2)+= mu*Y *sign;
-                        C(constraint_idx+5,2)+= mu*Y *sign;
-                        C(constraint_idx+6,2)+= -mu*Y *sign;
-                        C(constraint_idx+7,2)+= -mu*Y *sign;
-                    }
-
-                    if(std::abs(act_force_eef[1]) < mu * act_force_eef[2]){
-                        C(constraint_idx+0,1)= -X;
-                        C(constraint_idx+1,1)= X;
-                        C(constraint_idx+2,1)= -X;
-                        C(constraint_idx+3,1)= X;
-                        C(constraint_idx+4,1)= X;
-                        C(constraint_idx+5,1)= -X;
-                        C(constraint_idx+6,1)= X;
-                        C(constraint_idx+7,1)= -X;
-                    }else{
-                        double sign = 0;
-                        if(act_force_eef[1]>0) sign = 1;
-                        else sign = -1;
-
-                        C(constraint_idx+0,2)+= -mu*X *sign;
-                        C(constraint_idx+1,2)+= mu*X *sign;
-                        C(constraint_idx+2,2)+= -mu*X *sign;
-                        C(constraint_idx+3,2)+= mu*X *sign;
-                        C(constraint_idx+4,2)+= mu*X *sign;
-                        C(constraint_idx+5,2)+= -mu*X *sign;
-                        C(constraint_idx+6,2)+= mu*X *sign;
-                        C(constraint_idx+7,2)+= -mu*X *sign;
-                    }
-
-                    if(act_moment_eef[0] < upper_cop_y_margin * act_force_eef[2] && act_moment_eef[0] > lower_cop_y_margin * act_force_eef[2]){
-                        double offset = (upper_cop_y_margin + lower_cop_y_margin) / 2.0;
-                        C(constraint_idx+0,3)= -mu;
-                        C(constraint_idx+1,3)= -mu;
-                        C(constraint_idx+2,3)= mu;
-                        C(constraint_idx+3,3)= mu;
-                        C(constraint_idx+4,3)= -mu;
-                        C(constraint_idx+5,3)= -mu;
-                        C(constraint_idx+6,3)= mu;
-                        C(constraint_idx+7,3)= mu;
-
-                        C(constraint_idx+0,2)+= mu*offset;
-                        C(constraint_idx+1,2)+= mu*offset;
-                        C(constraint_idx+2,2)+= -mu*offset;
-                        C(constraint_idx+3,2)+= -mu*offset;
-                        C(constraint_idx+4,2)+= mu*offset;
-                        C(constraint_idx+5,2)+= mu*offset;
-                        C(constraint_idx+6,2)+= -mu*offset;
-                        C(constraint_idx+7,2)+= -mu*offset;
-                    }else{
-                        double sign = 0;
-                        if(act_moment_eef[0]>0) sign = 1;
-                        else sign = -1;
-
-                        C(constraint_idx+0,2)+= -mu*Y *sign;
-                        C(constraint_idx+1,2)+= -mu*Y *sign;
-                        C(constraint_idx+2,2)+= mu*Y *sign;
-                        C(constraint_idx+3,2)+= mu*Y *sign;
-                        C(constraint_idx+4,2)+= -mu*Y *sign;
-                        C(constraint_idx+5,2)+= -mu*Y *sign;
-                        C(constraint_idx+6,2)+= mu*Y *sign;
-                        C(constraint_idx+7,2)+= mu*Y *sign;
-                    }
-
-                    if(-act_moment_eef[1] < upper_cop_x_margin * act_force_eef[2] && -act_moment_eef[1] > lower_cop_x_margin * act_force_eef[2]){
-                        double offset = (upper_cop_x_margin + lower_cop_x_margin) / 2.0;
-                        C(constraint_idx+0,4)= -mu;
-                        C(constraint_idx+1,4)= mu;
-                        C(constraint_idx+2,4)= -mu;
-                        C(constraint_idx+3,4)= mu;
-                        C(constraint_idx+4,4)= -mu;
-                        C(constraint_idx+5,4)= mu;
-                        C(constraint_idx+6,4)= -mu;
-                        C(constraint_idx+7,4)= mu;
-
-                        C(constraint_idx+0,2)+= -mu*offset;
-                        C(constraint_idx+1,2)+= mu*offset;
-                        C(constraint_idx+2,2)+= -mu*offset;
-                        C(constraint_idx+3,2)+= mu*offset;
-                        C(constraint_idx+4,2)+= -mu*offset;
-                        C(constraint_idx+5,2)+= mu*offset;
-                        C(constraint_idx+6,2)+= -mu*offset;
-                        C(constraint_idx+7,2)+= mu*offset;
-                    }else{
-                        double sign = 0;
-                        if(act_moment_eef[1]>0) sign = 1;
-                        else sign = -1;
-                        C(constraint_idx+0,2)+= -mu*X *sign;
-                        C(constraint_idx+1,2)+= mu*X *sign;
-                        C(constraint_idx+2,2)+= -mu*X *sign;
-                        C(constraint_idx+3,2)+= mu*X *sign;
-                        C(constraint_idx+4,2)+= -mu*X *sign;
-                        C(constraint_idx+5,2)+= mu*X *sign;
-                        C(constraint_idx+6,2)+= -mu*X *sign;
-                        C(constraint_idx+7,2)+= mu*X *sign;
-                    }
-
-                    constraint_idx +=8;
+                //回転摩擦
+                for(size_t i=0; i < 4;i++){
+                    C(constraint_idx,5)=-1;
+                    C(constraint_idx,2)= rotation_friction_coefficient;
+                    lb[constraint_idx] = 0;
+                    ub[constraint_idx] = 1e10;
+                    constraint_idx++;
+                    C(constraint_idx,5)= 1;
+                    C(constraint_idx,2)= rotation_friction_coefficient;
+                    lb[constraint_idx] = 0;
+                    ub[constraint_idx] = 1e10;
+                    constraint_idx++;
                 }
+
+                //回転摩擦 他の拘束条件が満たされていないと解なしになる->解があるように
+                // {
+                //     double mu = friction_coefficient;
+                //     double X = (upper_cop_x_margin - lower_cop_x_margin) / 2.0;
+                //     double Y = (upper_cop_y_margin - lower_cop_y_margin) / 2.0;
+
+                //     lb[constraint_idx+0] = 0.0;
+                //     lb[constraint_idx+1] = 0.0;
+                //     lb[constraint_idx+2] = 0.0;
+                //     lb[constraint_idx+3] = 0.0;
+                //     lb[constraint_idx+4] = -1e10;
+                //     lb[constraint_idx+5] = -1e10;
+                //     lb[constraint_idx+6] = -1e10;
+                //     lb[constraint_idx+7] = -1e10;
+
+                //     ub[constraint_idx+0] = 1e10;
+                //     ub[constraint_idx+1] = 1e10;
+                //     ub[constraint_idx+2] = 1e10;
+                //     ub[constraint_idx+3] = 1e10;
+                //     ub[constraint_idx+4] = 0.0;
+                //     ub[constraint_idx+5] = 0.0;
+                //     ub[constraint_idx+6] = 0.0;
+                //     ub[constraint_idx+7] = 0.0;
+
+                //     C(constraint_idx+0,5)= -1;
+                //     C(constraint_idx+1,5)= -1;
+                //     C(constraint_idx+2,5)= -1;
+                //     C(constraint_idx+3,5)= -1;
+                //     C(constraint_idx+4,5)= -1;
+                //     C(constraint_idx+5,5)= -1;
+                //     C(constraint_idx+6,5)= -1;
+                //     C(constraint_idx+7,5)= -1;
+
+                //     C(constraint_idx+0,2)= mu * (X+Y);
+                //     C(constraint_idx+1,2)= mu * (X+Y);
+                //     C(constraint_idx+2,2)= mu * (X+Y);
+                //     C(constraint_idx+3,2)= mu * (X+Y);
+                //     C(constraint_idx+4,2)= -mu * (X+Y);
+                //     C(constraint_idx+5,2)= -mu * (X+Y);
+                //     C(constraint_idx+6,2)= -mu * (X+Y);
+                //     C(constraint_idx+7,2)= -mu * (X+Y);
+
+                //     if(std::abs(act_force_eef[0]) < mu * act_force_eef[2]){
+                //         C(constraint_idx+0,0)= -Y;
+                //         C(constraint_idx+1,0)= -Y;
+                //         C(constraint_idx+2,0)= Y;
+                //         C(constraint_idx+3,0)= Y;
+                //         C(constraint_idx+4,0)= Y;
+                //         C(constraint_idx+5,0)= Y;
+                //         C(constraint_idx+6,0)= -Y;
+                //         C(constraint_idx+7,0)= -Y;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_force_eef[0]>0) sign = 1;
+                //         else sign = -1;
+
+                //         C(constraint_idx+0,2)+= -mu*Y *sign;
+                //         C(constraint_idx+1,2)+= -mu*Y *sign;
+                //         C(constraint_idx+2,2)+= mu*Y *sign;
+                //         C(constraint_idx+3,2)+= mu*Y *sign;
+                //         C(constraint_idx+4,2)+= mu*Y *sign;
+                //         C(constraint_idx+5,2)+= mu*Y *sign;
+                //         C(constraint_idx+6,2)+= -mu*Y *sign;
+                //         C(constraint_idx+7,2)+= -mu*Y *sign;
+                //     }
+
+                //     if(std::abs(act_force_eef[1]) < mu * act_force_eef[2]){
+                //         C(constraint_idx+0,1)= -X;
+                //         C(constraint_idx+1,1)= X;
+                //         C(constraint_idx+2,1)= -X;
+                //         C(constraint_idx+3,1)= X;
+                //         C(constraint_idx+4,1)= X;
+                //         C(constraint_idx+5,1)= -X;
+                //         C(constraint_idx+6,1)= X;
+                //         C(constraint_idx+7,1)= -X;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_force_eef[1]>0) sign = 1;
+                //         else sign = -1;
+
+                //         C(constraint_idx+0,2)+= -mu*X *sign;
+                //         C(constraint_idx+1,2)+= mu*X *sign;
+                //         C(constraint_idx+2,2)+= -mu*X *sign;
+                //         C(constraint_idx+3,2)+= mu*X *sign;
+                //         C(constraint_idx+4,2)+= mu*X *sign;
+                //         C(constraint_idx+5,2)+= -mu*X *sign;
+                //         C(constraint_idx+6,2)+= mu*X *sign;
+                //         C(constraint_idx+7,2)+= -mu*X *sign;
+                //     }
+
+                //     if(act_moment_eef[0] < upper_cop_y_margin * act_force_eef[2] && act_moment_eef[0] > lower_cop_y_margin * act_force_eef[2]){
+                //         double offset = (upper_cop_y_margin + lower_cop_y_margin) / 2.0;
+                //         C(constraint_idx+0,3)= -mu;
+                //         C(constraint_idx+1,3)= -mu;
+                //         C(constraint_idx+2,3)= mu;
+                //         C(constraint_idx+3,3)= mu;
+                //         C(constraint_idx+4,3)= -mu;
+                //         C(constraint_idx+5,3)= -mu;
+                //         C(constraint_idx+6,3)= mu;
+                //         C(constraint_idx+7,3)= mu;
+
+                //         C(constraint_idx+0,2)+= mu*offset;
+                //         C(constraint_idx+1,2)+= mu*offset;
+                //         C(constraint_idx+2,2)+= -mu*offset;
+                //         C(constraint_idx+3,2)+= -mu*offset;
+                //         C(constraint_idx+4,2)+= mu*offset;
+                //         C(constraint_idx+5,2)+= mu*offset;
+                //         C(constraint_idx+6,2)+= -mu*offset;
+                //         C(constraint_idx+7,2)+= -mu*offset;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_moment_eef[0]>0) sign = 1;
+                //         else sign = -1;
+
+                //         C(constraint_idx+0,2)+= -mu*Y *sign;
+                //         C(constraint_idx+1,2)+= -mu*Y *sign;
+                //         C(constraint_idx+2,2)+= mu*Y *sign;
+                //         C(constraint_idx+3,2)+= mu*Y *sign;
+                //         C(constraint_idx+4,2)+= -mu*Y *sign;
+                //         C(constraint_idx+5,2)+= -mu*Y *sign;
+                //         C(constraint_idx+6,2)+= mu*Y *sign;
+                //         C(constraint_idx+7,2)+= mu*Y *sign;
+                //     }
+
+                //     if(-act_moment_eef[1] < upper_cop_x_margin * act_force_eef[2] && -act_moment_eef[1] > lower_cop_x_margin * act_force_eef[2]){
+                //         double offset = (upper_cop_x_margin + lower_cop_x_margin) / 2.0;
+                //         C(constraint_idx+0,4)= -mu;
+                //         C(constraint_idx+1,4)= mu;
+                //         C(constraint_idx+2,4)= -mu;
+                //         C(constraint_idx+3,4)= mu;
+                //         C(constraint_idx+4,4)= -mu;
+                //         C(constraint_idx+5,4)= mu;
+                //         C(constraint_idx+6,4)= -mu;
+                //         C(constraint_idx+7,4)= mu;
+
+                //         C(constraint_idx+0,2)+= -mu*offset;
+                //         C(constraint_idx+1,2)+= mu*offset;
+                //         C(constraint_idx+2,2)+= -mu*offset;
+                //         C(constraint_idx+3,2)+= mu*offset;
+                //         C(constraint_idx+4,2)+= -mu*offset;
+                //         C(constraint_idx+5,2)+= mu*offset;
+                //         C(constraint_idx+6,2)+= -mu*offset;
+                //         C(constraint_idx+7,2)+= mu*offset;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_moment_eef[1]>0) sign = 1;
+                //         else sign = -1;
+                //         C(constraint_idx+0,2)+= -mu*X *sign;
+                //         C(constraint_idx+1,2)+= mu*X *sign;
+                //         C(constraint_idx+2,2)+= -mu*X *sign;
+                //         C(constraint_idx+3,2)+= mu*X *sign;
+                //         C(constraint_idx+4,2)+= -mu*X *sign;
+                //         C(constraint_idx+5,2)+= mu*X *sign;
+                //         C(constraint_idx+6,2)+= -mu*X *sign;
+                //         C(constraint_idx+7,2)+= mu*X *sign;
+                //     }
+
+                //     constraint_idx +=8;
+                // }
             }
             break;
         case POINT:
@@ -480,20 +494,53 @@ public:
                 H(2,2) += 1.0 / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
                 g[2] += act_force_eef[2] / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
 
-                //x摩擦
-                getWrenchWeightforce(H,g,0,act_force_eef[0],std::max(friction_coefficient,act_friction_coefficient_x/3.0));
+                {
+                    //x摩擦
+                    double coef = std::max(friction_coefficient*act_force_eef[2],std::abs(act_force_eef[0])/3.0);
+                    H(0,0) += 1.0 / std::pow(coef,2);
+                    g[0] += act_force_eef[0] / std::pow(coef,2);
+                    //getWrenchWeightforce(H,g,0,act_force_eef[0],std::max(friction_coefficient,act_friction_coefficient_x/3.0));
+                }
 
-                //y摩擦
-                getWrenchWeightforce(H,g,1,act_force_eef[1],std::max(friction_coefficient,act_friction_coefficient_y/3.0));
+                {
+                    //y摩擦
+                    double coef = std::max(friction_coefficient*act_force_eef[2],std::abs(act_force_eef[1])/3.0);
+                    H(1,1) += 1.0 / std::pow(coef,2);
+                    g[1] += act_force_eef[1] / std::pow(coef,2);
+                    //getWrenchWeightforce(H,g,1,act_force_eef[1],std::max(friction_coefficient,act_friction_coefficient_y/3.0));
+                }
 
-                //xCOP
-                getWrenchWeightmoment(H,g,4,act_moment_eef[1],std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0,std::max(std::abs(act_upper_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0),std::abs(act_lower_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0))/3.0),-(upper_cop_x_margin+lower_cop_x_margin)/2.0);
+                {
+                    //xCOP
+                    double coef = std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0*act_force_eef[2],std::abs(act_moment_eef[1]+(upper_cop_x_margin+lower_cop_x_margin)/2.0*act_force_eef[2])/3.0);
+                    H(4,4) += 1.0 / std::pow(coef,2);
+                    g[4] += (act_moment_eef[1]+(upper_cop_x_margin+lower_cop_x_margin)/2.0*act_force_eef[2]) / std::pow(coef,2);
+                    //getWrenchWeightmoment(H,g,4,act_moment_eef[1],std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0,std::max(std::abs(act_upper_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0),std::abs(act_lower_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0))/3.0),-(upper_cop_x_margin+lower_cop_x_margin)/2.0);
+                }
 
-                //yCOP
-                getWrenchWeightmoment(H,g,3,act_moment_eef[0],std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0,std::max(std::abs(act_upper_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0),std::abs(act_lower_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0))/3.0),(upper_cop_y_margin+lower_cop_y_margin)/2.0);
+                {
+                    //yCOP
+                    double coef = std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0*act_force_eef[2],std::abs(act_moment_eef[0]-(upper_cop_y_margin+lower_cop_y_margin)/2.0*act_force_eef[2])/3.0);
+                    H(3,3) += 1.0 / std::pow(coef,2);
+                    g[3] += (act_moment_eef[0]-(upper_cop_y_margin+lower_cop_y_margin)/2.0*act_force_eef[2]) / std::pow(coef,2);
+                    //getWrenchWeightmoment(H,g,3,act_moment_eef[0],std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0,std::max(std::abs(act_upper_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0),std::abs(act_lower_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0))/3.0),(upper_cop_y_margin+lower_cop_y_margin)/2.0);
+                }
 
-                //回転摩擦
-                getWrenchWeightforce(H,g,5,act_moment_eef[2],std::max(rotation_friction_coefficient,act_rotation_friction_coefficient/3.0));
+                {
+                    //回転摩擦
+                    // double X = (upper_cop_x_margin - lower_cop_x_margin) / 2.0;
+                    // double Y = (upper_cop_y_margin - lower_cop_y_margin) / 2.0;
+                    // double max = friction_coefficient * (X+Y) * act_force_eef[2] - std::abs(Y*act_force_eef[0] + friction_coefficient*act_moment_eef[0]) - std::abs(X*act_force_eef[1] + friction_coefficient*act_moment_eef[1]);
+                    // double min = - friction_coefficient * (X+Y) * act_force_eef[2] + std::abs(Y*act_force_eef[0] - friction_coefficient*act_moment_eef[0]) + std::abs(X*act_force_eef[1] - friction_coefficient*act_moment_eef[1]);
+                    double max = rotation_friction_coefficient*act_force_eef[2];
+                    double min = -rotation_friction_coefficient*act_force_eef[2];
+                    double mid = (max + min) / 2.0;
+                    double coef = std::max((max-min)/2.0,std::abs(act_moment_eef[2]-mid)/3.0);
+                    H(5,5) += 1.0 / std::pow(coef,2);
+                    g[5] += (act_moment_eef[2]-mid) / std::pow(coef,2);
+                    //getWrenchWeightforce(H,g,5,act_moment_eef[2],std::max(rotation_friction_coefficient,act_rotation_friction_coefficient/3.0));
+                }
+
             }
             break;
         case POINT:
@@ -530,20 +577,43 @@ public:
                     W(0,0) = 1.0 / std::pow(min_fz,2);
                 }
 
-                //x摩擦
-                W(1,1) = W(2,2) = 1.0 / std::pow(std::max(friction_coefficient*act_force_eef[2],act_friction_coefficient_x*act_force_eef[2]/3.0),2);
+                {
+                    //x摩擦
+                    double coef = std::max(friction_coefficient*act_force_eef[2],std::abs(act_force_eef[0])/3.0);
+                    W(1,1) = W(2,2) = 1.0 / std::pow(coef,2);
+                }
 
-                //y摩擦
-                W(3,3) = W(4,4) = 1.0 / std::pow(std::max(friction_coefficient*act_force_eef[2],act_friction_coefficient_y*act_force_eef[2]/3.0),2);
+                {
+                    //y摩擦
+                    double coef = std::max(friction_coefficient*act_force_eef[2],std::abs(act_force_eef[1])/3.0);
+                    W(3,3) = W(4,4) = 1.0 / std::pow(coef,2);;
+                }
 
-                //xCOP
-                W(5,5) = W(6,6) = 1.0 / std::pow(std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0*act_force_eef[2],std::max(std::abs(act_upper_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0),std::abs(act_lower_cop_x_margin-(upper_cop_x_margin+lower_cop_x_margin)/2.0))*act_force_eef[2]/3.0),2);
+                {
+                    //xCOP
+                    double coef = std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0*act_force_eef[2],std::abs(act_moment_eef[1]+(upper_cop_x_margin+lower_cop_x_margin)/2.0*act_force_eef[2])/3.0);
+                    W(5,5) = W(6,6) = 1.0 / std::pow(coef,2);
+                }
 
-                //yCOP
-                W(7,7) = W(8,8) = 1.0 / std::pow(std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0*act_force_eef[2],std::max(std::abs(act_upper_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0),std::abs(act_lower_cop_y_margin-(upper_cop_y_margin+lower_cop_y_margin)/2.0))*act_force_eef[2]/3.0),2);
+                {
+                    //yCOP
+                    double coef = std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0*act_force_eef[2],std::abs(act_moment_eef[0]-(upper_cop_y_margin+lower_cop_y_margin)/2.0*act_force_eef[2])/3.0);
+                    W(7,7) = W(8,8) = 1.0 / std::pow(coef,2);
+                }
 
-                //回転摩擦
-                W(9,9) = W(10,10) = W(11,11) = W(12,12) = W(13,13) = W(14,14) = W(15,15) = W(16,16) = 1.0 / std::pow(std::max(friction_coefficient*((upper_cop_x_margin-lower_cop_x_margin)/2.0+(upper_cop_y_margin-lower_cop_y_margin)/2.0)*act_force_eef[2],act_rotation_friction_coefficient*act_force_eef[2]/3.0),2);
+                {
+                    //回転摩擦
+                    // double X = (upper_cop_x_margin - lower_cop_x_margin) / 2.0;
+                    // double Y = (upper_cop_y_margin - lower_cop_y_margin) / 2.0;
+                    // double max = friction_coefficient * (X+Y) * act_force_eef[2] - std::abs(Y*act_force_eef[0] + friction_coefficient*act_moment_eef[0]) - std::abs(X*act_force_eef[1] + friction_coefficient*act_moment_eef[1]);
+                    // double min = - friction_coefficient * (X+Y) * act_force_eef[2] + std::abs(Y*act_force_eef[0] - friction_coefficient*act_moment_eef[0]) + std::abs(X*act_force_eef[1] - friction_coefficient*act_moment_eef[1]);
+                    double max = rotation_friction_coefficient*act_force_eef[2];
+                    double min = -rotation_friction_coefficient*act_force_eef[2];
+                    double mid = (max + min) / 2.0;
+                    double coef = std::max((max-min)/2.0,std::abs(act_moment_eef[2]-mid)/3.0);
+
+                    W(9,9) = W(10,10) = W(11,11) = W(12,12) = W(13,13) = W(14,14) = W(15,15) = W(16,16) = 1.0 / std::pow(coef,2);
+                }
             }
             break;
         case POINT:
