@@ -790,8 +790,8 @@ public:
         std::vector<hrp::dmatrix> As;
         std::vector<hrp::dvector> lbAs;
         std::vector<hrp::dvector> ubAs;
-        hrp::dvector lb = hrp::dmatrix::Zero(1,state_len);
-        hrp::dvector ub = hrp::dmatrix::Zero(1,state_len);
+        hrp::dvector lb = hrp::dvector::Zero(state_len);
+        hrp::dvector ub = hrp::dvector::Zero(state_len);
         for(size_t i=0; i < state_len; i++){
             lb[i] = -1e10;
             ub[i] = 1e10;
@@ -833,6 +833,8 @@ public:
                 std::cerr << WP << std::endl;
                 std::cerr << "WPvel" << std::endl;
                 std::cerr << WPvel << std::endl;
+                std::cerr << "act_cog" << std::endl;
+                std::cerr << act_cog << std::endl;
 
                 hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
                 hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
