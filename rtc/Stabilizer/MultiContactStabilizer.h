@@ -1707,14 +1707,14 @@ public:
 
                 //debugloop
                 struct timeval s, e;
-                //if(debugloop){
+                if(debugloop){
                     gettimeofday(&s, NULL);
-                    //}
+                }
                 osqp_solve(work);
-                //if(debugloop){
+                if(debugloop){
                     gettimeofday(&e, NULL);
                     std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                    //}
+                }
                 if(work->info->status_val==OSQP_SOLVED){
                     if(debugloop){
                         std::cerr << "hotstart qp_solved" <<std::endl;
@@ -1797,14 +1797,14 @@ public:
 
                 //debug
                 struct timeval s, e;
-                //                if(debugloop){
+                if(debugloop){
                     gettimeofday(&s, NULL);
-                    //}
+                }
                 osqp_solve(work);
-                //if(debugloop){
+                if(debugloop){
                     gettimeofday(&e, NULL);
                     std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                    //}
+                }
                 if(work->info->status_val==OSQP_SOLVED){
                     if(debugloop){
                         std::cerr << "initial qp_solved" <<std::endl;
