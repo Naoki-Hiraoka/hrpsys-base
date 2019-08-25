@@ -1627,12 +1627,12 @@ public:
             }
 
 
-            boost::shared_ptr<OSQPWorkspace> work;
+            OSQPWorkspace* work;
             std::pair<int, int> tmp_pair(state_len, inequality_len);
             bool is_initial = true;
             bool internal_error = false;
             {
-                std::map<std::pair<int, int>, boost::shared_ptr<OSQPWorkspace> >::iterator it = osqp_map.find(tmp_pair);
+                std::map<std::pair<int, int>, OSQPWorkspace* >::iterator it = osqp_map.find(tmp_pair);
                 is_initial = (it == osqp_map.end());
                 if(!is_initial){
                     work = it->second;
@@ -1641,21 +1641,21 @@ public:
 
             if (!is_initial) {
                 if(debugloop){
-                    osqp_update_verbose(work.get(),1);
+                    osqp_update_verbose(work,1);
                 }else{
-                    osqp_update_verbose(work.get(),0);
+                    osqp_update_verbose(work,0);
                 }
 
-                osqp_update_P_A(work.get(), qp_P_triu->x, OSQP_NULL, qp_P_triu->p[qp_P_triu->n] , qp_A_x, OSQP_NULL, qp_A_nnz);// P should be upper requangle
-                osqp_update_lin_cost(work.get(),qp_q);
-                osqp_update_bounds(work.get(),qp_l,qp_u);
+                osqp_update_P_A(work, qp_P_triu->x, OSQP_NULL, qp_P_triu->p[qp_P_triu->n] , qp_A_x, OSQP_NULL, qp_A_nnz);// P should be upper requangle
+                osqp_update_lin_cost(work,qp_q);
+                osqp_update_bounds(work,qp_l,qp_u);
 
                 //debugloop
                 struct timeval s, e;
                 if(debugloop){
                     gettimeofday(&s, NULL);
                 }
-                osqp_solve(work.get());
+                osqp_solve(work);
                 if(debugloop){
                     gettimeofday(&e, NULL);
                     std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
@@ -1674,16 +1674,29 @@ public:
                     }
                     error_num = work->info->status_val;
 
-                    // if(work->info->status_val==-1){
+                    // if(work->info->status_val==OSQP_SOLVED_INACCURATE || work->info->status_val==OSQP_MAX_ITER_REACHED){
+                    //     if(debugloop){
+                    //         std::cerr << "hotstart qp max iter" <<std::endl;
+                    //     }
+
+                    // }
+
+                    // IF(work->info->status_val==-1){
                     //     if(debugloop){
                     //         std::cerr << "hotstart qp internal error" <<std::endl;
                     //     }
                     //     internal_error = true;
                     // }
 
+                    if(debugloop){
+                        std::cerr << "hotstart qp error" <<std::endl;
+                    }
+
                     // Delete unsolved sqp
-                    osqp_cleanup(work.get());
+                    osqp_cleanup(work);
                     osqp_map.erase(tmp_pair);
+                    internal_error = true;
+
                 }
             }
 
@@ -1704,13 +1717,24 @@ public:
                 data->u = qp_u;
 
                 osqp_set_default_settings(settings);
+                //settings->polish = true;
+                //settings->linsys_solver = MKL_PARDISO_SOLVER;
+                //settings->rho = 1e-6;
+                //settings->alpha = 0.1;
+
+                //settings->max_iter = 10000;
+                //settings->eps_abs = 1e-04;
+                //settings->eps_rel = 1e-04;
+                //settings->check_termination = 1;
+                //settings->time_limit = 1e-2;
+
                 if(debugloop){
                     settings->verbose = 1;
                 }else{
                     settings->verbose = 0;
                 }
 
-                work = boost::shared_ptr<OSQPWorkspace>(osqp_setup(data, settings));
+                work = osqp_setup(data, settings);
                 osqp_map[tmp_pair]=work;
 
                 //debug
@@ -1718,7 +1742,7 @@ public:
                 if(debugloop){
                     gettimeofday(&s, NULL);
                 }
-                osqp_solve(work.get());
+                osqp_solve(work);
                 if(debugloop){
                     gettimeofday(&e, NULL);
                     std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
@@ -1738,10 +1762,11 @@ public:
                     }
                     error_num = work->info->status_val;
                     // Delete unsolved sqp
-                    osqp_cleanup(work.get());
+                    osqp_cleanup(work);
                     osqp_map.erase(tmp_pair);
                 }
 
+                 //osqpのdata,settingは内部でコピーされるのですぐ開放して良い
                 c_free(data);
                 c_free(settings);
             }
@@ -1964,6 +1989,9 @@ public:
                 std::cerr << qpoases_xopt.transpose() * eachH[i] * qpoases_xopt + 2 * eachg[i] * qpoases_xopt << std::endl;
             }
         }
+
+
+        /*********************************************************************************/
 
         if(!qp_solved)std::cerr << "qp fail " <<error_num  <<std::endl;
         hrp::dvector command_dq = xopt.block(q_pos,0,m_robot->numJoints(),1);
@@ -2422,7 +2450,7 @@ private:
     std::vector<bool> is_reference;
     std::vector<bool> is_passive;
     std::map<std::pair<int, int>, boost::shared_ptr<SQProblem> > sqp_map;
-    std::map<std::pair<int, int>, boost::shared_ptr<OSQPWorkspace> > osqp_map; //osqpのdata,settingは内部でコピーされるのですぐ開放して良い
+    std::map<std::pair<int, int>, OSQPWorkspace* > osqp_map;
 
     hrp::dvector qcurv;
     hrp::Vector3 cur_root_p/*refworld系*/;
