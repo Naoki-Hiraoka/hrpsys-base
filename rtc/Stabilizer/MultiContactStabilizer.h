@@ -15,8 +15,9 @@
 #include <iostream>
 #include <limits>
 #include <qpOASES.hpp>
+#ifdef USE_OSQP
 #include <osqp.h>
-
+#endif
 //debug
 #include <sys/time.h>
 
@@ -1511,11 +1512,11 @@ public:
         /*****************************************************************/
         bool qp_solved=false;
         hrp::dvector xopt = hrp::dvector::Zero(H.cols());
-
+        int error_num = 0;
         /*****************************************************************/
+#ifdef USE_OSQP
         //USE_OSQP を ON にすること
         bool osqp_solved = false;
-        int error_num = 0;
         if(support_eef.size()>0){
             const size_t state_len = H.cols();
             size_t inequality_len = 0;
@@ -1783,7 +1784,7 @@ public:
             c_free(qp_A);
         }
         if(osqp_solved) qp_solved = true;
-
+#endif
         /*****************************************************************/
 
         hrp::dvector qpoases_xopt = hrp::dvector::Zero(H.cols());
@@ -1922,6 +1923,7 @@ public:
                     if(debugloop){
                         std::cerr << "hotstart qp fail" <<std::endl;
                     }
+                    error_num = qpOASES::getSimpleStatus(status);
                     // Delete unsolved sqp
                     sqp_map.erase(tmp_pair);
                     if(qpOASES::getSimpleStatus(status)==-1){
@@ -1964,6 +1966,7 @@ public:
                     if(debugloop){
                         std::cerr << "initial qp fail" <<std::endl;
                     }
+                    error_num = qpOASES::getSimpleStatus(status);
                     // Delete unsolved sqp
                     sqp_map.erase(tmp_pair);
                 }
@@ -1976,19 +1979,20 @@ public:
             delete[] qp_ubA;
             delete[] qp_lbA;
         }
-        // if(qpoases_solved) qp_solved = true;
-        if(debugloop){
-            std::cerr << "qpoases_solved" << std::endl;
-            std::cerr << qpoases_solved << std::endl;
-            std::cerr << "xopt" << std::endl;
-            std::cerr << qpoases_xopt << std::endl;
-            std::cerr << "total cost " << std::endl;
-            std::cerr << qpoases_xopt.transpose() * H * qpoases_xopt + 2 * g * qpoases_xopt << std::endl;
-            for(size_t i=0; i < eachH.size(); i++){
-                std::cerr << "cost " << i << std::endl;
-                std::cerr << qpoases_xopt.transpose() * eachH[i] * qpoases_xopt + 2 * eachg[i] * qpoases_xopt << std::endl;
-            }
-        }
+        if(qpoases_solved) qp_solved = true;
+        xopt = qpoases_xopt;
+        // if(debugloop){
+        //     std::cerr << "qpoases_solved" << std::endl;
+        //     std::cerr << qpoases_solved << std::endl;
+        //     std::cerr << "xopt" << std::endl;
+        //     std::cerr << qpoases_xopt << std::endl;
+        //     std::cerr << "total cost " << std::endl;
+        //     std::cerr << qpoases_xopt.transpose() * H * qpoases_xopt + 2 * g * qpoases_xopt << std::endl;
+        //     for(size_t i=0; i < eachH.size(); i++){
+        //         std::cerr << "cost " << i << std::endl;
+        //         std::cerr << qpoases_xopt.transpose() * eachH[i] * qpoases_xopt + 2 * eachg[i] * qpoases_xopt << std::endl;
+        //     }
+        // }
 
 
         /*********************************************************************************/
@@ -2450,8 +2454,9 @@ private:
     std::vector<bool> is_reference;
     std::vector<bool> is_passive;
     std::map<std::pair<int, int>, boost::shared_ptr<SQProblem> > sqp_map;
+#ifdef USE_OSQP
     std::map<std::pair<int, int>, OSQPWorkspace* > osqp_map;
-
+#endif
     hrp::dvector qcurv;
     hrp::Vector3 cur_root_p/*refworld系*/;
     hrp::Matrix33 cur_root_R/*refworld系*/;
