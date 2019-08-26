@@ -12,7 +12,7 @@ if(USE_QPOASES)
 endif()
 
 if(USE_OSQP)
-  link_directories(/home/hiraoka/hiraoka_ws/catkin_ws/src/jsk-ros-pkg/jsk_control/eus_osqp/lib)
+  link_directories(${CMAKE_CURRENT_BINARY_DIR}/../../3rdparty/osqp/osqpproj-prefix/src/osqpproj/out)
   #linkがうまく行かない場合は、/devel/lib/libosqp.soを手動でコピペして作る
   include_directories(${CMAKE_CURRENT_BINARY_DIR}/../../3rdparty/osqp/osqpproj-prefix/src/osqpproj/include)
   add_definitions(-DUSE_OSQP)
