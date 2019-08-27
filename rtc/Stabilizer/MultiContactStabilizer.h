@@ -1373,22 +1373,22 @@ public:
             hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//q
             hrp::dmatrix Wq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wq(i,i) = vel_weight / std::max(std::pow(m_robot->joint(i)->uvlimit,2), std::pow(m_robot->joint(i)->lvlimit,2)) / dt;
+                Wq(i,i) = vel_weight / dt;
             }
 
             tmpH += Wq;
 
             hrp::dmatrix Wqref = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wq(i,i) = reference_weight / std::max(std::pow(m_robot->joint(i)->uvlimit,2), std::pow(m_robot->joint(i)->lvlimit,2)) / dt;
+                Wq(i,i) = reference_weight / dt;
             }
 
-            hrp::dvector midqvel = hrp::dvector::Zero(m_robot->numJoints());
+            hrp::dvector referencevel = hrp::dvector::Zero(m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                midqvel[i] = ((ulimit[i] + llimit[i]) / 2.0 - qcurv[i]) * dt;
+                referencevel[i] = dqrefv[i] * dt +  (qrefv[i] - qcurv[i]) * dt;
             }
             tmpH += Wqref;
-            tmpg += - midqvel.transpose() * Wqref;
+            tmpg += - referencevel.transpose() * Wqref;
 
             H.block(q_pos,q_pos,tmpH.rows(),tmpH.cols()) += tmpH;
             g.block(0,q_pos,tmpg.rows(),tmpg.cols()) += tmpg;
