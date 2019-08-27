@@ -265,6 +265,10 @@ public:
         mcs_collisionthre=0.001;
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
+
+        for(size_t i=0; i < m_robot->numLinks();i++){
+            linkjpes.push_back(hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->link(i), dt, false, instance_name)));
+        }
     }
 
     void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv) {
@@ -1416,7 +1420,100 @@ public:
 
         /*****************************************************************/
         // collision avoidance
-        // TODO
+        size_t num_collision = collisioninfo.data.length() / 9;
+        {
+            // 前回の指令値のcurrentのロボットの姿勢へ
+            m_robot->rootLink()->R = cur_root_R/*refworld系*/;
+            m_robot->rootLink()->p = cur_root_p/*refworld系*/;
+            for (size_t i = 0; i < m_robot->numJoints(); i++) {
+                m_robot->joint(i)->q = qcurv[i];
+            }
+            m_robot->calcForwardKinematics();//link->p,R
+            m_robot->calcCM();//link->wc
+
+            hrp::dmatrix A = hrp::dmatrix::Zero(num_collision,state_len);
+            hrp::dvector lbA = hrp::dvector::Zero(num_collision);
+            hrp::dvector ubA = hrp::dvector::Zero(num_collision);
+
+            for(size_t i = 0; i < num_collision; i++){
+                //0: index of link1, 1: index of link2, 2: distance-tolerance, 3-5: nearest point of link1, 6-8: nearest point of link2
+                double distance = collisioninfo.data[i*9+2];
+
+                size_t link1_idx = collisioninfo.data[i*9+0];
+                hrp::dmatrix JJ1;
+                hrp::Vector3 localp1(collisioninfo.data[i*9+3],collisioninfo.data[i*9+4],collisioninfo.data[i*9+5]);/*link系*/
+                linkjpes[link1_idx]->calcJacobian(JJ1/*world系*/,localp1);
+                hrp::Vector3 p1/*world系*/ = m_robot->link(link1_idx)->p/*world系*/ + m_robot->link(link1_idx)->R/*world系*/ * localp1/*link系*/;
+                hrp::dmatrix J1 = hrp::dmatrix::Zero(3,m_robot->numJoints());
+                for(size_t j = 0; j < linkjpes[link1_idx]->numJoints(); j++){
+                    J1.block<3,1>(0,linkjpes[link1_idx]->joint(j)->jointId)=JJ1.block<3,1>(0,j);
+                }
+
+                size_t link2_idx = collisioninfo.data[i*9+1];
+                hrp::dmatrix JJ2;
+                hrp::Vector3 localp2(collisioninfo.data[i*9+6],collisioninfo.data[i*9+7],collisioninfo.data[i*9+8]);
+                linkjpes[link2_idx]->calcJacobian(JJ2/*world系*/,localp2);
+                hrp::Vector3 p2/*world系*/ = m_robot->link(link2_idx)->p/*world系*/ + m_robot->link(link2_idx)->R/*world系*/ * localp2/*link系*/;
+                hrp::dmatrix J2 = hrp::dmatrix::Zero(3,m_robot->numJoints());
+                for(size_t j = 0; j < linkjpes[link2_idx]->numJoints(); j++){
+                    J2.block<3,1>(0,linkjpes[link2_idx]->joint(j)->jointId)=JJ2.block<3,1>(0,j);
+                }
+
+                double norm = (p1 - p2).norm();
+
+                if(norm !=0){
+                    A.block(i,0,1,m_robot->numJoints()) = (p1 - p2).transpose() * (J1 - J2) / norm;
+                    lbA[i] = - (distance - mcs_collisionthre);
+                }else{
+                    lbA[i] = -1e10;
+                }
+                    ubA[i] = 1e10;
+
+                // if(debugloop){
+                //     std::cerr << "collision" << std::endl;
+                //     std::cerr << "JJ1" << std::endl;
+                //     std::cerr << JJ1 << std::endl;
+                //     std::cerr << "J1" << std::endl;
+                //     std::cerr << J1 << std::endl;
+                //     std::cerr << "p1" << std::endl;
+                //     std::cerr << p1 << std::endl;
+
+                //     std::cerr << "JJ2" << std::endl;
+                //     std::cerr << JJ2 << std::endl;
+                //     std::cerr << "J2" << std::endl;
+                //     std::cerr << J2 << std::endl;
+                //     std::cerr << "p2" << std::endl;
+                //     std::cerr << p2 << std::endl;
+
+                //     std::cerr << "(p1 - p2).transpose() * (J1 - J2)" << std::endl;
+                //     std::cerr << (p1 - p2).transpose() * (J1 - J2) << std::endl;
+                // }
+            }
+
+            As.push_back(A);
+            lbAs.push_back(lbA);
+            ubAs.push_back(ubA);
+
+            // actualのロボットの姿勢へ
+            m_robot->rootLink()->R = act_root_R/*actworld系*/;
+            m_robot->rootLink()->p = act_root_p/*actworld系*/;
+            for (size_t i = 0; i < m_robot->numJoints(); i++) {
+                m_robot->joint(i)->q = qactv[i];
+            }
+            m_robot->calcForwardKinematics();//link->p,R
+            m_robot->calcCM();//link->wc
+
+            if(debugloop){
+                std::cerr << "collision" << std::endl;
+                std::cerr << "A" << std::endl;
+                std::cerr << A <<std::endl;
+                std::cerr << "lbA" << std::endl;
+                std::cerr << lbA <<std::endl;
+                std::cerr << "ubA" << std::endl;
+                std::cerr << ubA <<std::endl;
+            }
+
+        }
 
         /*****************************************************************/
         //min-max
@@ -1542,10 +1639,10 @@ public:
 
             csc *qp_A;
             hrp::dmatrix Asparse=hrp::dmatrix::Zero(inequality_len,state_len);
-            Asparse.block(0,0,m_robot->numJoints()+num_cc+m_robot->numJoints()*2,m_robot->numJoints()) = hrp::dmatrix::Ones(m_robot->numJoints()+num_cc+m_robot->numJoints()*2,m_robot->numJoints());
+            Asparse.block(0,0,m_robot->numJoints()+num_cc+m_robot->numJoints()*2+num_collision,m_robot->numJoints()) = hrp::dmatrix::Ones(m_robot->numJoints()+num_cc+m_robot->numJoints()*2+num_collision,m_robot->numJoints());
             for(size_t i=0;i<m_robot->numJoints()+num_cc;i++) Asparse(i,m_robot->numJoints()+i)=1.0;
             for(size_t i=0;i<m_robot->numJoints()*2;i++) Asparse(m_robot->numJoints()+num_cc+i,state_len-1)=1.0;
-            Asparse.block(m_robot->numJoints()+num_cc+m_robot->numJoints()*2,0,state_len,state_len) = hrp::dmatrix::Identity(state_len,state_len);
+            Asparse.block(m_robot->numJoints()+num_cc+m_robot->numJoints()*2+num_collision,0,state_len,state_len) = hrp::dmatrix::Identity(state_len,state_len);
             c_int qp_A_nnz = int(Asparse.sum());
             c_float *qp_A_x = new c_float[qp_A_nnz];
             c_int *qp_A_i = new c_int[qp_A_nnz];
@@ -2507,6 +2604,7 @@ private:
     hrp::BodyPtr const_robot;
     std::vector<hrp::Link*> joints;
     std::vector<double> hardware_pgains;
+    std::vector<hrp::JointPathExPtr> linkjpes;
 
     //stで使用
     double transition_smooth_gain;//0.0~1.0, 0のとき何もしない
