@@ -21,6 +21,9 @@ public:
                              max_fz(1000.0),
                              min_fz(25.0),
                              target_max_fz(1000.0),
+                             z_leave_weight(1e0),
+                             z_leavevel_weight(1e0),
+                             other_leave_weight(1e0),
                              pos_interact_weight(1.0 / std::pow(0.025,2)),
                              rot_interact_weight(1.0 / std::pow(10.0/180.0*M_PI,2)),
                              M_p(10),
@@ -84,7 +87,8 @@ public:
     bool isContact(){
         prev_act_contact_state = act_contact_state;
         if(prev_act_contact_state){
-            act_contact_state = (act_force_eef[2] > contact_decision_threshold) && ref_contact_state;
+            //act_contact_state = (act_force_eef[2] > contact_decision_threshold) && ref_contact_state;
+            act_contact_state = act_force_eef[2] > contact_decision_threshold;
         }else{
             act_contact_state = (act_force_eef[2] > min_fz) && ref_contact_state;
         }
@@ -184,8 +188,13 @@ public:
 
                 //垂直抗力
                 C(constraint_idx,2)=1;
-                lb[constraint_idx] = min_fz;
-                ub[constraint_idx] = max_fz;
+                if(ref_contact_state){
+                    lb[constraint_idx] = min_fz;
+                    ub[constraint_idx] = max_fz;
+                }else{
+                    lb[constraint_idx] = 0.0;
+                    ub[constraint_idx] = target_max_fz;
+                }
                 constraint_idx++;
 
                 //x摩擦
@@ -491,8 +500,13 @@ public:
         case SURFACE:
             {
                 //垂直抗力
-                H(2,2) += 1.0 / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
-                g[2] += act_force_eef[2] / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
+                if(ref_contact_state){
+                    H(2,2) += 1.0 / std::pow(std::max(max_fz,act_force_eef[2]/3.0),2);
+                    g[2] += act_force_eef[2] / std::pow(std::max(max_fz,act_force_eef[2]/3.0),2);
+                }else{
+                    H(2,2) += 1.0 / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
+                    g[2] += act_force_eef[2] / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2);
+                }
 
                 {
                     //x摩擦
@@ -571,34 +585,59 @@ public:
                 W = hrp::dmatrix::Zero(constraint_num,constraint_num);
 
                 //垂直抗力
-                if(act_force_eef[2] > (max_fz + min_fz)/2.0){
-                    W(0,0) = 1.0 / std::pow(std::max(max_fz,act_force_eef[2]/3.0),2);
-                }else{
-                    W(0,0) = 1.0 / std::pow(min_fz,2);
+                {
+                    if(ref_contact_state){
+                        if(act_force_eef[2] > (max_fz + min_fz)/2.0){
+                            W(0,0) = 1.0 / std::pow(std::max(max_fz,act_force_eef[2]/3.0),2);
+                        }else{
+                            W(0,0) = 1.0 / std::pow(min_fz,2);
+                        }
+                    }else{
+                        W(0,0) = 1.0 / std::pow(std::max(target_max_fz,act_force_eef[2]/3.0),2) * z_leave_weight;
+                    }
                 }
 
                 {
                     //x摩擦
                     double coef = std::max(friction_coefficient*act_force_eef[2],std::abs(act_force_eef[0])/3.0);
                     W(1,1) = W(2,2) = 1.0 / std::pow(coef,2);
+                    if(!ref_contact_state){
+                        W(1,1) *= other_leave_weight;
+                        W(2,2) *= other_leave_weight;
+                    }
                 }
 
                 {
                     //y摩擦
                     double coef = std::max(friction_coefficient*act_force_eef[2],std::abs(act_force_eef[1])/3.0);
-                    W(3,3) = W(4,4) = 1.0 / std::pow(coef,2);;
+                    W(3,3) = W(4,4) = 1.0 / std::pow(coef,2);
+                    if(!ref_contact_state){
+                        W(3,3) *= other_leave_weight;
+                        W(4,4) *= other_leave_weight;
+                    }
+
                 }
 
                 {
                     //xCOP
                     double coef = std::max((upper_cop_x_margin-lower_cop_x_margin)/2.0*act_force_eef[2],std::abs(act_moment_eef[1]+(upper_cop_x_margin+lower_cop_x_margin)/2.0*act_force_eef[2])/3.0);
                     W(5,5) = W(6,6) = 1.0 / std::pow(coef,2);
+                    if(!ref_contact_state){
+                        W(5,5) *= other_leave_weight;
+                        W(6,6) *= other_leave_weight;
+                    }
+
                 }
 
                 {
                     //yCOP
                     double coef = std::max((upper_cop_y_margin-lower_cop_y_margin)/2.0*act_force_eef[2],std::abs(act_moment_eef[0]-(upper_cop_y_margin+lower_cop_y_margin)/2.0*act_force_eef[2])/3.0);
                     W(7,7) = W(8,8) = 1.0 / std::pow(coef,2);
+                    if(!ref_contact_state){
+                        W(7,7) *= other_leave_weight;
+                        W(8,8) *= other_leave_weight;
+                    }
+
                 }
 
                 {
@@ -613,6 +652,17 @@ public:
                     double coef = std::max((max-min)/2.0,std::abs(act_moment_eef[2]-mid)/3.0);
 
                     W(9,9) = W(10,10) = W(11,11) = W(12,12) = W(13,13) = W(14,14) = W(15,15) = W(16,16) = 1.0 / std::pow(coef,2);
+                    if(!ref_contact_state){
+                        W(9,9) *= other_leave_weight;
+                        W(10,10) *= other_leave_weight;
+                        W(11,11) *= other_leave_weight;
+                        W(12,12) *= other_leave_weight;
+                        W(13,13) *= other_leave_weight;
+                        W(14,14) *= other_leave_weight;
+                        W(15,15) *= other_leave_weight;
+                        W(16,16) *= other_leave_weight;
+                    }
+
                 }
             }
             break;
@@ -633,6 +683,40 @@ public:
 
                 //y摩擦
                 W(3,3) = W(4,4) = 1.0 / std::pow(std::max(friction_coefficient*act_force_eef[2],act_friction_coefficient_y*act_force_eef[2]/3.0),2);
+            }
+            break;
+        default: break;
+        }
+
+
+        return;
+    }
+
+    void applyEWrenchvelscale(hrp::dmatrix& W){
+        switch(contact_type) {
+        case SURFACE:
+            {
+                int constraint_num = 17;
+
+                //垂直抗力
+                {
+                    if(!ref_contact_state){
+                        W(0,0) *= z_leavevel_weight / z_leave_weight;
+                    }
+                }
+            }
+            break;
+        case POINT:
+            {
+                int constraint_num = 5;
+                //垂直抗力
+                {
+                    if(!ref_contact_state){
+                        if(act_force_eef[2] > (target_max_fz + min_fz)/2.0){
+                            W(0,0) *= z_leavevel_weight / z_leave_weight;
+                        }
+                    }
+                }
             }
             break;
         default: break;
@@ -695,6 +779,15 @@ public:
 
         target_max_fz = i_ccp.target_max_fz;
         std::cerr << "[" << instance_name << "]  " << name <<  " target_max_fz = " << target_max_fz << std::endl;
+
+        z_leave_weight = i_ccp.z_leave_weight;
+        std::cerr << "[" << instance_name << "]  " << name <<  " z_leave_weight = " << z_leave_weight << std::endl;
+
+        z_leavevel_weight = i_ccp.z_leavevel_weight;
+        std::cerr << "[" << instance_name << "]  " << name <<  " z_leavevel_weight = " << z_leavevel_weight << std::endl;
+
+        other_leave_weight = i_ccp.other_leave_weight;
+        std::cerr << "[" << instance_name << "]  " << name <<  " other_leave_weight = " << other_leave_weight << std::endl;
 
         pos_interact_weight = i_ccp.pos_interact_weight;
         std::cerr << "[" << instance_name << "]  pos_interact_weight = " << pos_interact_weight << std::endl;
@@ -776,6 +869,9 @@ public:
         i_ccp.max_fz = max_fz;
         i_ccp.min_fz = min_fz;
         i_ccp.target_max_fz = target_max_fz;
+        i_ccp.z_leave_weight = z_leave_weight;
+        i_ccp.z_leavevel_weight = z_leavevel_weight;
+        i_ccp.other_leave_weight = other_leave_weight;
         i_ccp.pos_interact_weight = pos_interact_weight;
         i_ccp.rot_interact_weight = rot_interact_weight;
         i_ccp.M_p = M_p;
@@ -820,6 +916,10 @@ public:
     double max_fz;
     double min_fz;
     double target_max_fz;
+    //double target_min_fz;
+    double z_leave_weight;
+    double z_leavevel_weight;
+    double other_leave_weight;
     //遊脚インピーダンス
     bool is_ik_enable;//遊脚(!ref_contact)時に位置を制御するか,遊脚時に反力を考慮するか
     double pos_interact_weight;

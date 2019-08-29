@@ -253,8 +253,10 @@ public:
         reference_weight = 1e-3;
         etau_weight = 1e1;
         etauvel_weight = 1e1;
+        etau_time = 5;
         eforce_weight = 1e1;
         eforcevel_weight = 1e1;
+        eforce_time = 5;
         tau_weight = 1e1;
         tauvel_weight = 1e1;
 
@@ -962,6 +964,19 @@ public:
             lbAs.push_back(lbA);
             ubAs.push_back(ubA);
 
+            //velocity min-max
+            hrp::dvector u = hrp::dvector::Zero(m_robot->numJoints());
+            hrp::dvector l = hrp::dvector::Zero(m_robot->numJoints());
+            for(size_t i=0; i < m_robot->numJoints(); i++){
+                if(actetauv[i]>0) l[i] = - actetauv[i] * dt / etau_time;
+                else l[i] = -1e10;
+
+                if(actetauv[i]<0) u[i] = - actetauv[i] * dt / etau_time;
+                else u[i] = 1e10;
+            }
+            ub.block(etau_pos,0,u.rows(),u.cols()) = u;
+            lb.block(etau_pos,0,l.rows(),l.cols()) = l;
+
             if(debugloop){
                 std::cerr << "etorque" << std::endl;
                 std::cerr << "acttauv" << std::endl;
@@ -990,6 +1005,12 @@ public:
                 std::cerr << thisH <<std::endl;
                 std::cerr << "g" << std::endl;
                 std::cerr << thisg <<std::endl;
+
+                std::cerr << "u" << std::endl;
+                std::cerr << u <<std::endl;
+                std::cerr << "l" << std::endl;
+                std::cerr << l <<std::endl;
+
             }
         }
 
@@ -1001,6 +1022,7 @@ public:
 
             //value
             hrp::dmatrix Weforce = hrp::dmatrix::Zero(num_cc,num_cc);
+            hrp::dmatrix Weforcevel = hrp::dmatrix::Zero(num_cc,num_cc);
             std::vector<hrp::dvector> acteforcevs;
             hrp::dvector acteforcev = hrp::dvector::Zero(num_cc);
             size_t tmp_num_cc=0;
@@ -1008,6 +1030,8 @@ public:
                 hrp::dmatrix W;
                 support_eef[i]->getEWrenchWeight(W);
                 Weforce.block(tmp_num_cc,tmp_num_cc,W.rows(),W.cols())=W;
+                support_eef[i]->applyEWrenchvelscale(W);
+                Weforcevel.block(tmp_num_cc,tmp_num_cc,W.rows(),W.cols())=W;
 
                 hrp::dvector l = cc_lb[i] - cc_C[i] * actwrenchv.block<6,1>(6*i,0);
                 hrp::dvector u = cc_ub[i] - cc_C[i] * actwrenchv.block<6,1>(6*i,0);
@@ -1027,7 +1051,7 @@ public:
             tmpg += acteforcev.transpose() * (eforce_weight * Weforce);
 
             //velocity
-            tmpH += (eforcevel_weight / dt * Weforce);
+            tmpH += (eforcevel_weight / dt * Weforcevel);
 
             H.block(eforce_pos,eforce_pos,tmpH.rows(),tmpH.cols()) += tmpH;
             g.block(0,eforce_pos,tmpg.rows(),tmpg.cols()) += tmpg;
@@ -1057,6 +1081,19 @@ public:
                 }
             }
 
+            //velocity min-max
+            hrp::dvector u = hrp::dvector::Zero(num_cc);
+            hrp::dvector l = hrp::dvector::Zero(num_cc);
+            for(size_t i=0; i < num_cc; i++){
+                if(acteforcev[i]>0) l[i] = - acteforcev[i] * dt / eforce_time;
+                else l[i] = -1e10;
+
+                if(acteforcev[i]<0) u[i] = - acteforcev[i] * dt / eforce_time;
+                else u[i] = 1e10;
+            }
+            ub.block(eforce_pos,0,u.rows(),u.cols()) = u;
+            lb.block(eforce_pos,0,l.rows(),l.cols()) = l;
+
             if(debugloop){
                 std::cerr << "ewrench" << std::endl;
                 std::cerr << "actwrenchv" << std::endl;
@@ -1077,6 +1114,11 @@ public:
                 std::cerr << thisH <<std::endl;
                 std::cerr << "g" << std::endl;
                 std::cerr << thisg <<std::endl;
+
+                std::cerr << "u" << std::endl;
+                std::cerr << u <<std::endl;
+                std::cerr << "l" << std::endl;
+                std::cerr << l <<std::endl;
 
             }
         }
@@ -2392,11 +2434,17 @@ public:
         etauvel_weight = i_stp.etauvel_weight;
         std::cerr << "[" << instance_name << "]  etauvel_weight = " << etauvel_weight << std::endl;
 
+        etau_time = i_stp.etau_time;
+        std::cerr << "[" << instance_name << "]  etau_time = " << etau_time << std::endl;
+
         eforce_weight = i_stp.eforce_weight;
         std::cerr << "[" << instance_name << "]  eforce_weight = " << eforce_weight << std::endl;
 
         eforcevel_weight = i_stp.eforcevel_weight;
         std::cerr << "[" << instance_name << "]  eforcevel_weight = " << eforcevel_weight << std::endl;
+
+        eforce_time = i_stp.eforce_time;
+        std::cerr << "[" << instance_name << "]  eforce_time = " << eforce_time << std::endl;
 
         taumax_weight = i_stp.taumax_weight;
         std::cerr << "[" << instance_name << "]  taumax_weight = " << taumax_weight << std::endl;
@@ -2464,8 +2512,10 @@ public:
         i_stp.reference_weight = reference_weight;
         i_stp.etau_weight = etau_weight;
         i_stp.etauvel_weight = etauvel_weight;
+        i_stp.etau_time = etau_time;
         i_stp.eforce_weight = eforce_weight;
         i_stp.eforcevel_weight = eforcevel_weight;
+        i_stp.eforce_time = eforce_time;
         i_stp.taumax_weight = taumax_weight;
         i_stp.taumaxvel_weight = taumaxvel_weight;
 
@@ -2678,7 +2728,9 @@ private:
     double reference_weight;
     double etau_weight;
     double etauvel_weight;
+    double etau_time;
     double eforce_weight;
+    double eforce_time;
     double eforcevel_weight;
     double taumax_weight;
     double taumaxvel_weight;

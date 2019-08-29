@@ -112,6 +112,9 @@ module OpenHRP
         double max_fz;
         double min_fz;
         double target_max_fz;
+        double z_leave_weight;
+        double z_leavevel_weight;
+        double other_leave_weight;
         /// interact weight. o(1 / pos_compensation_limit^2)
         double pos_interact_weight;
         /// interact weight. o(1 / rot_compensation_limit^2)
@@ -310,10 +313,14 @@ module OpenHRP
       double etau_weight;
       /// etauvel weight
       double etauvel_weight;
+      /// etau time
+      double etau_time;
       /// eforce weight
       double eforce_weight;
       /// eforce vel weight
       double eforcevel_weight;
+      /// eforce time
+      double eforce_time;
       /// taumax weight
       double taumax_weight;
       /// taumaxvel weight
