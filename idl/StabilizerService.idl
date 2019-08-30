@@ -115,6 +115,9 @@ module OpenHRP
         double z_leave_weight;
         double z_leavevel_weight;
         double other_leave_weight;
+        double wrench_M;
+        double wrench_D;
+        double wrench_K;
         /// interact weight. o(1 / pos_compensation_limit^2)
         double pos_interact_weight;
         /// interact weight. o(1 / rot_compensation_limit^2)
@@ -325,6 +328,12 @@ module OpenHRP
       double taumax_weight;
       /// taumaxvel weight
       double taumaxvel_weight;
+      /// tau_M
+      double tau_M;
+      /// tau_D
+      double tau_D;
+      /// tau_K
+      double tau_K;
       /// joint passive velocity [rad/s]
       double mcs_passive_vel;
       /// joint passive2active time [s]

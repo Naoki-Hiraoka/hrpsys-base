@@ -24,6 +24,9 @@ public:
                              z_leave_weight(1e0),
                              z_leavevel_weight(1e0),
                              other_leave_weight(1e0),
+                             wrench_M(10),
+                             wrench_D(200),
+                             wrench_K(400),
                              pos_interact_weight(1.0 / std::pow(0.025,2)),
                              rot_interact_weight(1.0 / std::pow(10.0/180.0*M_PI,2)),
                              M_p(10),
@@ -67,6 +70,7 @@ public:
                              act_moment_eef(hrp::Vector3::Zero()),
                              act_contact_state(false),
                              prev_act_contact_state(false),
+                             prev_delta_wrench(hrp::dvector::Zero(6)),
                              cur_force_eef(hrp::Vector3::Zero()),
                              cur_moment_eef(hrp::Vector3::Zero()),
                              prev_pos_vel(hrp::Vector3::Zero()),
@@ -471,6 +475,424 @@ public:
         return;
     }
 
+    size_t getnumDeltaWrench(){
+        switch(contact_type) {
+        case SURFACE:
+            return 6;
+            break;
+        case POINT:
+            return 3;
+            break;
+        default: break;
+        }
+        return 0;
+    }
+
+    void setprevDeltaWrench(const hrp::dvector& dF){
+        prev_delta_wrench = prev_C * dF;
+        return;
+    }
+
+    void getDeltaWrench(hrp::dmatrix& C, hrp::dvector& delta, hrp::dmatrix& W, double force_weight, double eforce_weight){
+        switch(contact_type) {
+        case SURFACE:
+            {
+                int constraint_num = 6;
+                C = hrp::dmatrix::Zero(constraint_num,6);
+                delta = hrp::dvector::Zero(constraint_num);
+                W = hrp::dmatrix::Zero(constraint_num,constraint_num);
+
+                if(prev_delta_wrench.rows() != constraint_num) prev_delta_wrench = hrp::dvector::Zero(constraint_num);
+
+                int constraint_idx = 0;
+
+                {
+                    //垂直抗力
+                    C(constraint_idx,2)=1;
+                    double target=0.0;
+                    double scale_delta=1.0;
+                    double w=1.0;
+                    if(ref_contact_state){
+                        if(act_force_eef[2]>min_fz){
+                            target = act_force_eef[2] - min_fz;
+                            if(act_force_eef[2]>max_fz){
+                                scale_delta = act_force_eef[2] - min_fz;
+                                w=eforce_weight;
+                            }else{
+                                scale_delta = max_fz - min_fz;
+                                w=force_weight;
+                            }
+                        }
+                        else{
+                            target = act_force_eef[2] - min_fz;
+                            scale_delta = min_fz;
+                            w=eforce_weight;
+                        }
+                    }else{
+                        target = act_force_eef[2];
+                        scale_delta = act_force_eef[2];
+                        w=eforce_weight*z_leave_weight;
+                    }
+                    delta[constraint_idx] = (- wrench_M * dt * dt * target + wrench_M * prev_delta_wrench[constraint_idx]) / (wrench_M + wrench_D * dt + wrench_K * dt * dt);
+                    scale_delta *= wrench_K * dt / (wrench_D + wrench_K * dt);
+                    W(constraint_idx,constraint_idx) = w / std::pow(scale_delta,2);
+
+                    constraint_idx++;
+                }
+
+                {
+                    //x摩擦
+                    double fx_sign;
+                    if(act_force_eef[0]>0)fx_sign=1.0;
+                    else fx_sign=-1.0;
+
+                    C(constraint_idx,0)= -1.0/friction_coefficient/act_force_eef[2];
+                    C(constraint_idx,2)= fx_sign/act_force_eef[2];
+                    double target=-act_force_eef[0]/friction_coefficient/act_force_eef[2];
+                    double scale_delta=1.0;
+                    double w=1.0;
+                    if(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])>1.0){
+                        scale_delta = std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2]);
+                        w = eforce_weight;
+                        if(!ref_contact_state){
+                            w *= other_leave_weight;
+                        }
+                    }else{
+                        scale_delta = 1.0;
+                        if(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])>0.9){
+                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])-0.9)/0.1);
+                            if(!ref_contact_state){
+                                w *= other_leave_weight;
+                            }
+                        }else
+                            w = force_weight;
+                    }
+                    delta[constraint_idx] = (- wrench_M * dt * dt * target + wrench_M * prev_delta_wrench[constraint_idx]) / (wrench_M + wrench_D * dt + wrench_K * dt * dt);
+                    scale_delta *= wrench_K * dt / (wrench_D + wrench_K * dt);
+                    W(constraint_idx,constraint_idx) = w / std::pow(scale_delta,2);
+
+                    constraint_idx++;
+                }
+
+                {
+                    //y摩擦
+                    double fy_sign;
+                    if(act_force_eef[1]>0)fy_sign=1.0;
+                    else fy_sign=-1.0;
+
+                    C(constraint_idx,1)= -1.0/friction_coefficient/act_force_eef[2];
+                    C(constraint_idx,2)= fy_sign/act_force_eef[2];
+                    double target=-act_force_eef[1]/friction_coefficient/act_force_eef[2];
+                    double scale_delta=1.0;
+                    double w=1.0;
+                    if(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])>1.0){
+                        scale_delta = std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2]);
+                        w = eforce_weight;
+                        if(!ref_contact_state){
+                            w *= other_leave_weight;
+                        }
+                    }else{
+                        scale_delta = 1.0;
+                        if(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])>0.9){
+                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])-0.9)/0.1);
+                            if(!ref_contact_state){
+                                w *= other_leave_weight;
+                            }
+                        }else
+                            w = force_weight;
+                    }
+                    delta[constraint_idx] = (- wrench_M * dt * dt * target + wrench_M * prev_delta_wrench[constraint_idx]) / (wrench_M + wrench_D * dt + wrench_K * dt * dt);
+                    scale_delta *= wrench_K * dt / (wrench_D + wrench_K * dt);
+                    W(constraint_idx,constraint_idx) = w / std::pow(scale_delta,2);
+
+                    constraint_idx++;
+                }
+
+                {
+                    //xCOP
+                    double mid = (upper_cop_x_margin+lower_cop_x_margin)/2.0;
+                    double len = (upper_cop_x_margin-lower_cop_x_margin)/2.0;
+
+                    double ny_sign;
+                    if(act_moment_eef[1]>0)ny_sign=1.0;
+                    else ny_sign=-1.0;
+
+                    C(constraint_idx,4)= -1.0/len/act_force_eef[2];
+                    if(ny_sign>0) C(constraint_idx,2)= -lower_cop_x_margin/len/act_force_eef[2];
+                    else C(constraint_idx,2)=-upper_cop_x_margin/len/act_force_eef[2];
+                    double target=(-act_moment_eef[1]/len/act_force_eef[2] - mid/len);
+                    double scale_delta=1.0;
+                    double w=1.0;
+                    if(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)>1.0){
+                        scale_delta = std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len);
+                        w = eforce_weight;
+                        if(!ref_contact_state){
+                            w *= other_leave_weight;
+                        }
+                    }else{
+                        scale_delta = 1.0;
+                        if(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)>0.9){
+                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)-0.9)/0.1);
+                            if(!ref_contact_state){
+                                w *= other_leave_weight;
+                            }
+                        }else
+                            w = force_weight;
+                    }
+                    delta[constraint_idx] = (- wrench_M * dt * dt * target + wrench_M * prev_delta_wrench[constraint_idx]) / (wrench_M + wrench_D * dt + wrench_K * dt * dt);
+                    scale_delta *= wrench_K * dt / (wrench_D + wrench_K * dt);
+                    W(constraint_idx,constraint_idx) = w / std::pow(scale_delta,2);
+
+                    constraint_idx++;
+                }
+
+                {
+                    //yCOP
+                    double mid = (upper_cop_y_margin+lower_cop_y_margin)/2.0;
+                    double len = (upper_cop_y_margin-lower_cop_y_margin)/2.0;
+
+                    double nx_sign;
+                    if(act_moment_eef[1]>0)nx_sign=1.0;
+                    else nx_sign=-1.0;
+
+                    C(constraint_idx,3)= -1.0/len/act_force_eef[2];
+                    if(nx_sign>0) C(constraint_idx,2)= upper_cop_y_margin/len/act_force_eef[2];
+                    else C(constraint_idx,2)=lower_cop_y_margin/len/act_force_eef[2];
+                    double target=(-act_moment_eef[0]/len/act_force_eef[2] + mid/len);
+                    double scale_delta=1.0;
+                    double w=1.0;
+                    if(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)>1.0){
+                        scale_delta = std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len);
+                        w = eforce_weight;
+                        if(!ref_contact_state){
+                            w *= other_leave_weight;
+                        }
+                    }else{
+                        scale_delta = 1.0;
+                        if(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)>0.9){
+                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)-0.9)/0.1);
+                            if(!ref_contact_state){
+                                w *= other_leave_weight;
+                            }
+                        }else
+                            w = force_weight;
+                    }
+                    delta[constraint_idx] = (- wrench_M * dt * dt * target + wrench_M * prev_delta_wrench[constraint_idx]) / (wrench_M + wrench_D * dt + wrench_K * dt * dt);
+                    scale_delta *= wrench_K * dt / (wrench_D + wrench_K * dt);
+                    W(constraint_idx,constraint_idx) = w / std::pow(scale_delta,2);
+
+                    constraint_idx++;
+                }
+
+                {
+                    //回転摩擦
+                    double nz_sign;
+                    if(act_moment_eef[2]>0)nz_sign=1.0;
+                    else nz_sign=-1.0;
+
+                    C(constraint_idx,5)= -1.0/rotation_friction_coefficient/act_force_eef[2];
+                    C(constraint_idx,2)= nz_sign/act_force_eef[2];
+                    double target=-act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2];
+                    double scale_delta=1.0;
+                    double w=1.0;
+                    if(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])>1.0){
+                        scale_delta = std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2]);
+                        w = eforce_weight;
+                        if(!ref_contact_state){
+                            w *= other_leave_weight;
+                        }
+                    }else{
+                        scale_delta = 1.0;
+                        if(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])>0.9){
+                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])-0.9)/0.1);
+                            if(!ref_contact_state){
+                                w *= other_leave_weight;
+                            }
+                        }else
+                            w = force_weight;
+                    }
+                    delta[constraint_idx] = (- wrench_M * dt * dt * target + wrench_M * prev_delta_wrench[constraint_idx]) / (wrench_M + wrench_D * dt + wrench_K * dt * dt);
+                    scale_delta *= wrench_K * dt / (wrench_D + wrench_K * dt);
+                    W(constraint_idx,constraint_idx) = w / std::pow(scale_delta,2);
+
+                    constraint_idx++;
+                }
+
+                prev_C = C;
+
+                //回転摩擦 他の拘束条件が満たされていないと解なしになる->解があるように
+                // {
+                //     double mu = friction_coefficient;
+                //     double X = (upper_cop_x_margin - lower_cop_x_margin) / 2.0;
+                //     double Y = (upper_cop_y_margin - lower_cop_y_margin) / 2.0;
+
+                //     lb[constraint_idx+0] = 0.0;
+                //     lb[constraint_idx+1] = 0.0;
+                //     lb[constraint_idx+2] = 0.0;
+                //     lb[constraint_idx+3] = 0.0;
+                //     lb[constraint_idx+4] = -1e10;
+                //     lb[constraint_idx+5] = -1e10;
+                //     lb[constraint_idx+6] = -1e10;
+                //     lb[constraint_idx+7] = -1e10;
+
+                //     ub[constraint_idx+0] = 1e10;
+                //     ub[constraint_idx+1] = 1e10;
+                //     ub[constraint_idx+2] = 1e10;
+                //     ub[constraint_idx+3] = 1e10;
+                //     ub[constraint_idx+4] = 0.0;
+                //     ub[constraint_idx+5] = 0.0;
+                //     ub[constraint_idx+6] = 0.0;
+                //     ub[constraint_idx+7] = 0.0;
+
+                //     C(constraint_idx+0,5)= -1;
+                //     C(constraint_idx+1,5)= -1;
+                //     C(constraint_idx+2,5)= -1;
+                //     C(constraint_idx+3,5)= -1;
+                //     C(constraint_idx+4,5)= -1;
+                //     C(constraint_idx+5,5)= -1;
+                //     C(constraint_idx+6,5)= -1;
+                //     C(constraint_idx+7,5)= -1;
+
+                //     C(constraint_idx+0,2)= mu * (X+Y);
+                //     C(constraint_idx+1,2)= mu * (X+Y);
+                //     C(constraint_idx+2,2)= mu * (X+Y);
+                //     C(constraint_idx+3,2)= mu * (X+Y);
+                //     C(constraint_idx+4,2)= -mu * (X+Y);
+                //     C(constraint_idx+5,2)= -mu * (X+Y);
+                //     C(constraint_idx+6,2)= -mu * (X+Y);
+                //     C(constraint_idx+7,2)= -mu * (X+Y);
+
+                //     if(std::abs(act_force_eef[0]) < mu * act_force_eef[2]){
+                //         C(constraint_idx+0,0)= -Y;
+                //         C(constraint_idx+1,0)= -Y;
+                //         C(constraint_idx+2,0)= Y;
+                //         C(constraint_idx+3,0)= Y;
+                //         C(constraint_idx+4,0)= Y;
+                //         C(constraint_idx+5,0)= Y;
+                //         C(constraint_idx+6,0)= -Y;
+                //         C(constraint_idx+7,0)= -Y;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_force_eef[0]>0) sign = 1;
+                //         else sign = -1;
+
+                //         C(constraint_idx+0,2)+= -mu*Y *sign;
+                //         C(constraint_idx+1,2)+= -mu*Y *sign;
+                //         C(constraint_idx+2,2)+= mu*Y *sign;
+                //         C(constraint_idx+3,2)+= mu*Y *sign;
+                //         C(constraint_idx+4,2)+= mu*Y *sign;
+                //         C(constraint_idx+5,2)+= mu*Y *sign;
+                //         C(constraint_idx+6,2)+= -mu*Y *sign;
+                //         C(constraint_idx+7,2)+= -mu*Y *sign;
+                //     }
+
+                //     if(std::abs(act_force_eef[1]) < mu * act_force_eef[2]){
+                //         C(constraint_idx+0,1)= -X;
+                //         C(constraint_idx+1,1)= X;
+                //         C(constraint_idx+2,1)= -X;
+                //         C(constraint_idx+3,1)= X;
+                //         C(constraint_idx+4,1)= X;
+                //         C(constraint_idx+5,1)= -X;
+                //         C(constraint_idx+6,1)= X;
+                //         C(constraint_idx+7,1)= -X;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_force_eef[1]>0) sign = 1;
+                //         else sign = -1;
+
+                //         C(constraint_idx+0,2)+= -mu*X *sign;
+                //         C(constraint_idx+1,2)+= mu*X *sign;
+                //         C(constraint_idx+2,2)+= -mu*X *sign;
+                //         C(constraint_idx+3,2)+= mu*X *sign;
+                //         C(constraint_idx+4,2)+= mu*X *sign;
+                //         C(constraint_idx+5,2)+= -mu*X *sign;
+                //         C(constraint_idx+6,2)+= mu*X *sign;
+                //         C(constraint_idx+7,2)+= -mu*X *sign;
+                //     }
+
+                //     if(act_moment_eef[0] < upper_cop_y_margin * act_force_eef[2] && act_moment_eef[0] > lower_cop_y_margin * act_force_eef[2]){
+                //         double offset = (upper_cop_y_margin + lower_cop_y_margin) / 2.0;
+                //         C(constraint_idx+0,3)= -mu;
+                //         C(constraint_idx+1,3)= -mu;
+                //         C(constraint_idx+2,3)= mu;
+                //         C(constraint_idx+3,3)= mu;
+                //         C(constraint_idx+4,3)= -mu;
+                //         C(constraint_idx+5,3)= -mu;
+                //         C(constraint_idx+6,3)= mu;
+                //         C(constraint_idx+7,3)= mu;
+
+                //         C(constraint_idx+0,2)+= mu*offset;
+                //         C(constraint_idx+1,2)+= mu*offset;
+                //         C(constraint_idx+2,2)+= -mu*offset;
+                //         C(constraint_idx+3,2)+= -mu*offset;
+                //         C(constraint_idx+4,2)+= mu*offset;
+                //         C(constraint_idx+5,2)+= mu*offset;
+                //         C(constraint_idx+6,2)+= -mu*offset;
+                //         C(constraint_idx+7,2)+= -mu*offset;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_moment_eef[0]>0) sign = 1;
+                //         else sign = -1;
+
+                //         C(constraint_idx+0,2)+= -mu*Y *sign;
+                //         C(constraint_idx+1,2)+= -mu*Y *sign;
+                //         C(constraint_idx+2,2)+= mu*Y *sign;
+                //         C(constraint_idx+3,2)+= mu*Y *sign;
+                //         C(constraint_idx+4,2)+= -mu*Y *sign;
+                //         C(constraint_idx+5,2)+= -mu*Y *sign;
+                //         C(constraint_idx+6,2)+= mu*Y *sign;
+                //         C(constraint_idx+7,2)+= mu*Y *sign;
+                //     }
+
+                //     if(-act_moment_eef[1] < upper_cop_x_margin * act_force_eef[2] && -act_moment_eef[1] > lower_cop_x_margin * act_force_eef[2]){
+                //         double offset = (upper_cop_x_margin + lower_cop_x_margin) / 2.0;
+                //         C(constraint_idx+0,4)= -mu;
+                //         C(constraint_idx+1,4)= mu;
+                //         C(constraint_idx+2,4)= -mu;
+                //         C(constraint_idx+3,4)= mu;
+                //         C(constraint_idx+4,4)= -mu;
+                //         C(constraint_idx+5,4)= mu;
+                //         C(constraint_idx+6,4)= -mu;
+                //         C(constraint_idx+7,4)= mu;
+
+                //         C(constraint_idx+0,2)+= -mu*offset;
+                //         C(constraint_idx+1,2)+= mu*offset;
+                //         C(constraint_idx+2,2)+= -mu*offset;
+                //         C(constraint_idx+3,2)+= mu*offset;
+                //         C(constraint_idx+4,2)+= -mu*offset;
+                //         C(constraint_idx+5,2)+= mu*offset;
+                //         C(constraint_idx+6,2)+= -mu*offset;
+                //         C(constraint_idx+7,2)+= mu*offset;
+                //     }else{
+                //         double sign = 0;
+                //         if(act_moment_eef[1]>0) sign = 1;
+                //         else sign = -1;
+                //         C(constraint_idx+0,2)+= -mu*X *sign;
+                //         C(constraint_idx+1,2)+= mu*X *sign;
+                //         C(constraint_idx+2,2)+= -mu*X *sign;
+                //         C(constraint_idx+3,2)+= mu*X *sign;
+                //         C(constraint_idx+4,2)+= -mu*X *sign;
+                //         C(constraint_idx+5,2)+= mu*X *sign;
+                //         C(constraint_idx+6,2)+= -mu*X *sign;
+                //         C(constraint_idx+7,2)+= mu*X *sign;
+                //     }
+
+                //     constraint_idx +=8;
+                // }
+            }
+            break;
+        case POINT:
+            {
+                int constraint_num = 5;
+            }
+            break;
+        default: break;
+        }
+
+
+        return;
+    }
+
     void getWrenchWeightforce(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue){
         double coefvalue2 = std::pow(coefvalue,2);
         if(coefvalue2 == 0) coefvalue2 = 1e-16;
@@ -789,6 +1211,15 @@ public:
         other_leave_weight = i_ccp.other_leave_weight;
         std::cerr << "[" << instance_name << "]  " << name <<  " other_leave_weight = " << other_leave_weight << std::endl;
 
+        wrench_M = i_ccp.wrench_M;
+        std::cerr << "[" << instance_name << "]  " << name <<  " wrench_M = " << wrench_M << std::endl;
+
+        wrench_D = i_ccp.wrench_D;
+        std::cerr << "[" << instance_name << "]  " << name <<  " wrench_D = " << wrench_D << std::endl;
+
+        wrench_K = i_ccp.wrench_K;
+        std::cerr << "[" << instance_name << "]  " << name <<  " wrench_K = " << wrench_K << std::endl;
+
         pos_interact_weight = i_ccp.pos_interact_weight;
         std::cerr << "[" << instance_name << "]  pos_interact_weight = " << pos_interact_weight << std::endl;
 
@@ -872,6 +1303,9 @@ public:
         i_ccp.z_leave_weight = z_leave_weight;
         i_ccp.z_leavevel_weight = z_leavevel_weight;
         i_ccp.other_leave_weight = other_leave_weight;
+        i_ccp.wrench_M = wrench_M;
+        i_ccp.wrench_D = wrench_D;
+        i_ccp.wrench_K = wrench_K;
         i_ccp.pos_interact_weight = pos_interact_weight;
         i_ccp.rot_interact_weight = rot_interact_weight;
         i_ccp.M_p = M_p;
@@ -920,6 +1354,7 @@ public:
     double z_leave_weight;
     double z_leavevel_weight;
     double other_leave_weight;
+    double wrench_M, wrench_D, wrench_K;
     //遊脚インピーダンス
     bool is_ik_enable;//遊脚(!ref_contact)時に位置を制御するか,遊脚時に反力を考慮するか
     double pos_interact_weight;
@@ -963,6 +1398,8 @@ public:
     hrp::Vector3 act_moment/*actworld系,eefまわり*/, act_moment_eef/*eef系,eefまわり*/;
     bool act_contact_state;
     bool prev_act_contact_state;
+    hrp::dvector prev_delta_wrench;
+    hrp::dvector prev_C;
     hrp::Vector3 cur_force_eef/*eef系*/;
     hrp::Vector3 cur_moment_eef/*eef系*/;
     hrp::Vector3 prev_pos_vel/*eef系*/;
