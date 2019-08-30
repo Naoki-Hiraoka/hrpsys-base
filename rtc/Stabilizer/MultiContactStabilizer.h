@@ -1426,7 +1426,7 @@ public:
 
             hrp::dmatrix Wqref = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wq(i,i) = reference_weight / dt;
+                Wqref(i,i) = reference_weight / dt;
             }
 
             hrp::dvector referencevel = hrp::dvector::Zero(m_robot->numJoints());
@@ -1443,6 +1443,8 @@ public:
                 std::cerr << "q" << std::endl;
                 std::cerr << "Wq" << std::endl;
                 std::cerr << Wq << std::endl;
+                std::cerr << "Wqref" << std::endl;
+                std::cerr << Wqref << std::endl;
 
                 hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
                 hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
