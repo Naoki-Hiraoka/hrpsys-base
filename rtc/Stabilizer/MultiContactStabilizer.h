@@ -773,23 +773,6 @@ public:
             std::cerr << dtau << std::endl;
         }
 
-        std::vector<hrp::dmatrix> cc_C(support_eef.size());
-        std::vector<hrp::dvector> cc_lb(support_eef.size());
-        std::vector<hrp::dvector> cc_ub(support_eef.size());
-        size_t num_cc = 0;
-        for(size_t i=0; i < support_eef.size(); i++){
-            support_eef[i]->getContactConstraint(cc_C[i],cc_lb[i],cc_ub[i]);
-            num_cc += cc_C[i].rows();
-            if(debugloop){
-                std::cerr << "cc_C" << std::endl;
-                std::cerr << cc_C[i] << std::endl;
-                std::cerr << "cc_lb" << std::endl;
-                std::cerr << cc_lb[i] << std::endl;
-                std::cerr << "cc_ub" << std::endl;
-                std::cerr << cc_ub[i] << std::endl;
-            }
-        }
-
         /****************************************************************/
         /*
           x = [\Delta q^c, \Delta e_\tau^c, \Delta e_F^c, maxmct]
@@ -855,7 +838,7 @@ public:
                     Wint(6*i+j+3,6*i+j+3) = intvel_weight * interact_eef[i]->rot_interact_weight / std::pow(interact_eef[i]->rot_compensation_limit*dt,2);
                 }
                 if(interact_eef[i]->ref_contact_state){
-                    Wint(6*i+2,6*i+2) = intvel_weight * interact_eef[i]->z_contact_weight / dt;
+                    Wint(6*i+2,6*i+2) = intvel_weight * interact_eef[i]->z_contact_weight;
                 }
             }
 
@@ -1009,7 +992,7 @@ public:
                         } else if(std::abs(acttauv[i]/safetaumaxv[i]) < actsafetaumax * 0.8){
                             max_weight = 1.0;
                         }else{
-                            max_weight = std::pow(taumax_weight,(std::abs(acttauv[i])-safetaumaxv[i] * 0.8)/(safetaumaxv[i] * 0.2));
+                            max_weight = std::pow(taumax_weight,(std::abs(acttauv[i]/safetaumaxv[i])-actsafetaumax * 0.8)/(actsafetaumax * 0.2));
                         }
 
                         Wtau(i,i) = tau_weight * max_weight / std::pow(scale_delta,2);
@@ -1061,8 +1044,8 @@ public:
         /*****************************************************************/
         //wrench
         for(size_t i=0; i < support_eef.size(); i++){
-            hrp::dmatrix tmpH = hrp::dmatrix::Zero(num_cc, num_cc);
-            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,num_cc);
+            hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());
+            hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());
 
             hrp::dmatrix C;
             hrp::dvector delta;
@@ -1118,7 +1101,7 @@ public:
             //velocity
             hrp::dmatrix WP = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                WP(i,i) = P_weight / dt;
+                WP(i,i) = P_weight / std::pow(dt,2);
             }
 
             tmpH += dqa.transpose() * CM_J.transpose() * WP * CM_J * dqa;
@@ -1126,7 +1109,7 @@ public:
             //accleration
             hrp::dmatrix WPvel = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                WPvel(i,i) = Pvel_weight / std::pow(dt,2);
+                WPvel(i,i) = Pvel_weight / std::pow(dt,3);
             }
 
             tmpH += dqa.transpose() * CM_J.transpose() * WPvel * CM_J * dqa;
@@ -1173,7 +1156,7 @@ public:
             //velocity
             hrp::dmatrix WL = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                WL(i,i) = L_weight / std::pow(m_robot->totalMass(),2) / dt;
+                WL(i,i) = L_weight / std::pow(m_robot->totalMass(),2) / std::pow(dt,2);
             }
 
             tmpH += dqa.transpose() * MO_J.transpose() * WL * MO_J * dqa;
@@ -1181,7 +1164,7 @@ public:
             //accleration
             hrp::dmatrix WLvel = hrp::dmatrix::Zero(3,3);
             for (size_t i = 0; i < 3; i++){
-                WLvel(i,i) = Lvel_weight / std::pow(m_robot->totalMass(),2) / std::pow(dt,2);
+                WLvel(i,i) = Lvel_weight / std::pow(m_robot->totalMass(),2) / std::pow(dt,3);
             }
 
             tmpH += dqa.transpose() * MO_J.transpose() * WLvel * MO_J * dqa;
@@ -1226,14 +1209,14 @@ public:
             hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());//q
             hrp::dmatrix Wq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wq(i,i) = vel_weight / dt;
+                Wq(i,i) = vel_weight / std::pow(dt,2);
             }
 
             tmpH += Wq;
 
             hrp::dmatrix Wqref = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
-                Wqref(i,i) = reference_weight / dt;
+                Wqref(i,i) = reference_weight / std::pow(dt,2);
             }
 
             hrp::dvector referencevel = hrp::dvector::Zero(m_robot->numJoints());
@@ -1315,7 +1298,7 @@ public:
                 double norm = (p1 - p2).norm();
 
                 if(norm !=0){
-                    A.block(i,0,1,m_robot->numJoints()) = (p1 - p2).transpose() * (J1 - J2) / norm;
+                    A.block(q_pos + i,0,1,m_robot->numJoints()) = (p1 - p2).transpose() * (J1 - J2) / norm;
                     lbA[i] = - (distance - mcs_collisionthre);
                 }else{
                     lbA[i] = -1e10;
@@ -1348,7 +1331,7 @@ public:
             ubAs.push_back(ubA);
 
             hrp::dmatrix Asparse = hrp::dmatrix::Zero(A.rows(),A.cols());
-            Asparse.block(0,0,A.rows(),m_robot->numJoints()) = hrp::dmatrix::Ones(A.rows(),m_robot->numJoints());
+            Asparse.block(q_pos,0,A.rows(),m_robot->numJoints()) = hrp::dmatrix::Ones(A.rows(),m_robot->numJoints());
             Asparses.push_back(Asparse);
 
             // actualのロボットの姿勢へ
@@ -1441,27 +1424,47 @@ public:
         }
 
         /****************************************************/
+        size_t inequality_len = 0;
+        for(size_t i = 0 ; i < As.size(); i ++){
+            inequality_len += As[i].rows();
+        }
+        inequality_len += state_len;//l,uのぶん
+
+        hrp::dmatrix A=hrp::dmatrix::Zero(inequality_len,state_len);
+        hrp::dmatrix Asparse=hrp::dmatrix::Zero(inequality_len,state_len);
+        hrp::dvector lbA=hrp::dvector::Zero(inequality_len);
+        hrp::dvector ubA=hrp::dvector::Zero(inequality_len);
+        {
+            size_t inequality_idx = 0;
+            for (size_t i = 0; i < As.size(); i++) {
+                A.block(inequality_idx,0,As[i].rows(),As[i].cols())=As[i];
+                Asparse.block(inequality_idx,0,As[i].rows(),As[i].cols())=Asparses[i];
+                lbA.block(inequality_idx,0,lbAs[i].rows(),lbAs[i].cols())=lbAs[i];
+                ubA.block(inequality_idx,0,ubAs[i].rows(),ubAs[i].cols())=ubAs[i];
+                inequality_idx+=As[i].rows();
+            }
+            //l,uのぶん
+            A.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
+            Asparse.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
+            lbA.block(inequality_idx,0,lb.rows(),lb.cols())=lb;
+            ubA.block(inequality_idx,0,ub.rows(),ub.cols())=ub;
+        }
+
         if(debugloop){
             std::cerr << "H" << std::endl;
             std::cerr << H << std::endl;
+            std::cerr << "Hsparse" << std::endl;
+            std::cerr << Hsparse << std::endl;
             std::cerr << "g" << std::endl;
             std::cerr << g << std::endl;
             std::cerr << "A" << std::endl;
-            for(size_t i=0; i < As.size(); i++){
-                std::cerr  << As[i] << std::endl;
-            }
+            std::cerr  << A << std::endl;
+            std::cerr << "Asparse"  << std::endl;
+            std::cerr << Asparse << std::endl;
             std::cerr << "lbA" << std::endl;
-            for(size_t i=0; i < lbAs.size(); i++){
-                std::cerr  << lbAs[i] << std::endl;
-            }
+            std::cerr  << lbA << std::endl;
             std::cerr << "ubA" << std::endl;
-            for(size_t i=0; i < ubAs.size(); i++){
-                std::cerr  << ubAs[i] << std::endl;
-            }
-            std::cerr << "lb" << std::endl;
-            std::cerr << lb << std::endl;
-            std::cerr << "ub" << std::endl;
-            std::cerr << ub << std::endl;
+            std::cerr  << ubA << std::endl;
         }
 
         /*****************************************************************/
@@ -1474,11 +1477,7 @@ public:
         bool osqp_solved = false;
         if(support_eef.size()>0){
             const size_t state_len = H.cols();
-            size_t inequality_len = 0;
-            for(size_t i = 0 ; i < As.size(); i ++){
-                inequality_len += As[i].rows();
-            }
-            inequality_len += state_len;//l,uのぶん
+            const size_t inequality_len = A.rows();
             c_int qp_P_nnz = int(Hsparse.sum());
             c_float *qp_P_x = new c_float[qp_P_nnz];// 0.5 xt H x + xt g が目的関数であることに注意
             c_int *qp_P_i = new c_int[qp_P_nnz];
@@ -1491,7 +1490,6 @@ public:
             c_float *qp_q = new c_float[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
 
             csc *qp_A;
-            hrp::dmatrix Asparse=hrp::dmatrix::Zero(inequality_len,state_len);
             c_int qp_A_nnz = int(Asparse.sum());
             c_float *qp_A_x = new c_float[qp_A_nnz];
             c_int *qp_A_i = new c_int[qp_A_nnz];
@@ -1502,13 +1500,6 @@ public:
 
             c_float *qp_l = new c_float[inequality_len];
             c_float *qp_u = new c_float[inequality_len];
-
-            if(debugloop){
-                std::cerr << "Hsparse" << qp_P_nnz << std::endl;
-                std::cerr << Hsparse << std::endl;
-                std::cerr << "Asparse" << qp_A_nnz << std::endl;
-                std::cerr << Asparse << std::endl;
-            }
 
             // for (size_t i = 0; i < state_len; i++) {
             //     for(size_t j = 0; j < state_len; j++){
@@ -1544,31 +1535,13 @@ public:
             }
 
             {
-                hrp::dmatrix A=hrp::dmatrix::Zero(inequality_len,state_len);
-                size_t inequality_idx = 0;
-                for (size_t i = 0; i < As.size(); i++) {
-                    A.block(inequality_idx,0,As[i].rows(),As[i].cols())=As[i];
-                    Asparse.block(inequality_idx,0,As[i].rows(),As[i].cols())=Asparses[i];
-                    for(size_t j = 0; j < As[i].rows() ; j++){
-                        // for(size_t k = 0; k < state_len; k++){
-                        //     qp_A_x[inequality_len*k + inequality_idx] = As[i](j,k);
-                        // }
-                        qp_l[inequality_idx] = lbAs[i][j];
-                        qp_u[inequality_idx] = ubAs[i][j];
-                        inequality_idx++;
-                    }
-                }
-                //l,uのぶん
-                A.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
-                Asparse.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
-                for(size_t j = 0; j < state_len ; j++){
+                for(size_t j = 0; j < inequality_len ; j++){
                     // for(size_t k = 0; k < state_len; k++){
                     //     if(j==k) qp_A_x[inequality_len*k + inequality_idx] = 1.0;
                     //     else qp_A_x[inequality_len*k + inequality_idx] = 0.0;
                     // }
-                    qp_l[inequality_idx] = lb[j];
-                    qp_u[inequality_idx] = ub[j];
-                    inequality_idx++;
+                    qp_l[j] = lbA[j];
+                    qp_u[j] = ubA[j];
                 }
 
                 qp_A_p[0] = 0;
@@ -1726,8 +1699,8 @@ public:
                 //settings->time_limit = 1e-2;
                 //settings->linsys_solver = MKL_PARDISO_SOLVER;
                 //settings->max_iter = 10000;//4000でも多い。0.01s程度かかる
-                settings->eps_abs = 1e-05;//最適性の精度を上げる?
-                settings->eps_rel = 1e-05;//最適性の精度を上げる?
+                settings->eps_abs = 1e-04;//最適性の精度を上げる?
+                settings->eps_rel = 1e-04;//最適性の精度を上げる?
                 //settings->eps_prim_inf = 1e-7;
                 //settings->eps_dual_inf = 1e-7;
 
