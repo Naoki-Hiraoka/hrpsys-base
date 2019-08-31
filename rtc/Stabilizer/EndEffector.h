@@ -1399,7 +1399,7 @@ public:
     bool act_contact_state;
     bool prev_act_contact_state;
     hrp::dvector prev_delta_wrench;
-    hrp::dvector prev_C;
+    hrp::dmatrix prev_C;
     hrp::Vector3 cur_force_eef/*eef系*/;
     hrp::Vector3 cur_moment_eef/*eef系*/;
     hrp::Vector3 prev_pos_vel/*eef系*/;

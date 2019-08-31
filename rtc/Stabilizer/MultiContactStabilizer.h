@@ -1022,6 +1022,8 @@ public:
                 std::cerr << actsafetaumax << std::endl;
                 std::cerr << "Wtau" << std::endl;
                 std::cerr << Wtau << std::endl;
+                std::cerr << "delta_tau" << std::endl;
+                std::cerr << delta_tau << std::endl;
 
                 hrp::dmatrix thisH = hrp::dmatrix::Zero(state_len, state_len);
                 hrp::dmatrix thisg = hrp::dmatrix::Zero(1,state_len);
@@ -1699,8 +1701,10 @@ public:
                 //settings->time_limit = 1e-2;
                 //settings->linsys_solver = MKL_PARDISO_SOLVER;
                 //settings->max_iter = 10000;//4000でも多い。0.01s程度かかる
-                settings->eps_abs = 1e-04;//最適性の精度を上げる?
-                settings->eps_rel = 1e-04;//最適性の精度を上げる?
+                settings->max_iter = 4000;
+                settings->time_limit = 5e-3;
+                settings->eps_abs = 1e-05;//最適性の精度を上げる?
+                settings->eps_rel = 1e-05;//最適性の精度を上げる?
                 //settings->eps_prim_inf = 1e-7;
                 //settings->eps_dual_inf = 1e-7;
 
@@ -2134,6 +2138,7 @@ public:
         for(size_t i=0; i< eefnum;i++){
             endeffector[i]->prev_pos_vel/*eef系*/ = hrp::Vector3::Zero();
             endeffector[i]->prev_rot_vel/*eef系*/ = hrp::Vector3::Zero();
+            endeffector[i]->prev_delta_wrench = hrp::dvector::Zero(0);
         }
 
         prev_P = hrp::Vector3::Zero();
