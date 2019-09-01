@@ -879,7 +879,7 @@ public:
             hrp::dmatrix tmpH = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());
             hrp::dmatrix tmpg = hrp::dmatrix::Zero(1,m_robot->numJoints());
 
-            hrp::dvector delta_tau = (- tau_M * dt * dt * acttauv + tau_M * prev_dtauv) / (tau_M + tau_D * dt + tau_K * dt * dt);
+            hrp::dvector delta_tau = (- tau_K * dt * dt * acttauv + tau_M * prev_dtauv) / (tau_M + tau_D * dt + tau_K * dt * dt);
 
 
             hrp::dvector dangertaumaxv = hrp::dvector::Zero(m_robot->numJoints());
@@ -1392,8 +1392,10 @@ public:
                     }else{
                         reference_vel = qrefv[i] - qcurv[i];
                     }
-                    max = reference_vel;
-                    min = reference_vel;
+                    //max = reference_vel;
+                    //min = reference_vel;
+                    max = reference_vel+1e-16;
+                    min = reference_vel-1e-16;
                     referencev[i] = reference_vel;
                 }else{
                     if(prevpassive[i]){
@@ -1430,7 +1432,7 @@ public:
         for(size_t i = 0 ; i < As.size(); i ++){
             inequality_len += As[i].rows();
         }
-        inequality_len += state_len;//l,uのぶん
+        //inequality_len += state_len;//l,uのぶん
 
         hrp::dmatrix A=hrp::dmatrix::Zero(inequality_len,state_len);
         hrp::dmatrix Asparse=hrp::dmatrix::Zero(inequality_len,state_len);
@@ -1446,10 +1448,10 @@ public:
                 inequality_idx+=As[i].rows();
             }
             //l,uのぶん
-            A.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
-            Asparse.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
-            lbA.block(inequality_idx,0,lb.rows(),lb.cols())=lb;
-            ubA.block(inequality_idx,0,ub.rows(),ub.cols())=ub;
+            //A.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
+            //Asparse.block(inequality_idx,0,A.cols(),A.cols())=hrp::dmatrix::Identity(A.cols(),A.cols());
+            //lbA.block(inequality_idx,0,lb.rows(),lb.cols())=lb;
+            //ubA.block(inequality_idx,0,ub.rows(),ub.cols())=ub;
         }
 
         if(debugloop){
@@ -1475,494 +1477,491 @@ public:
         int error_num = 0;
         /*****************************************************************/
 #ifdef USE_OSQP
-        //USE_OSQP を ON にすること
-        bool osqp_solved = false;
-        if(support_eef.size()>0){
-            const size_t state_len = H.cols();
-            const size_t inequality_len = A.rows();
-            c_int qp_P_nnz = int(Hsparse.sum());
-            c_float *qp_P_x = new c_float[qp_P_nnz];// 0.5 xt H x + xt g が目的関数であることに注意
-            c_int *qp_P_i = new c_int[qp_P_nnz];
-            c_int *qp_P_p = new c_int[state_len+1];
-            csc *qp_P;
-            csc *qp_P_triu;
-            //c_float *qp_P_x = new c_float[state_len*state_len];// 0.5 xt H x + xt g が目的関数であることに注意
-            //c_int qp_P_nnz = state_len * state_len;
-            //c_int *qp_P_i = new c_int[state_len * state_len];
-            c_float *qp_q = new c_float[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
-
-            csc *qp_A;
-            c_int qp_A_nnz = int(Asparse.sum());
-            c_float *qp_A_x = new c_float[qp_A_nnz];
-            c_int *qp_A_i = new c_int[qp_A_nnz];
-            c_int *qp_A_p = new c_int[state_len+1];
-            //c_float *qp_A_x = new c_float[state_len*inequality_len];
-            // c_int qp_A_nnz = state_len*inequality_len;
-            // c_int *qp_A_i = new c_int[state_len*inequality_len];
-
-            c_float *qp_l = new c_float[inequality_len];
-            c_float *qp_u = new c_float[inequality_len];
-
-            // for (size_t i = 0; i < state_len; i++) {
-            //     for(size_t j = 0; j < state_len; j++){
-            //         qp_P_x[state_len*j + i] = H(i,j);
-            //     }
-            // }
-            // for (c_int i = 0; i < state_len; i++) {
-            //     for (c_int j = 0; j < state_len; j++) {
-            //         qp_P_i[state_len*j+i] = i;
-            //     }
-            // }
-            // for (c_int j = 0; j < state_len+1; j++) {
-            //     qp_P_p[j] = state_len*j;
-            // }
-            qp_P_p[0] = 0;
-            for (size_t j = 0; j < state_len; j++) {
-                size_t num=0;
-                for(size_t i = 0; i < state_len; i++){
-                    if(Hsparse(i,j)==1){
-                        qp_P_x[qp_P_p[j]+num] = H(i,j);
-                        qp_P_i[qp_P_p[j]+num] = i;
-                        num++;
-                    }
-                }
-                qp_P_p[j+1] = qp_P_p[j] + num;
-            }
-
-            qp_P = csc_matrix(state_len, state_len, qp_P_nnz, qp_P_x, qp_P_i, qp_P_p);
-            qp_P_triu = csc_to_triu(qp_P);
-
-            for (c_int i = 0; i < state_len; i++) {
-                qp_q[i] = g(0,i);
-            }
-
-            {
-                for(size_t j = 0; j < inequality_len ; j++){
-                    // for(size_t k = 0; k < state_len; k++){
-                    //     if(j==k) qp_A_x[inequality_len*k + inequality_idx] = 1.0;
-                    //     else qp_A_x[inequality_len*k + inequality_idx] = 0.0;
-                    // }
-                    qp_l[j] = lbA[j];
-                    qp_u[j] = ubA[j];
-                }
-
-                qp_A_p[0] = 0;
-                for (size_t j = 0; j < state_len; j++) {
-                    size_t num=0;
-                    for(size_t i = 0; i < inequality_len; i++){
-                        if(Asparse(i,j)==1){
-                            qp_A_x[qp_A_p[j]+num] = A(i,j);
-                            qp_A_i[qp_A_p[j]+num] = i;
-                            num++;
-                        }
-                    }
-                    qp_A_p[j+1] = qp_A_p[j] + num;
-                }
-
-            }
-
-            // for (c_int i = 0; i < inequality_len; i++) {
-            //     for (c_int j = 0; j < state_len; j++) {
-            //         qp_A_i[inequality_len*j+i] = i;
-            //     }
-            // }
-            // for (c_int j = 0; j < state_len+1; j++) {
-            //     qp_A_p[j] = inequality_len*j;
-            // }
-
-            qp_A = csc_matrix(inequality_len, state_len, qp_A_nnz, qp_A_x, qp_A_i, qp_A_p);
-
-            if(debugloop){
-                // std::cerr << "qp_H" <<std::endl;
-                // for (size_t i = 0; i < state_len; i++) {
-                //     for(size_t j = 0; j < state_len; j++){
-                //         std::cerr << qp_P_x[j*state_len + i] << " ";
-                //     }
-                //     std::cerr << std::endl;
-                // }
-                std::cerr << "qp_g" <<std::endl;
-                for (size_t i = 0; i < state_len; i++) {
-                    std::cerr << qp_q[i] << " ";
-                    std::cerr << std::endl;
-                }
-                // std::cerr << "qp_A" <<std::endl;
-                // for (size_t i = 0; i < inequality_len; i++) {
-                //     for(size_t j = 0; j < state_len; j++){
-                //         std::cerr << qp_A_x[j*inequality_len + i]<< " ";
-                //     }
-                //     std::cerr << std::endl;
-                // }
-                std::cerr << "qp_lbA" <<std::endl;
-                for (size_t i = 0; i < inequality_len; i++) {
-                    std::cerr << qp_l[i]<< " ";
-                    std::cerr << std::endl;
-                }
-                std::cerr << "qp_ubA" <<std::endl;
-                for (size_t i = 0; i < inequality_len; i++) {
-                    std::cerr << qp_u[i]<< " ";
-                    std::cerr << std::endl;
-                }
-            }
-
-
-            OSQPWorkspace* work;
-            std::pair<int, int> tmp_pair(state_len, inequality_len);
-            bool is_initial = true;
-            bool internal_error = false;
-            {
-                std::map<std::pair<int, int>, OSQPWorkspace* >::iterator it = osqp_map.find(tmp_pair);
-                is_initial = (it == osqp_map.end());
-                if(!is_initial){
-                    work = it->second;
-                }
-            }
-
-            if (!is_initial) {
-                if(debugloop){
-                    osqp_update_verbose(work,1);
-                }else{
-                    osqp_update_verbose(work,0);
-                }
-
-                osqp_update_P_A(work, qp_P_triu->x, OSQP_NULL, qp_P_triu->p[qp_P_triu->n] , qp_A_x, OSQP_NULL, qp_A_nnz);// P should be upper requangle
-                osqp_update_lin_cost(work,qp_q);
-                osqp_update_bounds(work,qp_l,qp_u);
-
-                //debugloop
-                struct timeval s, e;
-                if(debugloop){
-                    gettimeofday(&s, NULL);
-                }
-                osqp_solve(work);
-                if(debugloop){
-                    gettimeofday(&e, NULL);
-                    std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                }
-                if(work->info->status_val==OSQP_SOLVED){
-                    if(debugloop){
-                        std::cerr << "hotstart qp_solved" <<std::endl;
-                    }
-                    osqp_solved=true;
-                    for(size_t i=0; i<state_len;i++){
-                        xopt[i]=work->solution->x[i];
-                    }
-                }else{
-                    if(debugloop){
-                        std::cerr << "hotstart qp fail" <<std::endl;
-                    }
-                    error_num = work->info->status_val;
-
-                    // if(work->info->status_val==OSQP_SOLVED_INACCURATE || work->info->status_val==OSQP_MAX_ITER_REACHED){
-                    //     if(debugloop){
-                    //         std::cerr << "hotstart qp max iter" <<std::endl;
-                    //     }
-
-                    // }
-
-                    // IF(work->info->status_val==-1){
-                    //     if(debugloop){
-                    //         std::cerr << "hotstart qp internal error" <<std::endl;
-                    //     }
-                    //     internal_error = true;
-                    // }
-
-                    if(debugloop){
-                        std::cerr << "hotstart qp error" <<std::endl;
-                    }
-
-                    // Delete unsolved sqp
-                    osqp_cleanup(work);
-                    osqp_map.erase(tmp_pair);
-                    internal_error = true;
-
-                }
-            }
-
-
-
-            if(is_initial || internal_error){
-                OSQPSettings * settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
-                OSQPData * data;  // OSQPData
-
-                // Populate data
-                data = (OSQPData *)c_malloc(sizeof(OSQPData));
-                data->n = state_len;
-                data->m = inequality_len;
-                data->P = qp_P;
-                data->q = qp_q;
-                data->A = qp_A;
-                data->l = qp_l;
-                data->u = qp_u;
-
-                osqp_set_default_settings(settings);
-                //settings->rho = 1e-6;
-                //settings->alpha = 0.1;
-                //settings->check_termination = 1;
-                //settings->time_limit = 1e-2;
-                //settings->linsys_solver = MKL_PARDISO_SOLVER;
-                //settings->max_iter = 10000;//4000でも多い。0.01s程度かかる
-                settings->max_iter = 4000;
-                settings->time_limit = 5e-3;
-                settings->eps_abs = 1e-05;//最適性の精度を上げる?
-                settings->eps_rel = 1e-05;//最適性の精度を上げる?
-                //settings->eps_prim_inf = 1e-7;
-                //settings->eps_dual_inf = 1e-7;
-
-                //settings->polish = true;//最適性の精度を上げる non-convex errorになると振動的になる?
-                //settings->delta = 1e-4;//polish時小さいとnon-convex error, 大きいとunsuccessful
-                settings->scaled_termination = true;//max_iterになっても解けないエラー対策
-
-                if(debugloop){
-                    settings->verbose = 1;
-                }else{
-                    settings->verbose = 0;
-                }
-                work = osqp_setup(data, settings);
-                osqp_map[tmp_pair]=work;
-
-                //debug
-                struct timeval s, e;
-                if(debugloop){
-                    gettimeofday(&s, NULL);
-                }
-                osqp_solve(work);
-                if(debugloop){
-                    gettimeofday(&e, NULL);
-                    std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
-                }
-                if(work->info->status_val==OSQP_SOLVED){
-                    if(debugloop){
-                        std::cerr << "initial qp_solved" <<std::endl;
-                    osqp_solved=true;
-                    }
-
-                    for(size_t i=0; i<state_len;i++){
-                        xopt[i]=work->solution->x[i];
-                    }
-                }else{
-                    if(debugloop){
-                        std::cerr << "initial qp fail" <<std::endl;
-                    }
-                    error_num = work->info->status_val;
-                    // Delete unsolved sqp
-                    osqp_cleanup(work);
-                    osqp_map.erase(tmp_pair);
-                }
-
-                 //osqpのdata,settingは内部でコピーされるのですぐ開放して良い
-                c_free(data);
-                c_free(settings);
-            }
-            delete[] qp_P_x;
-            delete[] qp_P_i;
-            delete[] qp_q;
-            delete[] qp_A_x;
-            delete[] qp_A_i;
-            delete[] qp_A_p;
-            delete[] qp_l;
-            delete[] qp_u;
-            c_free(qp_P);
-            c_free(qp_P_triu);
-            c_free(qp_A);
-        }
-        if(osqp_solved) qp_solved = true;
-#endif
-        /*****************************************************************/
-
-        // hrp::dvector qpoases_xopt = hrp::dvector::Zero(H.cols());
-        // int qpoases_error_num = 0;
-        // //USE_QPOASES を ON にすること
-        // bool qpoases_solved=false;
+        // //USE_OSQP を ON にすること
+        // bool osqp_solved = false;
         // if(support_eef.size()>0){
         //     const size_t state_len = H.cols();
-        //     size_t inequality_len = 0;
-        //     for(size_t i = 0 ; i < As.size(); i ++){
-        //         inequality_len += As[i].rows();
-        //     }
-        //     real_t* qp_H = new real_t[state_len * state_len]; // 0.5 xt H x + xt g が目的関数であることに注意
-        //     real_t* qp_A = new real_t[inequality_len * state_len];
-        //     real_t* qp_g = new real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
-        //     real_t* qp_ub = new real_t[state_len];
-        //     real_t* qp_lb = new real_t[state_len];
-        //     real_t* qp_ubA = new real_t[inequality_len];
-        //     real_t* qp_lbA = new real_t[inequality_len];
-            
-        //     for (size_t i = 0; i < state_len; i++) {
-        //         for(size_t j = 0; j < state_len; j++){ 
-        //             qp_H[i*state_len + j] = H(i,j);
-        //         }
-        //     }
-        //     for (size_t i = 0; i < state_len; i++) {
-        //         qp_g[i] = g(0,i);
-        //         qp_lb[i] = lb[i];
-        //         qp_ub[i] = ub[i];
-        //     }
-        //     {
-        //         size_t inequality_idx = 0; 
-        //         for (size_t i = 0; i < As.size(); i++) {
-        //             for(size_t j = 0; j < As[i].rows() ; j++){
-        //                 for(size_t k = 0; k < state_len; k++){ 
-        //                     qp_A[state_len*inequality_idx + k] = As[i](j,k);
-        //                 }
-        //                 qp_lbA[inequality_idx] = lbAs[i][j];
-        //                 qp_ubA[inequality_idx] = ubAs[i][j];
-        //                 inequality_idx++;
+        //     const size_t inequality_len = A.rows();
+        //     c_int qp_P_nnz = int(Hsparse.sum());
+        //     c_float *qp_P_x = new c_float[qp_P_nnz];// 0.5 xt H x + xt g が目的関数であることに注意
+        //     c_int *qp_P_i = new c_int[qp_P_nnz];
+        //     c_int *qp_P_p = new c_int[state_len+1];
+        //     csc *qp_P;
+        //     csc *qp_P_triu;
+        //     //c_float *qp_P_x = new c_float[state_len*state_len];// 0.5 xt H x + xt g が目的関数であることに注意
+        //     //c_int qp_P_nnz = state_len * state_len;
+        //     //c_int *qp_P_i = new c_int[state_len * state_len];
+        //     c_float *qp_q = new c_float[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
+
+        //     csc *qp_A;
+        //     c_int qp_A_nnz = int(Asparse.sum());
+        //     c_float *qp_A_x = new c_float[qp_A_nnz];
+        //     c_int *qp_A_i = new c_int[qp_A_nnz];
+        //     c_int *qp_A_p = new c_int[state_len+1];
+        //     //c_float *qp_A_x = new c_float[state_len*inequality_len];
+        //     // c_int qp_A_nnz = state_len*inequality_len;
+        //     // c_int *qp_A_i = new c_int[state_len*inequality_len];
+
+        //     c_float *qp_l = new c_float[inequality_len];
+        //     c_float *qp_u = new c_float[inequality_len];
+
+        //     // for (size_t i = 0; i < state_len; i++) {
+        //     //     for(size_t j = 0; j < state_len; j++){
+        //     //         qp_P_x[state_len*j + i] = H(i,j);
+        //     //     }
+        //     // }
+        //     // for (c_int i = 0; i < state_len; i++) {
+        //     //     for (c_int j = 0; j < state_len; j++) {
+        //     //         qp_P_i[state_len*j+i] = i;
+        //     //     }
+        //     // }
+        //     // for (c_int j = 0; j < state_len+1; j++) {
+        //     //     qp_P_p[j] = state_len*j;
+        //     // }
+        //     qp_P_p[0] = 0;
+        //     for (size_t j = 0; j < state_len; j++) {
+        //         size_t num=0;
+        //         for(size_t i = 0; i < state_len; i++){
+        //             if(Hsparse(i,j)==1){
+        //                 qp_P_x[qp_P_p[j]+num] = H(i,j);
+        //                 qp_P_i[qp_P_p[j]+num] = i;
+        //                 num++;
         //             }
         //         }
+        //         qp_P_p[j+1] = qp_P_p[j] + num;
         //     }
 
-        //     if(debugloop){
-        //         std::cerr << "qp_H" <<std::endl;
-        //         for (size_t i = 0; i < state_len; i++) {
-        //             for(size_t j = 0; j < state_len; j++){ 
-        //                 std::cerr << qp_H[i*state_len + j] << " ";
-        //             }
-        //             std::cerr << std::endl;
+        //     qp_P = csc_matrix(state_len, state_len, qp_P_nnz, qp_P_x, qp_P_i, qp_P_p);
+        //     qp_P_triu = csc_to_triu(qp_P);
+
+        //     for (c_int i = 0; i < state_len; i++) {
+        //         qp_q[i] = g(0,i);
+        //     }
+
+        //     {
+        //         for(size_t j = 0; j < inequality_len ; j++){
+        //             // for(size_t k = 0; k < state_len; k++){
+        //             //     if(j==k) qp_A_x[inequality_len*k + inequality_idx] = 1.0;
+        //             //     else qp_A_x[inequality_len*k + inequality_idx] = 0.0;
+        //             // }
+        //             qp_l[j] = lbA[j];
+        //             qp_u[j] = ubA[j];
         //         }
+
+        //         qp_A_p[0] = 0;
+        //         for (size_t j = 0; j < state_len; j++) {
+        //             size_t num=0;
+        //             for(size_t i = 0; i < inequality_len; i++){
+        //                 if(Asparse(i,j)==1){
+        //                     qp_A_x[qp_A_p[j]+num] = A(i,j);
+        //                     qp_A_i[qp_A_p[j]+num] = i;
+        //                     num++;
+        //                 }
+        //             }
+        //             qp_A_p[j+1] = qp_A_p[j] + num;
+        //         }
+
+        //     }
+
+        //     // for (c_int i = 0; i < inequality_len; i++) {
+        //     //     for (c_int j = 0; j < state_len; j++) {
+        //     //         qp_A_i[inequality_len*j+i] = i;
+        //     //     }
+        //     // }
+        //     // for (c_int j = 0; j < state_len+1; j++) {
+        //     //     qp_A_p[j] = inequality_len*j;
+        //     // }
+
+        //     qp_A = csc_matrix(inequality_len, state_len, qp_A_nnz, qp_A_x, qp_A_i, qp_A_p);
+
+        //     if(debugloop){
+        //         // std::cerr << "qp_H" <<std::endl;
+        //         // for (size_t i = 0; i < state_len; i++) {
+        //         //     for(size_t j = 0; j < state_len; j++){
+        //         //         std::cerr << qp_P_x[j*state_len + i] << " ";
+        //         //     }
+        //         //     std::cerr << std::endl;
+        //         // }
         //         std::cerr << "qp_g" <<std::endl;
         //         for (size_t i = 0; i < state_len; i++) {
-        //             std::cerr << qp_g[i] << " ";
+        //             std::cerr << qp_q[i] << " ";
         //             std::cerr << std::endl;
         //         }
-        //         std::cerr << "qp_A" <<std::endl;
-        //         for (size_t i = 0; i < inequality_len; i++) {
-        //             for(size_t j = 0; j < state_len; j++){ 
-        //                 std::cerr << qp_A[i*state_len + j]<< " ";
-        //             }
-        //             std::cerr << std::endl;
-        //         }
+        //         // std::cerr << "qp_A" <<std::endl;
+        //         // for (size_t i = 0; i < inequality_len; i++) {
+        //         //     for(size_t j = 0; j < state_len; j++){
+        //         //         std::cerr << qp_A_x[j*inequality_len + i]<< " ";
+        //         //     }
+        //         //     std::cerr << std::endl;
+        //         // }
         //         std::cerr << "qp_lbA" <<std::endl;
         //         for (size_t i = 0; i < inequality_len; i++) {
-        //             std::cerr << qp_lbA[i]<< " ";
+        //             std::cerr << qp_l[i]<< " ";
         //             std::cerr << std::endl;
         //         }
         //         std::cerr << "qp_ubA" <<std::endl;
         //         for (size_t i = 0; i < inequality_len; i++) {
-        //             std::cerr << qp_ubA[i]<< " ";
-        //             std::cerr << std::endl;
-        //         }
-        //         std::cerr << "qp_lb" <<std::endl;
-        //         for (size_t i = 0; i < state_len; i++) {
-        //             std::cerr << qp_lb[i]<< " ";
-        //             std::cerr << std::endl;
-        //         }
-        //         std::cerr << "qp_ub" <<std::endl;
-        //         for (size_t i = 0; i < state_len; i++) {
-        //             std::cerr << qp_ub[i]<< " ";
+        //             std::cerr << qp_u[i]<< " ";
         //             std::cerr << std::endl;
         //         }
         //     }
 
-        //     qpOASES::Options options;
-        //     options.setToReliable();
-        //     //options.initialStatusBounds = qpOASES::ST_INACTIVE;
-        //     //options.numRefinementSteps = 1;
-        //     //options.enableCholeskyRefactorisation = 1;
-        //     // //options.enableNZCTests = qpOASES::BT_TRUE;
-        //     // //options.enableFlippingBounds = qpOASES::BT_TRUE;
-        //     if(debugloop){
-        //         options.printLevel = qpOASES::PL_HIGH;
-        //     }else{
-        //         options.printLevel = qpOASES::PL_NONE;
-        //     }
-        //     //copied from eus_qpoases
-        //     boost::shared_ptr<qpOASES::SQProblem> example;
+
+        //     OSQPWorkspace* work;
         //     std::pair<int, int> tmp_pair(state_len, inequality_len);
         //     bool is_initial = true;
         //     bool internal_error = false;
         //     {
-        //         std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
-        //         is_initial = (it == sqp_map.end());
+        //         std::map<std::pair<int, int>, OSQPWorkspace* >::iterator it = osqp_map.find(tmp_pair);
+        //         is_initial = (it == osqp_map.end());
         //         if(!is_initial){
-        //             example = it->second;
+        //             work = it->second;
         //         }
         //     }
+
         //     if (!is_initial) {
-        //         example->setOptions( options );
-        //         int nWSR = 1000;
+        //         if(debugloop){
+        //             osqp_update_verbose(work,1);
+        //         }else{
+        //             osqp_update_verbose(work,0);
+        //         }
+
+        //         osqp_update_P_A(work, qp_P_triu->x, OSQP_NULL, qp_P_triu->p[qp_P_triu->n] , qp_A_x, OSQP_NULL, qp_A_nnz);// P should be upper requangle
+        //         osqp_update_lin_cost(work,qp_q);
+        //         osqp_update_bounds(work,qp_l,qp_u);
+
         //         //debugloop
         //         struct timeval s, e;
         //         if(debugloop){
         //             gettimeofday(&s, NULL);
         //         }
-        //         qpOASES::returnValue status = example->hotstart( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
+        //         osqp_solve(work);
         //         if(debugloop){
         //             gettimeofday(&e, NULL);
         //             std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
         //         }
-        //         if(qpOASES::getSimpleStatus(status)==0){
+        //         if(work->info->status_val==OSQP_SOLVED){
         //             if(debugloop){
         //                 std::cerr << "hotstart qp_solved" <<std::endl;
         //             }
-        //             qpoases_solved=true;
-        //             real_t* xOpt = new real_t[state_len];
-        //             example->getPrimalSolution( xOpt );
+        //             osqp_solved=true;
         //             for(size_t i=0; i<state_len;i++){
-        //                 qpoases_xopt[i]=xOpt[i];
+        //                 xopt[i]=work->solution->x[i];
         //             }
-        //             delete[] xOpt;
         //         }else{
         //             if(debugloop){
         //                 std::cerr << "hotstart qp fail" <<std::endl;
         //             }
-        //             qpoases_error_num = qpOASES::getSimpleStatus(status);
-        //             // Delete unsolved sqp
-        //             sqp_map.erase(tmp_pair);
-        //             if(qpOASES::getSimpleStatus(status)==-1){
-        //                 if(debugloop){
-        //                     std::cerr << "hotstart qp internal error" <<std::endl;
-        //                 }
-        //                 internal_error = true;
+        //             error_num = work->info->status_val;
+
+        //             // if(work->info->status_val==OSQP_SOLVED_INACCURATE || work->info->status_val==OSQP_MAX_ITER_REACHED){
+        //             //     if(debugloop){
+        //             //         std::cerr << "hotstart qp max iter" <<std::endl;
+        //             //     }
+
+        //             // }
+
+        //             // IF(work->info->status_val==-1){
+        //             //     if(debugloop){
+        //             //         std::cerr << "hotstart qp internal error" <<std::endl;
+        //             //     }
+        //             //     internal_error = true;
+        //             // }
+
+        //             if(debugloop){
+        //                 std::cerr << "hotstart qp error" <<std::endl;
         //             }
+
+        //             // Delete unsolved sqp
+        //             osqp_cleanup(work);
+        //             osqp_map.erase(tmp_pair);
+        //             internal_error = true;
+
         //         }
         //     }
 
+
+
         //     if(is_initial || internal_error){
-        //         example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN));
-        //         //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
-        //         sqp_map[tmp_pair]=example;
-        //         example->setOptions( options );
-        //         int nWSR = 1000;
+        //         OSQPSettings * settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
+        //         OSQPData * data;  // OSQPData
+
+        //         // Populate data
+        //         data = (OSQPData *)c_malloc(sizeof(OSQPData));
+        //         data->n = state_len;
+        //         data->m = inequality_len;
+        //         data->P = qp_P;
+        //         data->q = qp_q;
+        //         data->A = qp_A;
+        //         data->l = qp_l;
+        //         data->u = qp_u;
+
+        //         osqp_set_default_settings(settings);
+        //         //settings->rho = 1e-6;
+        //         //settings->alpha = 0.1;
+        //         //settings->check_termination = 1;
+        //         //settings->time_limit = 1e-2;
+        //         //settings->linsys_solver = MKL_PARDISO_SOLVER;
+        //         //settings->max_iter = 10000;//4000でも多い。0.01s程度かかる
+        //         settings->max_iter = 4000;
+        //         settings->time_limit = 5e-3;
+        //         settings->eps_abs = 1e-05;//最適性の精度を上げる?
+        //         settings->eps_rel = 1e-05;//最適性の精度を上げる?
+        //         //settings->eps_prim_inf = 1e-7;
+        //         //settings->eps_dual_inf = 1e-7;
+
+        //         //settings->polish = true;//最適性の精度を上げる non-convex errorになると振動的になる?
+        //         //settings->delta = 1e-4;//polish時小さいとnon-convex error, 大きいとunsuccessful
+        //         settings->scaled_termination = true;//max_iterになっても解けないエラー対策
+
+        //         if(debugloop){
+        //             settings->verbose = 1;
+        //         }else{
+        //             settings->verbose = 0;
+        //         }
+        //         work = osqp_setup(data, settings);
+        //         osqp_map[tmp_pair]=work;
+
         //         //debug
         //         struct timeval s, e;
         //         if(debugloop){
         //             gettimeofday(&s, NULL);
         //         }
-        //         qpOASES::returnValue status = example->init( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
+        //         osqp_solve(work);
         //         if(debugloop){
         //             gettimeofday(&e, NULL);
         //             std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
         //         }
-        //         if(qpOASES::getSimpleStatus(status)==0){
+        //         if(work->info->status_val==OSQP_SOLVED){
         //             if(debugloop){
         //                 std::cerr << "initial qp_solved" <<std::endl;
-        //             qpoases_solved=true;
+        //             osqp_solved=true;
         //             }
-        //             real_t* xOpt = new real_t[state_len];
-        //             example->getPrimalSolution( xOpt );
+
         //             for(size_t i=0; i<state_len;i++){
-        //                 qpoases_xopt[i]=xOpt[i];
+        //                 xopt[i]=work->solution->x[i];
         //             }
-        //             delete[] xOpt;
         //         }else{
         //             if(debugloop){
         //                 std::cerr << "initial qp fail" <<std::endl;
         //             }
-        //             qpoases_error_num = qpOASES::getSimpleStatus(status);
+        //             error_num = work->info->status_val;
         //             // Delete unsolved sqp
-        //             sqp_map.erase(tmp_pair);
+        //             osqp_cleanup(work);
+        //             osqp_map.erase(tmp_pair);
         //         }
+
+        //          //osqpのdata,settingは内部でコピーされるのですぐ開放して良い
+        //         c_free(data);
+        //         c_free(settings);
         //     }
-        //     delete[] qp_H;
-        //     delete[] qp_A;
-        //     delete[] qp_g;
-        //     delete[] qp_ub;
-        //     delete[] qp_lb;
-        //     delete[] qp_ubA;
-        //     delete[] qp_lbA;
+        //     delete[] qp_P_x;
+        //     delete[] qp_P_i;
+        //     delete[] qp_q;
+        //     delete[] qp_A_x;
+        //     delete[] qp_A_i;
+        //     delete[] qp_A_p;
+        //     delete[] qp_l;
+        //     delete[] qp_u;
+        //     c_free(qp_P);
+        //     c_free(qp_P_triu);
+        //     c_free(qp_A);
         // }
-        // // if(qpoases_solved) qp_solved = true;
-        // // xopt = qpoases_xopt;
+        // if(osqp_solved) qp_solved = true;
+#endif
+        /*****************************************************************/
+
+        hrp::dvector qpoases_xopt = hrp::dvector::Zero(H.cols());
+        int qpoases_error_num = 0;
+        //USE_QPOASES を ON にすること
+        bool qpoases_solved=false;
+        if(support_eef.size()>0){
+            const size_t state_len = H.cols();
+            size_t inequality_len = A.rows();
+            real_t* qp_H = new real_t[state_len * state_len]; // 0.5 xt H x + xt g が目的関数であることに注意
+            real_t* qp_A = new real_t[inequality_len * state_len];
+            real_t* qp_g = new real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
+            real_t* qp_ub = new real_t[state_len];
+            real_t* qp_lb = new real_t[state_len];
+            //real_t* qp_ubA = new real_t[inequality_len];
+            real_t* qp_ubA = NULL;
+            real_t* qp_lbA = new real_t[inequality_len];
+            
+            for (size_t i = 0; i < state_len; i++) {
+                for(size_t j = 0; j < state_len; j++){ 
+                    qp_H[i*state_len + j] = H(i,j);
+                }
+            }
+            for (size_t i = 0; i < state_len; i++) {
+                qp_g[i] = g(0,i);
+                qp_lb[i] = lb[i];
+                qp_ub[i] = ub[i];
+            }
+            {
+                size_t inequality_idx = 0; 
+                for (size_t i = 0; i < inequality_len; i++) {
+                    for(size_t j = 0; j < state_len ; j++){
+                        qp_A[state_len*i + j] = A(i,j);
+                    }
+                    qp_lbA[i] = lbA[i];
+                    //qp_ubA[i] = ubA[i];
+                }
+            }
+
+            if(debugloop){
+                std::cerr << "qp_H" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    for(size_t j = 0; j < state_len; j++){ 
+                        std::cerr << qp_H[i*state_len + j] << " ";
+                    }
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_g" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    std::cerr << qp_g[i] << " ";
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_A" <<std::endl;
+                for (size_t i = 0; i < inequality_len; i++) {
+                    for(size_t j = 0; j < state_len; j++){ 
+                        std::cerr << qp_A[i*state_len + j]<< " ";
+                    }
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_lbA" <<std::endl;
+                for (size_t i = 0; i < inequality_len; i++) {
+                    std::cerr << qp_lbA[i]<< " ";
+                    std::cerr << std::endl;
+                }
+                // std::cerr << "qp_ubA" <<std::endl;
+                // for (size_t i = 0; i < inequality_len; i++) {
+                //     std::cerr << qp_ubA[i]<< " ";
+                //     std::cerr << std::endl;
+                // }
+                std::cerr << "qp_lb" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    std::cerr << qp_lb[i]<< " ";
+                    std::cerr << std::endl;
+                }
+                std::cerr << "qp_ub" <<std::endl;
+                for (size_t i = 0; i < state_len; i++) {
+                    std::cerr << qp_ub[i]<< " ";
+                    std::cerr << std::endl;
+                }
+            }
+
+            qpOASES::Options options;
+            options.setToReliable();
+            //options.initialStatusBounds = qpOASES::ST_INACTIVE;
+            //options.numRefinementSteps = 1;
+            //options.enableCholeskyRefactorisation = 1;
+            // //options.enableNZCTests = qpOASES::BT_TRUE;
+            // //options.enableFlippingBounds = qpOASES::BT_TRUE;
+            if(debugloop){
+                options.printLevel = qpOASES::PL_HIGH;
+            }else{
+                options.printLevel = qpOASES::PL_NONE;
+            }
+            //copied from eus_qpoases
+            boost::shared_ptr<qpOASES::SQProblem> example;
+            std::pair<int, int> tmp_pair(state_len, inequality_len);
+            bool is_initial = true;
+            bool internal_error = false;
+            {
+                std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >::iterator it = sqp_map.find(tmp_pair);
+                is_initial = (it == sqp_map.end());
+                if(!is_initial){
+                    example = it->second;
+                }
+            }
+            if (!is_initial) {
+                example->setOptions( options );
+                int nWSR = 1000;
+                //debugloop
+                struct timeval s, e;
+                if(debugloop){
+                    gettimeofday(&s, NULL);
+                }
+                qpOASES::returnValue status = example->hotstart( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
+                if(debugloop){
+                    gettimeofday(&e, NULL);
+                    std::cerr << "hotstart QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+                }
+                if(qpOASES::getSimpleStatus(status)==0){
+                    if(debugloop){
+                        std::cerr << "hotstart qp_solved" <<std::endl;
+                    }
+                    qpoases_solved=true;
+                    real_t* xOpt = new real_t[state_len];
+                    example->getPrimalSolution( xOpt );
+                    for(size_t i=0; i<state_len;i++){
+                        qpoases_xopt[i]=xOpt[i];
+                    }
+                    delete[] xOpt;
+                }else{
+                    if(debugloop){
+                        std::cerr << "hotstart qp fail" <<std::endl;
+                    }
+                    qpoases_error_num = qpOASES::getSimpleStatus(status);
+                    // Delete unsolved sqp
+                    sqp_map.erase(tmp_pair);
+                    if(qpOASES::getSimpleStatus(status)==-1){
+                        if(debugloop){
+                            std::cerr << "hotstart qp internal error" <<std::endl;
+                        }
+                        internal_error = true;
+                    }
+                }
+            }
+
+            if(is_initial || internal_error){
+                example = boost::shared_ptr<qpOASES::SQProblem>(new qpOASES::SQProblem ( state_len,inequality_len, HST_UNKNOWN));
+                //sqp_map.insert(std::pair<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> >(tmp_pair, example));
+                sqp_map[tmp_pair]=example;
+                example->setOptions( options );
+                int nWSR = 1000;
+                //debug
+                struct timeval s, e;
+                if(debugloop){
+                    gettimeofday(&s, NULL);
+                }
+                qpOASES::returnValue status = example->init( qp_H,qp_g,qp_A,qp_lb,qp_ub,qp_lbA,qp_ubA, nWSR);
+                if(debugloop){
+                    gettimeofday(&e, NULL);
+                    std::cerr << "initial QP time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
+                }
+                if(qpOASES::getSimpleStatus(status)==0){
+                    if(debugloop){
+                        std::cerr << "initial qp_solved" <<std::endl;
+                    qpoases_solved=true;
+                    }
+                    real_t* xOpt = new real_t[state_len];
+                    example->getPrimalSolution( xOpt );
+                    for(size_t i=0; i<state_len;i++){
+                        qpoases_xopt[i]=xOpt[i];
+                    }
+                    delete[] xOpt;
+                }else{
+                    if(debugloop){
+                        std::cerr << "initial qp fail" <<std::endl;
+                    }
+                    qpoases_error_num = qpOASES::getSimpleStatus(status);
+                    // Delete unsolved sqp
+                    sqp_map.erase(tmp_pair);
+                }
+            }
+            delete[] qp_H;
+            delete[] qp_A;
+            delete[] qp_g;
+            delete[] qp_ub;
+            delete[] qp_lb;
+            delete[] qp_ubA;
+            delete[] qp_lbA;
+        }
+        if(qpoases_solved) qp_solved = true;
+        xopt = qpoases_xopt;
+        error_num = qpoases_error_num;
+
         // if(debugloop){
         //     std::cerr << "qpoases_solved" << std::endl;
         //     std::cerr << qpoases_solved << std::endl;
