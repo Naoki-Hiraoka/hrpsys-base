@@ -560,9 +560,10 @@ public:
                     }else{
                         scale_delta = 1.0;
                         if(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])>0.8){
-                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])-0.8)/0.2);
                             if(!ref_contact_state){
-                                w *= other_leave_weight;
+                                w = force_weight * std::pow(eforce_weight*other_leave_weight / force_weight,(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])-0.8)/0.2);
+                            }else{
+                                w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_force_eef[0]/friction_coefficient/act_force_eef[2])-0.8)/0.2);
                             }
                         }else
                             w = force_weight;
@@ -594,9 +595,10 @@ public:
                     }else{
                         scale_delta = 1.0;
                         if(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])>0.8){
-                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])-0.8)/0.2);
                             if(!ref_contact_state){
-                                w *= other_leave_weight;
+                                w = force_weight * std::pow(eforce_weight*other_leave_weight / force_weight,(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])-0.8)/0.2);
+                            }else{
+                                w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_force_eef[1]/friction_coefficient/act_force_eef[2])-0.8)/0.2);
                             }
                         }else
                             w = force_weight;
@@ -632,9 +634,10 @@ public:
                     }else{
                         scale_delta = 1.0;
                         if(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)>0.8){
-                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)-0.8)/0.2);
                             if(!ref_contact_state){
-                                w *= other_leave_weight;
+                                w = force_weight * std::pow(eforce_weight*other_leave_weight / force_weight,(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)-0.8)/0.2);
+                            }else{
+                                w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(-act_moment_eef[1]/len/act_force_eef[2] - mid/len)-0.8)/0.2);
                             }
                         }else
                             w = force_weight;
@@ -670,9 +673,10 @@ public:
                     }else{
                         scale_delta = 1.0;
                         if(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)>0.8){
-                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)-0.8)/0.2);
                             if(!ref_contact_state){
-                                w *= other_leave_weight;
+                                w = force_weight * std::pow(eforce_weight*other_leave_weight / force_weight,(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)-0.8)/0.2);
+                            }else{
+                                w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(-act_moment_eef[0]/len/act_force_eef[2] + mid/len)-0.8)/0.2);
                             }
                         }else
                             w = force_weight;
@@ -704,9 +708,10 @@ public:
                     }else{
                         scale_delta = 1.0;
                         if(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])>0.8){
-                            w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])-0.8)/0.2);
                             if(!ref_contact_state){
-                                w *= other_leave_weight;
+                                w = force_weight * std::pow(eforce_weight*other_leave_weight / force_weight,(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])-0.8)/0.2);
+                            }else{
+                                w = force_weight * std::pow(eforce_weight / force_weight,(std::abs(act_moment_eef[2]/rotation_friction_coefficient/act_force_eef[2])-0.8)/0.2);
                             }
                         }else
                             w = force_weight;

@@ -115,6 +115,7 @@ public:
         prev_P = hrp::Vector3::Zero();
         prev_L = hrp::Vector3::Zero();
         prev_dtauv = hrp::dvector::Zero(m_robot->numJoints());
+        prev_command_dq = hrp::dvector::Zero(m_robot->numJoints());
         act_footorigin_p = hrp::Vector3::Zero();
         act_footorigin_R = hrp::Matrix33::Identity();
 
@@ -838,7 +839,7 @@ public:
                     Wint(6*i+j+3,6*i+j+3) = intvel_weight * interact_eef[i]->rot_interact_weight / std::pow(interact_eef[i]->rot_compensation_limit*dt,2);
                 }
                 if(interact_eef[i]->ref_contact_state){
-                    Wint(6*i+2,6*i+2) = intvel_weight * interact_eef[i]->z_contact_weight;
+                    Wint(6*i+2,6*i+2) = intvel_weight * interact_eef[i]->z_contact_weight / std::pow(interact_eef[i]->z_contact_vel*dt,2);
                 }
             }
 
@@ -1215,6 +1216,14 @@ public:
             }
 
             tmpH += Wq;
+
+            hrp::dmatrix Wdq = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
+            for (size_t i = 0; i < m_robot->numJoints(); i++){
+                Wdq(i,i) = acc_weight / std::pow(dt,3);
+            }
+
+            tmpH += Wdq;
+            tmpg += -prev_command_dq.transpose() * Wdq;
 
             hrp::dmatrix Wqref = hrp::dmatrix::Zero(m_robot->numJoints(),m_robot->numJoints());
             for (size_t i = 0; i < m_robot->numJoints(); i++){
@@ -2037,6 +2046,7 @@ public:
         prev_P = CM_J * dqa * command_dq;
         prev_L = MO_J * dqa * command_dq;
         prev_dtauv = dtau * command_dq;
+        prev_command_dq = command_dq;
         for(size_t i=0; i < support_eef.size(); i++){
             support_eef[i]->setprevDeltaWrench(dF.block(i*6,0,6,dF.cols()) * command_dq);
             if(debugloop){
@@ -2142,6 +2152,7 @@ public:
 
         prev_P = hrp::Vector3::Zero();
         prev_L = hrp::Vector3::Zero();
+        prev_command_dq = hrp::dvector::Zero(const_robot->numJoints());
         for(size_t i=0; i < const_robot->numJoints(); i++){
             prev_dtauv[i]=0.0;
         }
@@ -2215,6 +2226,9 @@ public:
 
         vel_weight = i_stp.vel_weight;
         std::cerr << "[" << instance_name << "]  vel_weight = " << vel_weight << std::endl;
+
+        acc_weight = i_stp.acc_weight;
+        std::cerr << "[" << instance_name << "]  acc_weight = " << acc_weight << std::endl;
 
         reference_weight = i_stp.reference_weight;
         std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
@@ -2308,6 +2322,7 @@ public:
         i_stp.L_weight = L_weight;
         i_stp.Lvel_weight = Lvel_weight;
         i_stp.vel_weight = vel_weight;
+        i_stp.acc_weight = acc_weight;
         i_stp.reference_weight = reference_weight;
         i_stp.etau_weight = etau_weight;
         i_stp.etauvel_weight = etauvel_weight;
@@ -2508,6 +2523,7 @@ private:
 
     hrp::Vector3 prev_P/*actworld系*/, prev_L/*actworld系,cogまわり*/;
     hrp::dvector prev_dtauv;
+    hrp::dvector prev_command_dq;
 
     coil::Mutex m_mutex;//for setParameter
     hrp::dmatrix isparent;
@@ -2529,6 +2545,7 @@ private:
     double L_weight;
     double Lvel_weight;
     double vel_weight;
+    double acc_weight;
     double reference_weight;
     double etau_weight;
     double etauvel_weight;

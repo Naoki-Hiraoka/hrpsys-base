@@ -310,6 +310,8 @@ module OpenHRP
       double Lvel_weight;
       /// velocity weight
       double vel_weight;
+      /// velocity weight
+      double acc_weight;
       /// reference weight
       double reference_weight;
       /// etau weight
