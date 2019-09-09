@@ -118,6 +118,7 @@ module OpenHRP
         double wrench_M;
         double wrench_D;
         double wrench_K;
+        sequence<double, 6> wrench_weight;
         /// interact weight. o(1 / pos_compensation_limit^2)
         double pos_interact_weight;
         /// interact weight. o(1 / rot_compensation_limit^2)

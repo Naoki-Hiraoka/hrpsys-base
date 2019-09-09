@@ -84,6 +84,7 @@ public:
                              act_outside_upper_ycop_state(true),
                              act_outside_lower_ycop_state(true)
     {
+        wrench_weight << 1.0, 1e2, 1e2, 1e3, 1e3, 1e4;
         return;
     }
 
@@ -179,14 +180,13 @@ public:
         return act_contact_state;
     }
 
-    void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb, hrp::dvector& ub){
+    void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb){
         switch(contact_type) {
         case SURFACE:
             {
-                int constraint_num = 17;
+                int constraint_num = 18;
                 C = hrp::dmatrix::Zero(constraint_num,6);
                 lb = hrp::dvector::Zero(constraint_num);
-                ub = hrp::dvector::Zero(constraint_num);
 
                 int constraint_idx = 0;
 
@@ -194,10 +194,16 @@ public:
                 C(constraint_idx,2)=1;
                 if(ref_contact_state){
                     lb[constraint_idx] = min_fz;
-                    ub[constraint_idx] = max_fz;
                 }else{
                     lb[constraint_idx] = 0.0;
-                    ub[constraint_idx] = target_max_fz;
+                }
+                constraint_idx++;
+
+                C(constraint_idx,2)=-1;
+                if(ref_contact_state){
+                    lb[constraint_idx] = -max_fz;
+                }else{
+                    lb[constraint_idx] = -target_max_fz;
                 }
                 constraint_idx++;
 
@@ -205,51 +211,43 @@ public:
                 C(constraint_idx,0)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 C(constraint_idx,0)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 //y摩擦
                 C(constraint_idx,1)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
                 C(constraint_idx,1)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 //xCOP
                 C(constraint_idx,4)= 1;
                 C(constraint_idx,2)= upper_cop_x_margin;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 C(constraint_idx,4)= -1;
                 C(constraint_idx,2)= -lower_cop_x_margin;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 //yCOP
                 C(constraint_idx,3)= -1;
                 C(constraint_idx,2)= upper_cop_y_margin;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 C(constraint_idx,3)= 1;
                 C(constraint_idx,2)= -lower_cop_y_margin;
                 lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
                 constraint_idx++;
 
                 //回転摩擦
@@ -257,12 +255,10 @@ public:
                     C(constraint_idx,5)=-1;
                     C(constraint_idx,2)= rotation_friction_coefficient;
                     lb[constraint_idx] = 0;
-                    ub[constraint_idx] = 1e10;
                     constraint_idx++;
                     C(constraint_idx,5)= 1;
                     C(constraint_idx,2)= rotation_friction_coefficient;
                     lb[constraint_idx] = 0;
-                    ub[constraint_idx] = 1e10;
                     constraint_idx++;
                 }
 
@@ -429,43 +425,6 @@ public:
             break;
         case POINT:
             {
-                int constraint_num = 5;
-                C = hrp::dmatrix::Zero(constraint_num,6);
-                lb = hrp::dvector::Zero(constraint_num);
-                ub = hrp::dvector::Zero(constraint_num);
-
-                int constraint_idx = 0;
-
-                //垂直抗力
-                C(constraint_idx,2)=1;
-                lb[constraint_idx] = min_fz;
-                ub[constraint_idx] = max_fz;
-                constraint_idx++;
-
-                //x摩擦
-                C(constraint_idx,0)=-1;
-                C(constraint_idx,2)= friction_coefficient;
-                lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
-                constraint_idx++;
-
-                C(constraint_idx,0)= 1;
-                C(constraint_idx,2)= friction_coefficient;
-                lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
-                constraint_idx++;
-
-                //y摩擦
-                C(constraint_idx,1)=-1;
-                C(constraint_idx,2)= friction_coefficient;
-                lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
-                constraint_idx++;
-                C(constraint_idx,1)= 1;
-                C(constraint_idx,2)= friction_coefficient;
-                lb[constraint_idx] = 0;
-                ub[constraint_idx] = 1e10;
-                constraint_idx++;
             }
             break;
         default: break;
@@ -898,6 +857,7 @@ public:
         return;
     }
 
+
     void getWrenchWeightforce(hrp::dmatrix& H, hrp::dvector& g, const int i, const double actvalue, const double coefvalue){
         double coefvalue2 = std::pow(coefvalue,2);
         if(coefvalue2 == 0) coefvalue2 = 1e-16;
@@ -1225,6 +1185,13 @@ public:
         wrench_K = i_ccp.wrench_K;
         std::cerr << "[" << instance_name << "]  " << name <<  " wrench_K = " << wrench_K << std::endl;
 
+        if(i_ccp.wrench_weight.length() == 6){
+            for(size_t i=0;i<6;i++){
+                wrench_weight[i] = i_ccp.wrench_weight[i];
+            }
+        }
+        std::cerr << "[" << instance_name << "]  " << name <<  " wrench_weight = " << wrench_weight << std::endl;
+
         pos_interact_weight = i_ccp.pos_interact_weight;
         std::cerr << "[" << instance_name << "]  pos_interact_weight = " << pos_interact_weight << std::endl;
 
@@ -1311,6 +1278,10 @@ public:
         i_ccp.wrench_M = wrench_M;
         i_ccp.wrench_D = wrench_D;
         i_ccp.wrench_K = wrench_K;
+        i_ccp.wrench_weight.length(6);
+        for(size_t j = 0; j < 3; j++){
+            i_ccp.wrench_weight[j] = wrench_weight[j];
+        }
         i_ccp.pos_interact_weight = pos_interact_weight;
         i_ccp.rot_interact_weight = rot_interact_weight;
         i_ccp.M_p = M_p;
@@ -1360,6 +1331,7 @@ public:
     double z_leavevel_weight;
     double other_leave_weight;
     double wrench_M, wrench_D, wrench_K;
+    hrp::dvector6 wrench_weight;
     //遊脚インピーダンス
     bool is_ik_enable;//遊脚(!ref_contact)時に位置を制御するか,遊脚時に反力を考慮するか
     double pos_interact_weight;
