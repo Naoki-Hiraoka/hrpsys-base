@@ -18,7 +18,7 @@ if(USE_OSQP)
   add_definitions(-DUSE_OSQP)
 endif()
 
-set(comp_sources Integrator.cpp TwoDofController.cpp Stabilizer.cpp StabilizerService_impl.cpp TorqueJacobian.cpp ../ImpedanceController/JointPathEx.cpp ../ImpedanceController/RatsMatrix.cpp ../TorqueFilter/IIRFilter.cpp ../SoftErrorLimiter/JointLimitTable.cpp)
+set(comp_sources Integrator.cpp TwoDofController.cpp Stabilizer.cpp StabilizerService_impl.cpp TorqueJacobian.cpp qpOASES_solver.cpp ../ImpedanceController/JointPathEx.cpp ../ImpedanceController/RatsMatrix.cpp ../TorqueFilter/IIRFilter.cpp ../SoftErrorLimiter/JointLimitTable.cpp)
 if(USE_QPOASES AND USE_OSQP)
   set(libs hrpModel-3.1 hrpUtil-3.1 hrpsysBaseStub qpOASES osqp)
 elseif(USE_OSQP)
