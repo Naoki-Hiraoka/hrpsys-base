@@ -180,13 +180,14 @@ public:
         return act_contact_state;
     }
 
-    void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb){
+    void getContactConstraint(hrp::dmatrix& C, hrp::dvector& lb, hrp::dvector& weights){
         switch(contact_type) {
         case SURFACE:
             {
                 int constraint_num = 18;
                 C = hrp::dmatrix::Zero(constraint_num,6);
                 lb = hrp::dvector::Zero(constraint_num);
+                weights = hrp::dvector::Ones(constraint_num);
 
                 int constraint_idx = 0;
 
@@ -196,6 +197,7 @@ public:
                     lb[constraint_idx] = min_fz;
                 }else{
                     lb[constraint_idx] = 0.0;
+                    weights[constraint_idx] = other_leave_weight;
                 }
                 constraint_idx++;
 
@@ -204,6 +206,7 @@ public:
                     lb[constraint_idx] = -max_fz;
                 }else{
                     lb[constraint_idx] = -target_max_fz;
+                    weights[constraint_idx] = z_leave_weight;
                 }
                 constraint_idx++;
 
@@ -211,43 +214,51 @@ public:
                 C(constraint_idx,0)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,0)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 //y摩擦
                 C(constraint_idx,1)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
                 C(constraint_idx,1)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 //xCOP
                 C(constraint_idx,4)= 1;
                 C(constraint_idx,2)= upper_cop_x_margin;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,4)= -1;
                 C(constraint_idx,2)= -lower_cop_x_margin;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 //yCOP
                 C(constraint_idx,3)= -1;
                 C(constraint_idx,2)= upper_cop_y_margin;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,3)= 1;
                 C(constraint_idx,2)= -lower_cop_y_margin;
                 lb[constraint_idx] = 0;
+                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                 constraint_idx++;
 
                 //回転摩擦
@@ -255,10 +266,12 @@ public:
                     C(constraint_idx,5)=-1;
                     C(constraint_idx,2)= rotation_friction_coefficient;
                     lb[constraint_idx] = 0;
+                    if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                     constraint_idx++;
                     C(constraint_idx,5)= 1;
                     C(constraint_idx,2)= rotation_friction_coefficient;
                     lb[constraint_idx] = 0;
+                    if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
                     constraint_idx++;
                 }
 
@@ -1370,8 +1383,10 @@ public:
     hrp::Vector3 act_p/*actworld系*/, act_p_origin/*act_footorigin系*/;
     hrp::Matrix33 act_R/*actworld系*/, act_R_origin/*act_footorigin系*/;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > act_force_filter/*sensor系*/;
+    hrp::Vector3 act_force_raw/*actworld系*/, act_force_eef_raw/*eef系*/;
     hrp::Vector3 act_force/*actworld系*/, act_force_eef/*eef系*/;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> > act_moment_filter/*sensor系,sensorまわり*/;
+    hrp::Vector3 act_moment_raw/*actworld系,eefまわり*/, act_moment_eef_raw/*eef系,eefまわり*/;
     hrp::Vector3 act_moment/*actworld系,eefまわり*/, act_moment_eef/*eef系,eefまわり*/;
     bool act_contact_state;
     bool prev_act_contact_state;

@@ -442,10 +442,14 @@ public:
             endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
             endeffector[i]->act_R/*actworld系*/ = target->R * endeffector[i]->localR;
             hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(endeffector[i]->sensor_name);
+            endeffector[i]->act_force_raw/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force[sensor->id]/*sensor系*/;
             hrp::Vector3 act_force/*sensor系*/ = endeffector[i]->act_force_filter->passFilter(_act_force[sensor->id]/*sensor系*/);
             endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * act_force/*sensor系*/;
+            endeffector[i]->act_moment_raw/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment[sensor->id]/*sensor系*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force_raw/*actworld系*/);
             hrp::Vector3 act_moment/*sensor系,sensorまわり*/ = endeffector[i]->act_moment_filter->passFilter(_act_moment[sensor->id]/*sensor系*/);
             endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * act_moment + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
+            endeffector[i]->act_force_eef_raw/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force_raw/*actworld系*/;
+            endeffector[i]->act_moment_eef_raw/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment_raw/*actworld系*/;
             endeffector[i]->act_force_eef/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force/*actworld系*/;
             endeffector[i]->act_moment_eef/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment/*actworld系*/;
             bool act_contact_state_org = endeffector[i]->act_contact_state;
@@ -1019,8 +1023,9 @@ public:
             size_t num_CC=0;
             std::vector<hrp::dmatrix> Cs(support_eef.size());
             std::vector<hrp::dvector> lbs(support_eef.size());
+            std::vector<hrp::dvector> weights(support_eef.size());
             for(size_t i=0;i<support_eef.size(); i++){
-                support_eef[i]->getContactConstraint(Cs[i],lbs[i]);
+                support_eef[i]->getContactConstraint(Cs[i],lbs[i],weights[i]);
                 num_CC += Cs[i].rows();
             }
 
@@ -1049,8 +1054,12 @@ public:
                     CC_idx+=Cs[i].rows();
                 }
 
-                for(size_t i=0; i < num_CC; i++){
-                    WC1(i,i) = eforce_weight;
+                CC_idx = 0;
+                for(size_t i=0; i < support_eef.size(); i++){
+                    for(size_t j=0; j < weights[i].size(); j++){
+                        WC1(CC_idx,CC_idx) = weights[i][j] * eforce_weight;
+                        CC_idx++;
+                    }
                 }
             }
             {
@@ -1180,14 +1189,14 @@ public:
                 hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
                 for (size_t i = 0; i < interact_eef.size(); i++){
                     delta_interact_eef.block<3,1>(i*6,0) =
-                        (interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef-interact_eef[i]->ref_force_eef) * dt * dt
+                        (interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef_raw-interact_eef[i]->ref_force_eef) * dt * dt
                          + interact_eef[i]->act_R_origin.transpose() * (interact_eef[i]->ref_p_origin - interact_eef[i]->act_p_origin) * interact_eef[i]->K_p * dt * dt
                          + interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - interact_eef[i]->prev_ref_p) * interact_eef[i]->D_p * dt
                          + (interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - 2 * interact_eef[i]->prev_ref_p + interact_eef[i]->prev_prev_ref_p) + interact_eef[i]->prev_pos_vel) * interact_eef[i]->M_p
                          ) / (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt);
 
                     delta_interact_eef.block<3,1>(i*6+3,0) =
-                        (interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef-interact_eef[i]->ref_moment_eef) * dt * dt
+                        (interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef_raw-interact_eef[i]->ref_moment_eef) * dt * dt
                          + matrix_logEx(interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin) * interact_eef[i]->K_r * dt * dt
                          + interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_w_eef * interact_eef[i]->D_r * dt
                          + (interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_dw_eef + interact_eef[i]->prev_rot_vel) * interact_eef[i]->M_r
