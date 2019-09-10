@@ -1324,10 +1324,6 @@ public:
 
         /****************************************************************/
         //priority 3
-        hrp::dmatrix A4_bar;
-        hrp::dvector b4_bar;
-        hrp::dmatrix C4_bar;
-        hrp::dvector d4_bar;
         if(qp_solved){
             hrp::dmatrix A3 = hrp::dmatrix::Zero(support_eef.size()*6+m_robot->numJoints()+m_robot->numJoints()+6, m_robot->numJoints());
             hrp::dvector b3 = hrp::dvector::Zero(support_eef.size()*6+m_robot->numJoints()+m_robot->numJoints()+6);
@@ -1364,7 +1360,6 @@ public:
                     WA3(support_eef.size()*6+i,support_eef.size()*6+i) = tau_weight / std::pow(safetaumaxv[i],2);
                 }
 
-                //TODO taumax minimize
             }
 
             {
@@ -1376,47 +1371,104 @@ public:
 
             }
 
+            hrp::dmatrix A3max_bar = hrp::dmatrix::Zero(A3_bar.rows(), A3_bar.cols()+1);
+            hrp::dvector b3max_bar = hrp::dvector::Zero(b3_bar.rows());
+            hrp::dmatrix C3max_bar = hrp::dmatrix::Zero(C3_bar.rows()+m_robot->numJoints()*2, C3_bar.cols()+1);//taumax
+            hrp::dvector d3max_bar = hrp::dvector::Zero(d3_bar.rows()+m_robot->numJoints()*2);//taumax
+            hrp::dvector lmax_bar = hrp::dvector::Zero(l_bar.rows()+1);
+            hrp::dvector umax_bar = hrp::dvector::Zero(u_bar.rows()+1);
+            hrp::dmatrix A3max = hrp::dmatrix::Zero(A3.rows()+1, A3.cols()+1);//taumax_minimize
+            hrp::dvector b3max = hrp::dvector::Zero(b3.rows()+1);//taumax_minimize
+            hrp::dmatrix WA3max = hrp::dmatrix::Zero(WA3.rows()+1, WA3.cols()+1);//taumax_minimize
+            hrp::dmatrix C3max = hrp::dmatrix::Zero(C3.rows(), C3.cols()+1);
+            hrp::dvector d3max = hrp::dvector::Zero(d3.rows());
+            hrp::dmatrix WC3max = hrp::dmatrix::Zero(WC3.rows(), WC3.cols());
+            A3max_bar.block(0,0,A3_bar.rows(),A3_bar.cols()) = A3_bar;
+            b3max_bar.block(0,0,b3_bar.rows(),b3_bar.cols()) = b3_bar;
+            C3max_bar.block(0,0,C3_bar.rows(),C3_bar.cols()) = C3_bar;
+            d3max_bar.block(0,0,d3_bar.rows(),d3_bar.cols()) = d3_bar;
+            lmax_bar.block(0,0,l_bar.rows(),l_bar.cols()) = l_bar;
+            umax_bar.block(0,0,u_bar.rows(),u_bar.cols()) = u_bar;
+            A3max.block(0,0,A3.rows(),A3.cols()) = A3;
+            b3max.block(0,0,b3.rows(),b3.cols()) = b3;
+            WA3max.block(0,0,WA3.rows(),WA3.cols()) = WA3;
+            C3max.block(0,0,C3.rows(),C3.cols()) = C3;
+            d3max.block(0,0,d3.rows(),d3.cols()) = d3;
+            WC3max.block(0,0,WC3.rows(),WC3.cols()) = WC3;
+
+            {
+                //taumax minimize
+                double acttaumax = 0.0;
+                hrp::dmatrix W = hrp::dmatrix::Zero(m_robot->numJoints(), m_robot->numJoints());
+                for(size_t i=0;i<m_robot->numJoints();i++){
+                    double value = std::abs(acttauv[i] / safetaumaxv[i]);
+                    if(is_joint_enable[i]) W(i,i) = 1.0 / safetaumaxv[i];
+                    if(value > acttaumax) acttaumax = value;
+                }
+                A3max(A3max.rows()-1,A3max.cols()-1) = taumaxvel_weight;//scale
+                b3max[b3max.rows()-1] = - acttaumax;
+                WA3max(WA3max.rows()-1,WA3max.cols()-1) = tau_weight * taumax_weight;
+
+                C3max_bar.block(C3max_bar.rows()-m_robot->numJoints()*2,0,m_robot->numJoints(),m_robot->numJoints()) = W * dtau * K3;
+                C3max_bar.block(C3max_bar.rows()-m_robot->numJoints()*1,0,m_robot->numJoints(),m_robot->numJoints()) = W * -dtau * K3;
+                d3max_bar.block(d3max_bar.rows()-m_robot->numJoints()*2,0,m_robot->numJoints(),1)=W * -acttauv;
+                d3max_bar.block(d3max_bar.rows()-m_robot->numJoints()*1,0,m_robot->numJoints(),1)=W * acttauv;
+                for(size_t i=0; i < m_robot->numJoints();i++){
+                    C3max_bar(C3max_bar.rows()-m_robot->numJoints()*2+i,m_robot->numJoints())=-taumaxvel_weight;//scale
+                    C3max_bar(C3max_bar.rows()-m_robot->numJoints()*1+i,m_robot->numJoints())=-taumaxvel_weight;//scale
+                    d3max_bar[d3max_bar.rows()-m_robot->numJoints()*2+i]+=acttaumax;
+                    d3max_bar[d3max_bar.rows()-m_robot->numJoints()*1+i]+=acttaumax;
+                }
+                lmax_bar[lmax_bar.rows()-1] = -1e10;
+                umax_bar[umax_bar.rows()-1] = 1e10;
+            }
+
+
             //solve QP
             if(debugloop){
                 std::cerr << "QP3" << std::endl;
-                std::cerr << "A3_bar" << std::endl;
-                std::cerr << A3_bar <<std::endl;
-                std::cerr << "b3_bar" << std::endl;
-                std::cerr << b3_bar <<std::endl;
-                std::cerr << "C3_bar" << std::endl;
-                std::cerr << C3_bar <<std::endl;
-                std::cerr << "d3_bar" << std::endl;
-                std::cerr << d3_bar <<std::endl;
-                std::cerr << "A3" << std::endl;
-                std::cerr << A3 <<std::endl;
-                std::cerr << "b3" << std::endl;
-                std::cerr << b3 <<std::endl;
-                std::cerr << "WA3" << std::endl;
-                std::cerr << WA3 <<std::endl;
-                std::cerr << "C3" << std::endl;
-                std::cerr << C3 <<std::endl;
-                std::cerr << "d3" << std::endl;
-                std::cerr << d3 <<std::endl;
-                std::cerr << "WC3" << std::endl;
-                std::cerr << WC3 <<std::endl;
+                std::cerr << "A3max_bar" << std::endl;
+                std::cerr << A3max_bar <<std::endl;
+                std::cerr << "b3max_bar" << std::endl;
+                std::cerr << b3max_bar <<std::endl;
+                std::cerr << "C3max_bar" << std::endl;
+                std::cerr << C3max_bar <<std::endl;
+                std::cerr << "d3max_bar" << std::endl;
+                std::cerr << d3max_bar <<std::endl;
+                std::cerr << "lmax_bar" << std::endl;
+                std::cerr << lmax_bar <<std::endl;
+                std::cerr << "umax_bar" << std::endl;
+                std::cerr << umax_bar <<std::endl;
+                std::cerr << "A3max" << std::endl;
+                std::cerr << A3max <<std::endl;
+                std::cerr << "b3max" << std::endl;
+                std::cerr << b3max <<std::endl;
+                std::cerr << "WA3max" << std::endl;
+                std::cerr << WA3max <<std::endl;
+                std::cerr << "C3max" << std::endl;
+                std::cerr << C3max <<std::endl;
+                std::cerr << "d3max" << std::endl;
+                std::cerr << d3max <<std::endl;
+                std::cerr << "WC3max" << std::endl;
+                std::cerr << WC3max <<std::endl;
 
             }
 
-            hrp::dvector x;
+            hrp::dvector xmax;
             int status;
-            bool solved = solveAbCd(x,
-                                    A3_bar,
-                                    b3_bar,
-                                    C3_bar,
-                                    d3_bar,
-                                    l_bar,
-                                    u_bar,
-                                    A3,
-                                    b3,
-                                    WA3,
-                                    C3,
-                                    d3,
-                                    WC3,
+            bool solved = solveAbCd(xmax,
+                                    A3max_bar,
+                                    b3max_bar,
+                                    C3max_bar,
+                                    d3max_bar,
+                                    lmax_bar,
+                                    umax_bar,
+                                    A3max,
+                                    b3max,
+                                    WA3max,
+                                    C3max,
+                                    d3max,
+                                    WC3max,
                                     vel_weight3,
                                     status);
 
@@ -1424,49 +1476,31 @@ public:
                 qp_solved = false;
                 error_num = status;
             }else{
-                optimal_x = x;
+                optimal_x = xmax.block(0,0,m_robot->numJoints(),1);
 
-                A4_bar = hrp::dmatrix::Zero(A3_bar.rows()+A3.rows(), m_robot->numJoints());
-                b4_bar = hrp::dvector::Zero(b3_bar.rows()+b3.rows());
-                A4_bar << A3_bar,
-                          A3;
-                b4_bar << b3_bar,
-                          A3*x;
-                hrp::dvector tmp_C3x = C3 * x;
-                for(size_t i=0; i<d3.rows();i++){
-                    if(tmp_C3x[i]>d3[i]) d3[i] = tmp_C3x[i];
-                }
-                C4_bar = hrp::dmatrix::Zero(C3_bar.rows()+C3.rows(), m_robot->numJoints());
-                d4_bar = hrp::dvector::Zero(d3_bar.rows()+d3.rows());
-                C4_bar << C3_bar,
-                          C3;
-                d4_bar << d3_bar,
-                          d3;
-
-                
                 if(debugloop){
                     std::cerr << "result3" << std::endl;
                     std::cerr << "dq" << std::endl;
-                    std::cerr << x << std::endl;
+                    std::cerr << optimal_x << std::endl;
                     std::cerr << "acttau" << std::endl;
                     std::cerr << acttauv << std::endl;
                     std::cerr << "dtau" << std::endl;
-                    std::cerr << dtau * x << std::endl;
+                    std::cerr << dtau * optimal_x << std::endl;
 
                     std::cerr << "actwrench" << std::endl;
                     std::cerr << actwrenchv << std::endl;
                     std::cerr << "dwrench" << std::endl;
-                    std::cerr << dF * x << std::endl;
+                    std::cerr << dF * optimal_x << std::endl;
 
                     std::cerr << "nextP" << std::endl;
-                    std::cerr << CM_J * dqa * x / dt << std::endl;
+                    std::cerr << CM_J * dqa * optimal_x / dt << std::endl;
                     std::cerr << "nextL" << std::endl;
-                    std::cerr << MO_J * dqa * x / dt << std::endl;
+                    std::cerr << MO_J * dqa * optimal_x / dt << std::endl;
 
                     std::cerr << "supportvel" << std::endl;
-                    std::cerr << supportJ * dqa * x << std::endl;
+                    std::cerr << supportJ * dqa * optimal_x << std::endl;
                     std::cerr << "interactvel" << std::endl;
-                    std::cerr << interactJ * dqa * x << std::endl;
+                    std::cerr << interactJ * dqa * optimal_x << std::endl;
 
                 }
             }
