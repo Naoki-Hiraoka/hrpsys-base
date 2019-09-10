@@ -1279,7 +1279,7 @@ public:
         i_ccp.wrench_D = wrench_D;
         i_ccp.wrench_K = wrench_K;
         i_ccp.wrench_weight.length(6);
-        for(size_t j = 0; j < 3; j++){
+        for(size_t j = 0; j < 6; j++){
             i_ccp.wrench_weight[j] = wrench_weight[j];
         }
         i_ccp.pos_interact_weight = pos_interact_weight;

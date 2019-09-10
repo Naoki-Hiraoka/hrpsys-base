@@ -349,6 +349,12 @@ module OpenHRP
       double mcs_collisionthre;
       /// Sequence of all end-effector params
       sequence<EndEffectorParam> mcs_eeparams;
+      double k0;
+      double k1;
+      double k3;
+      double vel_weight1;
+      double vel_weight2;
+      double vel_weight3;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;

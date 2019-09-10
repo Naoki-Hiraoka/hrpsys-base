@@ -850,7 +850,7 @@ public:
                 if(is_reference[i]){
                     K0(i,i) = 1.0;
                 }else{
-                    K0(i,i) = k0;
+                    K0(i,i) = k0 / dt;
                 }
             }
 
@@ -885,10 +885,10 @@ public:
                         }else{
                             reference_vel = qrefv[i] - qcurv[i];
                         }
-                        //max = reference_vel;
-                        //min = reference_vel;
-                        max = reference_vel+1e-16;
-                        min = reference_vel-1e-16;
+                        max = reference_vel;
+                        min = reference_vel;
+                        //max = reference_vel+1e-16;
+                        //min = reference_vel-1e-16;
                         referencev[i] = reference_vel;
                     }else{
                         if(prevpassive[i]){
@@ -1036,7 +1036,7 @@ public:
                 if(is_reference[i]){
                     K1(i,i) = 1.0;
                 }else{
-                    K1(i,i) = k1;
+                    K1(i,i) = k1 / dt;
                 }
             }
 
@@ -1108,24 +1108,25 @@ public:
             if(!solved){
                 qp_solved = false;
                 error_num = status;
-            }
+            }else{
 
-            A2_bar = hrp::dmatrix::Zero(A1_bar.rows()+A1.rows(), m_robot->numJoints());
-            b2_bar = hrp::dvector::Zero(b1_bar.rows()+b1.rows());
-            A2_bar << A1_bar,
-                      A1;
-            b2_bar << b1_bar,
-                      A1*x;
-            hrp::dvector tmp_C1x = C1 * x;
-            for(size_t i=0; i<d1.rows();i++){
-                if(tmp_C1x[i]>d1[i]) d1[i] = tmp_C1x[i];
+                A2_bar = hrp::dmatrix::Zero(A1_bar.rows()+A1.rows(), m_robot->numJoints());
+                b2_bar = hrp::dvector::Zero(b1_bar.rows()+b1.rows());
+                A2_bar << A1_bar,
+                          A1;
+                b2_bar << b1_bar,
+                          A1*x;
+                hrp::dvector tmp_C1x = C1 * x;
+                for(size_t i=0; i<d1.rows();i++){
+                    if(tmp_C1x[i]>d1[i]) d1[i] = tmp_C1x[i];
+                }
+                C2_bar = hrp::dmatrix::Zero(C1_bar.rows()+C1.rows(), m_robot->numJoints());
+                d2_bar = hrp::dvector::Zero(d1_bar.rows()+d1.rows());
+                C2_bar << C1_bar,
+                          C1;
+                d2_bar << d1_bar,
+                          d1;
             }
-            C2_bar = hrp::dmatrix::Zero(C1_bar.rows()+C1.rows(), m_robot->numJoints());
-            d2_bar = hrp::dvector::Zero(d1_bar.rows()+d1.rows());
-            C2_bar << C1_bar,
-                      C1;
-            d1_bar << d1_bar,
-                      d1;
         }
 
 
@@ -1225,24 +1226,25 @@ public:
             if(!solved){
                 qp_solved = false;
                 error_num = status;
-            }
+            }else{
 
-            A3_bar = hrp::dmatrix::Zero(A2_bar.rows()+A2.rows(), m_robot->numJoints());
-            b3_bar = hrp::dvector::Zero(b2_bar.rows()+b2.rows());
-            A3_bar << A2_bar,
-                      A2;
-            b3_bar << b2_bar,
-                      A2*x;
-            hrp::dvector tmp_C2x = C2 * x;
-            for(size_t i=0; i<d2.rows();i++){
-                if(tmp_C2x[i]>d2[i]) d2[i] = tmp_C2x[i];
+                A3_bar = hrp::dmatrix::Zero(A2_bar.rows()+A2.rows(), m_robot->numJoints());
+                b3_bar = hrp::dvector::Zero(b2_bar.rows()+b2.rows());
+                A3_bar << A2_bar,
+                          A2;
+                b3_bar << b2_bar,
+                          A2*x;
+                hrp::dvector tmp_C2x = C2 * x;
+                for(size_t i=0; i<d2.rows();i++){
+                    if(tmp_C2x[i]>d2[i]) d2[i] = tmp_C2x[i];
+                }
+                C3_bar = hrp::dmatrix::Zero(C2_bar.rows()+C2.rows(), m_robot->numJoints());
+                d3_bar = hrp::dvector::Zero(d2_bar.rows()+d2.rows());
+                C3_bar << C2_bar,
+                          C2;
+                d3_bar << d2_bar,
+                          d2;
             }
-            C3_bar = hrp::dmatrix::Zero(C2_bar.rows()+C2.rows(), m_robot->numJoints());
-            d3_bar = hrp::dvector::Zero(d2_bar.rows()+d2.rows());
-            C3_bar << C2_bar,
-                      C2;
-            d3_bar << d2_bar,
-                      d2;
         }
 
 
@@ -1265,7 +1267,7 @@ public:
                 if(is_reference[i]){
                     K3(i,i) = 1.0;
                 }else{
-                    K3(i,i) = k3;
+                    K3(i,i) = k3 / dt;
                 }
             }
 
@@ -1333,25 +1335,26 @@ public:
             if(!solved){
                 qp_solved = false;
                 error_num = status;
-            }
-            if(solved)optimal_x = x;
+            }else{
+                optimal_x = x;
 
-            A4_bar = hrp::dmatrix::Zero(A3_bar.rows()+A3.rows(), m_robot->numJoints());
-            b4_bar = hrp::dvector::Zero(b3_bar.rows()+b3.rows());
-            A4_bar << A3_bar,
-                      A3;
-            b4_bar << b3_bar,
-                      A3*x;
-            hrp::dvector tmp_C3x = C3 * x;
-            for(size_t i=0; i<d3.rows();i++){
-                if(tmp_C3x[i]>d3[i]) d3[i] = tmp_C3x[i];
+                A4_bar = hrp::dmatrix::Zero(A3_bar.rows()+A3.rows(), m_robot->numJoints());
+                b4_bar = hrp::dvector::Zero(b3_bar.rows()+b3.rows());
+                A4_bar << A3_bar,
+                          A3;
+                b4_bar << b3_bar,
+                          A3*x;
+                hrp::dvector tmp_C3x = C3 * x;
+                for(size_t i=0; i<d3.rows();i++){
+                    if(tmp_C3x[i]>d3[i]) d3[i] = tmp_C3x[i];
+                }
+                C4_bar = hrp::dmatrix::Zero(C3_bar.rows()+C3.rows(), m_robot->numJoints());
+                d4_bar = hrp::dvector::Zero(d3_bar.rows()+d3.rows());
+                C4_bar << C3_bar,
+                          C3;
+                d4_bar << d3_bar,
+                          d3;
             }
-            C4_bar = hrp::dmatrix::Zero(C3_bar.rows()+C3.rows(), m_robot->numJoints());
-            d4_bar = hrp::dvector::Zero(d3_bar.rows()+d3.rows());
-            C4_bar << C3_bar,
-                      C3;
-            d4_bar << d3_bar,
-                      d3;
         }
 
         /*****************************************************************/
@@ -2024,6 +2027,25 @@ public:
         }else{
             std::cerr << "[" << instance_name << "] set mcs_eeparams failed. mcs_eeparams size: " << i_stp.mcs_eeparams.length() << ", endeffectors: " << endeffector.size() <<std::endl;
         }
+
+        k0 = i_stp.k0;
+        std::cerr << "[" << instance_name << "]  k0 = " << k0 << std::endl;
+
+        k1 = i_stp.k1;
+        std::cerr << "[" << instance_name << "]  k1 = " << k1 << std::endl;
+
+        k3 = i_stp.k3;
+        std::cerr << "[" << instance_name << "]  k3 = " << k3 << std::endl;
+
+        vel_weight1 = i_stp.vel_weight1;
+        std::cerr << "[" << instance_name << "]  vel_weight1 = " << vel_weight1 << std::endl;
+
+        vel_weight2 = i_stp.vel_weight2;
+        std::cerr << "[" << instance_name << "]  vel_weight2 = " << vel_weight2 << std::endl;
+
+        vel_weight3 = i_stp.vel_weight3;
+        std::cerr << "[" << instance_name << "]  vel_weight3 = " << vel_weight3 << std::endl;
+
     }
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
@@ -2077,6 +2099,13 @@ public:
         for(size_t i = 0; i < eefnum; i++){
             endeffector[i]->getParameter(i_stp.mcs_eeparams[i]);
         }
+
+        i_stp.k0 = k0;
+        i_stp.k1 = k1;
+        i_stp.k3 = k3;
+        i_stp.vel_weight1 = vel_weight1;
+        i_stp.vel_weight2 = vel_weight2;
+        i_stp.vel_weight3 = vel_weight3;
     }
 
     void setPassiveJoint(const char *i_jname){
