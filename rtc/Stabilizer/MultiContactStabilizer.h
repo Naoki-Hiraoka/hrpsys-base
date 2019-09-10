@@ -787,8 +787,8 @@ public:
             if(is_joint_enable[i]){
                 double squaremaxtau = std::pow(m_robot->joint(i)->climit * m_robot->joint(i)->gearRatio * m_robot->joint(i)->torqueConst, 2);
                 {
-                    double targetsqureTauMax = (motorTemperatureLimit[i] - ambientTemp - motorTempPredParams[i][1] * (motorTempPredParams[i][2] * ambientTemp + motorTempPredParams[i][3] * coiltemp[i] + motorTempPredParams[i][4]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][6] * temp_danger_time) - motorTempPredParams[i][7] * (motorTempPredParams[i][8] * ambientTemp + motorTempPredParams[i][9] * coiltemp[i] + motorTempPredParams[i][10]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][12] * temp_danger_time)) / (motorTempPredParams[i][0] + motorTempPredParams[i][1] * motorTempPredParams[i][5] * std::exp(motorTempPredParams[i][6] * temp_danger_time) + motorTempPredParams[i][7] * motorTempPredParams[i][11] * std::exp(motorTempPredParams[i][12] * temp_danger_time));
-                    if(targetsqureTauMax>0 && targetsqureTauMax > squaremaxtau*1e-4){//avoid to small value
+                    double targetsqureTauMax = (motorTemperatureLimit[i]*0.9/*安全率*/ - ambientTemp - motorTempPredParams[i][1] * (motorTempPredParams[i][2] * ambientTemp + motorTempPredParams[i][3] * coiltemp[i] + motorTempPredParams[i][4]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][6] * temp_danger_time) - motorTempPredParams[i][7] * (motorTempPredParams[i][8] * ambientTemp + motorTempPredParams[i][9] * coiltemp[i] + motorTempPredParams[i][10]  * surfacetemp[i]) * std::exp(motorTempPredParams[i][12] * temp_danger_time)) / (motorTempPredParams[i][0] + motorTempPredParams[i][1] * motorTempPredParams[i][5] * std::exp(motorTempPredParams[i][6] * temp_danger_time) + motorTempPredParams[i][7] * motorTempPredParams[i][11] * std::exp(motorTempPredParams[i][12] * temp_danger_time));
+                    if(targetsqureTauMax>0 && targetsqureTauMax > squaremaxtau*1e-4){//avoid too small value
                         squaremaxtau = std::min(targetsqureTauMax,squaremaxtau);
                     }else{
                         squaremaxtau = std::min(squaremaxtau*1e-4,squaremaxtau);
@@ -1081,10 +1081,14 @@ public:
                 std::cerr << A1 <<std::endl;
                 std::cerr << "b1" << std::endl;
                 std::cerr << b1 <<std::endl;
+                std::cerr << "WA1" << std::endl;
+                std::cerr << WA1 <<std::endl;
                 std::cerr << "C1" << std::endl;
                 std::cerr << C1 <<std::endl;
                 std::cerr << "d1" << std::endl;
                 std::cerr << d1 <<std::endl;
+                std::cerr << "WC1" << std::endl;
+                std::cerr << WC1 <<std::endl;
             }
 
             hrp::dvector x;
@@ -1126,6 +1130,33 @@ public:
                           C1;
                 d2_bar << d1_bar,
                           d1;
+
+                if(debugloop){
+                    std::cerr << "result1" << std::endl;
+                    std::cerr << "dq" << std::endl;
+                    std::cerr << x << std::endl;
+                    std::cerr << "acttau" << std::endl;
+                    std::cerr << acttauv << std::endl;
+                    std::cerr << "dtau" << std::endl;
+                    std::cerr << dtau * x << std::endl;
+
+                    std::cerr << "actwrench" << std::endl;
+                    std::cerr << actwrenchv << std::endl;
+                    std::cerr << "dwrench" << std::endl;
+                    std::cerr << dF * x << std::endl;
+
+                    std::cerr << "nextP" << std::endl;
+                    std::cerr << CM_J * dqa * x / dt << std::endl;
+                    std::cerr << "nextL" << std::endl;
+                    std::cerr << MO_J * dqa * x / dt << std::endl;
+
+                    std::cerr << "supportvel" << std::endl;
+                    std::cerr << supportJ * dqa * x << std::endl;
+                    std::cerr << "interactvel" << std::endl;
+                    std::cerr << interactJ * dqa * x << std::endl;
+
+                }
+
             }
         }
 
@@ -1199,10 +1230,15 @@ public:
                 std::cerr << A2 <<std::endl;
                 std::cerr << "b2" << std::endl;
                 std::cerr << b2 <<std::endl;
+                std::cerr << "WA2" << std::endl;
+                std::cerr << WA2 <<std::endl;
                 std::cerr << "C2" << std::endl;
                 std::cerr << C2 <<std::endl;
                 std::cerr << "d2" << std::endl;
                 std::cerr << d2 <<std::endl;
+                std::cerr << "WC2" << std::endl;
+                std::cerr << WC2 <<std::endl;
+
             }
 
             hrp::dvector x;
@@ -1244,6 +1280,35 @@ public:
                           C2;
                 d3_bar << d2_bar,
                           d2;
+
+                if(debugloop){
+                    std::cerr << "result2" << std::endl;
+                    std::cerr << "dq" << std::endl;
+                    std::cerr << x << std::endl;
+                    std::cerr << "acttau" << std::endl;
+                    std::cerr << acttauv << std::endl;
+                    std::cerr << "dtau" << std::endl;
+                    std::cerr << dtau * x << std::endl;
+
+                    std::cerr << "actwrench" << std::endl;
+                    std::cerr << actwrenchv << std::endl;
+                    std::cerr << "dwrench" << std::endl;
+                    std::cerr << dF * x << std::endl;
+
+                    std::cerr << "nextP" << std::endl;
+                    std::cerr << CM_J * dqa * x / dt << std::endl;
+                    std::cerr << "nextL" << std::endl;
+                    std::cerr << MO_J * dqa * x / dt << std::endl;
+
+                    std::cerr << "supportvel" << std::endl;
+                    std::cerr << supportJ * dqa * x << std::endl;
+                    std::cerr << "ref interactvel" << std::endl;
+                    std::cerr << b2 << std::endl;
+                    std::cerr << "interactvel" << std::endl;
+                    std::cerr << interactJ * dqa * x << std::endl;
+
+                }
+
             }
         }
 
@@ -1255,9 +1320,9 @@ public:
         hrp::dmatrix C4_bar;
         hrp::dvector d4_bar;
         if(qp_solved){
-            hrp::dmatrix A3 = hrp::dmatrix::Zero(support_eef.size()*6+m_robot->numJoints(), m_robot->numJoints());
-            hrp::dvector b3 = hrp::dvector::Zero(support_eef.size()*6+m_robot->numJoints());
-            hrp::dmatrix WA3 = hrp::dmatrix::Identity(support_eef.size()*6+m_robot->numJoints(),support_eef.size()*6+m_robot->numJoints());
+            hrp::dmatrix A3 = hrp::dmatrix::Zero(support_eef.size()*6+m_robot->numJoints()+m_robot->numJoints()+6, m_robot->numJoints());
+            hrp::dvector b3 = hrp::dvector::Zero(support_eef.size()*6+m_robot->numJoints()+m_robot->numJoints()+6);
+            hrp::dmatrix WA3 = hrp::dmatrix::Identity(support_eef.size()*6+m_robot->numJoints()+m_robot->numJoints()+6,support_eef.size()*6+m_robot->numJoints()+m_robot->numJoints()+6);
             hrp::dmatrix C3 = hrp::dmatrix::Zero(0, m_robot->numJoints());
             hrp::dvector d3 = hrp::dvector::Zero(0);
             hrp::dmatrix WC3 = hrp::dmatrix::Identity(0,0);
@@ -1293,6 +1358,15 @@ public:
                 //TODO taumax minimize
             }
 
+            {
+                //actual vel
+                A3.block(support_eef.size()*6+m_robot->numJoints(),0,m_robot->numJoints()+6,m_robot->numJoints()) = dqa;
+                for(size_t i=0; i < m_robot->numJoints()+6;i++){
+                    WA3(support_eef.size()*6+m_robot->numJoints()+i,support_eef.size()*6+m_robot->numJoints()+i) = vel_weight;
+                }
+
+            }
+
             //solve QP
             if(debugloop){
                 std::cerr << "QP3" << std::endl;
@@ -1308,10 +1382,15 @@ public:
                 std::cerr << A3 <<std::endl;
                 std::cerr << "b3" << std::endl;
                 std::cerr << b3 <<std::endl;
+                std::cerr << "WA3" << std::endl;
+                std::cerr << WA3 <<std::endl;
                 std::cerr << "C3" << std::endl;
                 std::cerr << C3 <<std::endl;
                 std::cerr << "d3" << std::endl;
                 std::cerr << d3 <<std::endl;
+                std::cerr << "WC3" << std::endl;
+                std::cerr << WC3 <<std::endl;
+
             }
 
             hrp::dvector x;
@@ -1354,6 +1433,33 @@ public:
                           C3;
                 d4_bar << d3_bar,
                           d3;
+
+                
+                if(debugloop){
+                    std::cerr << "result3" << std::endl;
+                    std::cerr << "dq" << std::endl;
+                    std::cerr << x << std::endl;
+                    std::cerr << "acttau" << std::endl;
+                    std::cerr << acttauv << std::endl;
+                    std::cerr << "dtau" << std::endl;
+                    std::cerr << dtau * x << std::endl;
+
+                    std::cerr << "actwrench" << std::endl;
+                    std::cerr << actwrenchv << std::endl;
+                    std::cerr << "dwrench" << std::endl;
+                    std::cerr << dF * x << std::endl;
+
+                    std::cerr << "nextP" << std::endl;
+                    std::cerr << CM_J * dqa * x / dt << std::endl;
+                    std::cerr << "nextL" << std::endl;
+                    std::cerr << MO_J * dqa * x / dt << std::endl;
+
+                    std::cerr << "supportvel" << std::endl;
+                    std::cerr << supportJ * dqa * x << std::endl;
+                    std::cerr << "interactvel" << std::endl;
+                    std::cerr << interactJ * dqa * x << std::endl;
+
+                }
             }
         }
 

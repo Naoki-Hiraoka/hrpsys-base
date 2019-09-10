@@ -196,6 +196,9 @@ public:
             for(size_t i=0; i<state_len;i++){
                 x[i]=xOpt[i];
             }
+            if(debug){
+                std::cerr << x <<std::endl;
+            }
             return true;
         }else{
             if(debug){
