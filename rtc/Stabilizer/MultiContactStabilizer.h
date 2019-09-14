@@ -16,7 +16,7 @@
 #include <limits>
 #include "qpOASES_solver.h"
 #ifdef USE_OSQP
-#include <osqp.h>
+#include "osqp_solver.h"
 #endif
 //debug
 #include <sys/time.h>
@@ -839,6 +839,10 @@ public:
         hrp::dvector l_bar;
         hrp::dvector u_bar;
         hrp::dvector referencev = hrp::dvector::Zero(m_robot->numJoints());
+#ifdef USE_OSQP
+        hrp::dmatrix C0_bar_sparse = hrp::dmatrix::Zero(C0_bar.rows(), C0_bar.cols());
+        hrp::dmatrix C1_bar_sparse = hrp::dmatrix::Zero(C1_bar.rows(), C1_bar.cols());
+#endif
         if(qp_solved){
             size_t num_collision = collisioninfo.data.length() / 9;
 
@@ -848,6 +852,9 @@ public:
             hrp::dvector d0 = hrp::dvector::Zero(num_collision);
             hrp::dvector l = hrp::dvector::Zero(m_robot->numJoints());
             hrp::dvector u = hrp::dvector::Zero(m_robot->numJoints());
+#ifdef USE_OSQP
+            hrp::dmatrix C0_sparse = hrp::dmatrix::Zero(C0.rows(), C0.cols());
+#endif
 
             hrp::dmatrix K0 = hrp::dmatrix::Identity(m_robot->numJoints(),m_robot->numJoints());
             for(size_t i=0; i < m_robot->numJoints(); i++){
@@ -935,8 +942,14 @@ public:
                     linkjpes[link1_idx]->calcJacobian(JJ1/*world系*/,localp1);
                     hrp::Vector3 p1/*world系*/ = m_robot->link(link1_idx)->p/*world系*/ + m_robot->link(link1_idx)->R/*world系*/ * localp1/*link系*/;
                     hrp::dmatrix J1 = hrp::dmatrix::Zero(3,m_robot->numJoints());
+#ifdef USE_OSQP
+                    hrp::dmatrix J1_sparse = hrp::dmatrix::Zero(1,J1.cols());
+#endif
                     for(size_t j = 0; j < linkjpes[link1_idx]->numJoints(); j++){
                         J1.block<3,1>(0,linkjpes[link1_idx]->joint(j)->jointId)=JJ1.block<3,1>(0,j);
+#ifdef USE_OSQP
+                        J1_sparse(0,linkjpes[link1_idx]->joint(j)->jointId)=1;
+#endif
                     }
 
                     size_t link2_idx = collisioninfo.data[i*9+1];
@@ -945,14 +958,25 @@ public:
                     linkjpes[link2_idx]->calcJacobian(JJ2/*world系*/,localp2);
                     hrp::Vector3 p2/*world系*/ = m_robot->link(link2_idx)->p/*world系*/ + m_robot->link(link2_idx)->R/*world系*/ * localp2/*link系*/;
                     hrp::dmatrix J2 = hrp::dmatrix::Zero(3,m_robot->numJoints());
+#ifdef USE_OSQP
+                    hrp::dmatrix J2_sparse = hrp::dmatrix::Zero(1,J2.cols());
+#endif
                     for(size_t j = 0; j < linkjpes[link2_idx]->numJoints(); j++){
                         J2.block<3,1>(0,linkjpes[link2_idx]->joint(j)->jointId)=JJ2.block<3,1>(0,j);
+#ifdef USE_OSQP
+                        J2_sparse(0,linkjpes[link2_idx]->joint(j)->jointId)=1;
+#endif
                     }
 
                     double norm = (p1 - p2).norm();
 
                     if(norm !=0){
                         C0.block(i,0,1,m_robot->numJoints()) = - (p1 - p2).transpose() * (J1 - J2) / norm * K0;
+#ifdef USE_OSQP
+                        for(size_t j=0; j<m_robot->numJoints();j++){
+                            C0_sparse(i,j)=std::abs(J1_sparse(0,j)-J2_sparse(0,j));
+                        }
+#endif
                         d0[i] = (distance - mcs_collisionthre);
                     }else{
                         d0[i] = 1e10;
@@ -991,6 +1015,10 @@ public:
                 std::cerr << l <<std::endl;
                 std::cerr << "u" << std::endl;
                 std::cerr << u <<std::endl;
+#ifdef USE_OSQP
+                std::cerr << "C0_sparse" << std::endl;
+                std::cerr << C0_sparse <<std::endl;
+#endif
             }
 
             //(automatical success)
@@ -1009,6 +1037,11 @@ public:
                       d0;
             l_bar = l;
             u_bar = u;
+#ifdef USE_OSQP
+            C1_bar_sparse = hrp::dmatrix::Zero(C0_bar.rows()+C0.rows(), m_robot->numJoints());
+            C1_bar_sparse << C0_bar_sparse,
+                             C0_sparse;
+#endif
         }
 
         /****************************************************************/
@@ -1017,6 +1050,10 @@ public:
         hrp::dvector b2_bar;
         hrp::dmatrix C2_bar;
         hrp::dvector d2_bar;
+#ifdef USE_OSQP
+        hrp::dmatrix C2_bar_sparse = hrp::dmatrix::Zero(C2_bar.rows(), C2_bar.cols());
+#endif
+
         if(qp_solved){
             //TODO leave weight
 
@@ -1035,6 +1072,9 @@ public:
             hrp::dmatrix C1 = hrp::dmatrix::Zero(num_CC+m_robot->numJoints()*2, m_robot->numJoints());
             hrp::dvector d1 = hrp::dvector::Zero(num_CC+m_robot->numJoints()*2);
             hrp::dmatrix WC1 = hrp::dmatrix::Identity(num_CC+m_robot->numJoints()*2,num_CC+m_robot->numJoints()*2);
+#ifdef USE_OSQP
+            hrp::dmatrix C1_sparse = hrp::dmatrix::Zero(C1.rows(), C1.cols());
+#endif
 
             hrp::dmatrix K1 = hrp::dmatrix::Identity(m_robot->numJoints(),m_robot->numJoints());
             for(size_t i=0; i < m_robot->numJoints(); i++){
@@ -1053,7 +1093,9 @@ public:
                     d1.block(CC_idx,0,Cs[i].rows(),1) = - lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1);
                     CC_idx+=Cs[i].rows();
                 }
-
+#ifdef USE_OSQP
+                C1_sparse.block(0,0,num_CC,m_robot->numJoints()) = hrp::dmatrix::Ones(num_CC,m_robot->numJoints());
+#endif
                 CC_idx = 0;
                 for(size_t i=0; i < support_eef.size(); i++){
                     for(size_t j=0; j < weights[i].size(); j++){
@@ -1068,6 +1110,9 @@ public:
                 d1.block(num_CC,0,m_robot->numJoints(),1) = dangertaumaxv - acttauv;
                 C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()) = - dtau * K1;
                 d1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),1) = dangertaumaxv + acttauv;
+#ifdef USE_OSQP
+                C1_sparse.block(num_CC,0,m_robot->numJoints()*2,m_robot->numJoints()) = hrp::dmatrix::Ones(m_robot->numJoints()*2,m_robot->numJoints());
+#endif
 
                 for(size_t i=0; i < m_robot->numJoints()*2; i++){
                     WC1(num_CC+i,num_CC+i) = etau_weight;
@@ -1098,11 +1143,18 @@ public:
                 std::cerr << d1 <<std::endl;
                 std::cerr << "WC1" << std::endl;
                 std::cerr << WC1 <<std::endl;
+#ifdef USE_OSQP
+                std::cerr << "C1_sparse" << std::endl;
+                std::cerr << C1_sparse <<std::endl;
+                std::cerr << "C1_bar_sparse" << std::endl;
+                std::cerr << C1_bar_sparse <<std::endl;
+#endif
+
             }
 
             hrp::dvector x;
             int status;
-            bool solved = solveAbCd(x,
+            bool solved = solveAbCdosqp(x,
                                     A1_bar,
                                     b1_bar,
                                     C1_bar,
@@ -1115,6 +1167,10 @@ public:
                                     C1,
                                     d1,
                                     WC1,
+#ifdef USE_OSQP
+                                    C1_bar_sparse,
+                                    C1_sparse,
+#endif
                                     vel_weight1,
                                     status);
 
@@ -1139,7 +1195,11 @@ public:
                           C1;
                 d2_bar << d1_bar,
                           d1;
-
+#ifdef USE_OSQP
+                C2_bar_sparse = hrp::dmatrix::Zero(C1_bar.rows()+C1.rows(), m_robot->numJoints());
+                C2_bar_sparse << C1_bar_sparse,
+                                 C1_sparse;
+#endif
                 if(debugloop){
                     std::cerr << "result1" << std::endl;
                     std::cerr << "dq" << std::endl;
@@ -1176,6 +1236,9 @@ public:
         hrp::dvector b3_bar;
         hrp::dmatrix C3_bar;
         hrp::dvector d3_bar;
+#ifdef USE_OSQP
+        hrp::dmatrix C3_bar_sparse = hrp::dmatrix::Zero(C3_bar.rows(), C3_bar.cols());
+#endif
         if(qp_solved){
             hrp::dmatrix A2 = hrp::dmatrix::Zero(interact_eef.size()*6, m_robot->numJoints());
             hrp::dvector b2 = hrp::dvector::Zero(interact_eef.size()*6);
@@ -1183,7 +1246,9 @@ public:
             hrp::dmatrix C2 = hrp::dmatrix::Zero(0, m_robot->numJoints());
             hrp::dvector d2 = hrp::dvector::Zero(0);
             hrp::dmatrix WC2 = hrp::dmatrix::Identity(0,0);
-
+#ifdef USE_OSQP
+            hrp::dmatrix C2_sparse = hrp::dmatrix::Zero(C2.rows(), C2.cols());
+#endif
             {
                 //interact eef
                 hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
@@ -1247,7 +1312,12 @@ public:
                 std::cerr << d2 <<std::endl;
                 std::cerr << "WC2" << std::endl;
                 std::cerr << WC2 <<std::endl;
-
+#ifdef USE_OSQP
+                std::cerr << "C2_sparse" << std::endl;
+                std::cerr << C2_sparse <<std::endl;
+                std::cerr << "C2_bar_sparse" << std::endl;
+                std::cerr << C2_bar_sparse <<std::endl;
+#endif
             }
 
             hrp::dvector x;
@@ -1265,6 +1335,10 @@ public:
                                     C2,
                                     d2,
                                     WC2,
+// #ifdef USE_OSQP
+//                                     C2_bar_sparse,
+//                                     C2_sparse,
+// #endif
                                     vel_weight2,
                                     status);
 
@@ -1289,6 +1363,11 @@ public:
                           C2;
                 d3_bar << d2_bar,
                           d2;
+#ifdef USE_OSQP
+                C3_bar_sparse = hrp::dmatrix::Zero(C2_bar.rows()+C2.rows(), m_robot->numJoints());
+                C3_bar_sparse << C2_bar_sparse,
+                                 C2_sparse;
+#endif
 
                 if(debugloop){
                     std::cerr << "result2" << std::endl;
@@ -1331,6 +1410,10 @@ public:
             hrp::dmatrix C3 = hrp::dmatrix::Zero(0, m_robot->numJoints());
             hrp::dvector d3 = hrp::dvector::Zero(0);
             hrp::dmatrix WC3 = hrp::dmatrix::Identity(0,0);
+#ifdef USE_OSQP
+            hrp::dmatrix C3_sparse = hrp::dmatrix::Zero(C3.rows(), C3.cols());
+#endif
+
 
             hrp::dmatrix K3 = hrp::dmatrix::Identity(m_robot->numJoints(),m_robot->numJoints());
             for(size_t i=0; i < m_robot->numJoints(); i++){
@@ -1395,6 +1478,12 @@ public:
             C3max.block(0,0,C3.rows(),C3.cols()) = C3;
             d3max.block(0,0,d3.rows(),d3.cols()) = d3;
             WC3max.block(0,0,WC3.rows(),WC3.cols()) = WC3;
+#ifdef USE_OSQP
+            hrp::dmatrix C3max_bar_sparse = hrp::dmatrix::Zero(C3_bar_sparse.rows()+m_robot->numJoints()*2, C3_bar_sparse.cols()+1);//taumax
+            hrp::dmatrix C3max_sparse = hrp::dmatrix::Zero(C3_sparse.rows(), C3_sparse.cols()+1);
+            C3max_bar_sparse.block(0,0,C3_bar_sparse.rows(),C3_bar_sparse.cols()) = C3_bar_sparse;
+            C3max_sparse.block(0,0,C3_sparse.rows(),C3_sparse.cols()) = C3_sparse;
+#endif
 
             {
                 //taumax minimize
@@ -1421,6 +1510,9 @@ public:
                 }
                 lmax_bar[lmax_bar.rows()-1] = -1e10;
                 umax_bar[umax_bar.rows()-1] = 1e10;
+#ifdef USE_OSQP
+                C3max_bar_sparse.block(C3max_bar.rows()-m_robot->numJoints()*2,0,m_robot->numJoints()*2,m_robot->numJoints()+1) = hrp::dmatrix::Ones(m_robot->numJoints()*2,m_robot->numJoints()+1);
+#endif
             }
 
 
@@ -1451,6 +1543,12 @@ public:
                 std::cerr << d3max <<std::endl;
                 std::cerr << "WC3max" << std::endl;
                 std::cerr << WC3max <<std::endl;
+#ifdef USE_OSQP
+                std::cerr << "C3max_bar_sparse" << std::endl;
+                std::cerr << C3max_bar_sparse <<std::endl;
+                std::cerr << "C3max_sparse" << std::endl;
+                std::cerr << C3max_sparse <<std::endl;
+#endif
 
             }
 
@@ -1469,6 +1567,10 @@ public:
                                     C3max,
                                     d3max,
                                     WC3max,
+// #ifdef USE_OSQP
+//                                     C3max_bar_sparse,
+//                                     C3max_sparse,
+// #endif
                                     vel_weight3,
                                     status);
 
@@ -2010,6 +2112,115 @@ public:
         return solved;
     }
 
+    double solveAbCdosqp(hrp::dvector& x,
+                     const hrp::dmatrix& A_bar,
+                     const hrp::dvector& b_bar,
+                     const hrp::dmatrix& C_bar,
+                     const hrp::dvector& d_bar,
+                     const hrp::dvector& l_bar,
+                     const hrp::dvector& u_bar,
+                     const hrp::dmatrix& A,
+                     const hrp::dvector& b,
+                     const hrp::dmatrix& WA,
+                     const hrp::dmatrix& C,
+                     const hrp::dvector& d,
+                     const hrp::dmatrix& WC,
+#ifdef USE_OSQP
+                     const hrp::dmatrix& C_bar_sparse,
+                     const hrp::dmatrix& C_sparse,
+#endif
+                     double vel_w,
+                     int& status
+                     ){
+        size_t state_len = A_bar.cols() + C.rows();
+        size_t inequality_len = A_bar.rows()*2 + C_bar.rows() + C.rows();
+
+        hrp::dmatrix qp_H = hrp::dmatrix::Zero(state_len,state_len);
+        hrp::dmatrix qp_g = hrp::dmatrix::Zero(1,state_len);
+        hrp::dmatrix qp_A = hrp::dmatrix::Zero(inequality_len,state_len);
+        hrp::dvector qp_ubA = hrp::dvector::Zero(inequality_len);
+        hrp::dvector qp_lbA = hrp::dvector::Zero(0);
+        hrp::dvector qp_l = hrp::dvector::Zero(state_len);
+        hrp::dvector qp_u = hrp::dvector::Zero(state_len);
+        for(size_t i=0; i<state_len;i++){
+            qp_l[i]=-1e10;
+            qp_u[i]=1e10;
+        }
+
+        qp_H.block(0,0,A_bar.cols(),A_bar.cols()) += A.transpose() * WA * A;
+        qp_g.block(0,0,1,A_bar.cols()) += - b.transpose() * WA * A;
+        qp_H.block(A_bar.cols(),A_bar.cols(),C.rows(),C.rows()) += WC;
+        qp_A.block(0,0,A_bar.rows(),A_bar.cols()) += A_bar;
+        qp_ubA.block(0,0,A_bar.rows(),1) += b_bar;
+        qp_A.block(A_bar.rows(),0,A_bar.rows(),A_bar.cols()) += -A_bar;
+        qp_ubA.block(A_bar.rows(),0,A_bar.rows(),1) += -b_bar;
+        qp_A.block(A_bar.rows()*2,0,C_bar.rows(),C_bar.cols()) += C_bar;
+        qp_ubA.block(A_bar.rows()*2,0,C_bar.rows(),1) += d_bar;
+        qp_A.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),C.cols()) += C;
+        qp_A.block(A_bar.rows()*2+C_bar.rows(),A_bar.cols(),C.rows(),C.rows()) += -hrp::dmatrix::Identity(C.rows(),C.rows());
+        qp_ubA.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),1) += d;
+        qp_l.block(0,0,l_bar.rows(),1) = l_bar;
+        qp_u.block(0,0,u_bar.rows(),1) = u_bar;
+        for(size_t i=0; i<A_bar.cols();i++){
+            qp_H(i,i)+=vel_w;
+        }
+
+#ifdef USE_OSQP
+        qp_lbA = hrp::dvector::Zero(inequality_len);
+        for(size_t i=0; i<inequality_len;i++){
+            qp_lbA[i]=-1e10;
+        }
+        hrp::dmatrix qp_Hsparse = hrp::dmatrix::Identity(state_len,state_len);
+        hrp::dmatrix qp_Asparse = hrp::dmatrix::Zero(inequality_len,state_len);
+
+        if(A.rows() > 0) qp_Hsparse.block(0,0,A_bar.cols(),A_bar.cols()) = hrp::dmatrix::Ones(A_bar.cols(),A_bar.cols());
+
+        qp_Asparse.block(0,0,A_bar.rows(),A_bar.cols()) = hrp::dmatrix::Ones(A_bar.rows(),A_bar.cols());
+        qp_Asparse.block(A_bar.rows(),0,A_bar.rows(),A_bar.cols()) = hrp::dmatrix::Ones(A_bar.rows(),A_bar.cols());
+        qp_Asparse.block(A_bar.rows()*2,0,C_bar.rows(),C_bar.cols()) = C_bar_sparse;
+        qp_Asparse.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),C.cols()) = C_sparse;
+        qp_Asparse.block(A_bar.rows()*2+C_bar.rows(),A_bar.cols(),C.rows(),C.rows()) = hrp::dmatrix::Identity(C.rows(),C.rows());
+
+        hrp::dvector xOpt;
+        bool solved = solve_osqp(osqp_map,
+                                 xOpt,
+                                 status,
+                                 state_len,
+                                 inequality_len,
+                                 qp_H,
+                                 qp_g,
+                                 qp_A,
+                                 qp_l,
+                                 qp_u,
+                                 qp_lbA,
+                                 qp_ubA,
+                                 qp_Hsparse,
+                                 qp_Asparse,
+                                 debugloop);
+#else
+
+        hrp::dvector xOpt;
+        bool solved = solve_qpOASES(sqp_map,
+                                 xOpt,
+                                 status,
+                                 state_len,
+                                 inequality_len,
+                                 qp_H,
+                                 qp_g,
+                                 qp_A,
+                                 qp_l,
+                                 qp_u,
+                                 qp_lbA,
+                                 qp_ubA,
+                                 debugloop);
+#endif
+        if(solved){
+            if(x.rows() != A_bar.cols())x=hrp::dvector::Zero(A_bar.cols());
+            x = xOpt.block(0,0,x.rows(),1);
+        }
+        return solved;
+    }
+
     void sync_2_st(){//初期化
         std::cerr << "[MCS] sync_2_st"<< std::endl;
 
@@ -2388,7 +2599,7 @@ private:
     std::vector<bool> is_passive;
     std::map<std::pair<int, int>, boost::shared_ptr<qpOASES_solver> > sqp_map;
 #ifdef USE_OSQP
-    std::map<std::pair<int, int>, OSQPWorkspace* > osqp_map;
+    std::vector<std::pair<std::pair<hrp::dmatrix, hrp::dmatrix>, boost::shared_ptr<osqp_solver> > > osqp_map;
 #endif
     hrp::dvector qcurv;
     hrp::Vector3 cur_root_p/*refworld系*/;
