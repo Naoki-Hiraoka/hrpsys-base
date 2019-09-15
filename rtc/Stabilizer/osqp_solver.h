@@ -82,6 +82,7 @@ public:
         //settings->linsys_solver = MKL_PARDISO_SOLVER;
         //settings->max_iter = 10000;//4000でも多い。0.01s程度かかる
         //settings->verbose = true;
+        settings->verbose = false;
         settings->max_iter = 4000;
         //settings->time_limit = 5e-3;
         settings->eps_abs = 1e-05;//最適性の精度を上げる?

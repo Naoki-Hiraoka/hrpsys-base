@@ -599,10 +599,6 @@ public:
             std::cerr << "calcMultiContactControl start" << std::endl;
         }
 
-        //hogehoge
-        struct timeval s_all, e_all;
-        gettimeofday(&s_all, NULL);
-
         coil::Guard<coil::Mutex> guard(m_mutex);
         const hrp::Vector3 gravity(0, 0, 9.80665);
 
@@ -1753,10 +1749,6 @@ public:
             std::cerr << "calcMultiContactControl end" << std::endl;
         }
 
-
-        //hogehoge
-        gettimeofday(&e_all, NULL);
-        std::cerr << "all time: " << (e_all.tv_sec - s_all.tv_sec) + (e_all.tv_usec - s_all.tv_usec)*1.0E-6 << std::endl;
 
     }
 
