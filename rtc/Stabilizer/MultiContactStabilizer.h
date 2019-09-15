@@ -468,7 +468,7 @@ public:
 
         std::vector<boost::shared_ptr<EndEffector> > act_contact_eef;
         for(size_t i = 0; i < eefnum ; i++){
-            if(endeffector[i]->act_contact_state)act_contact_eef.push_back(endeffector[i]);
+            if(endeffector[i]->act_contact_state && endeffector[i]->ref_contact_state)act_contact_eef.push_back(endeffector[i]);
         }
         //act_footorigin: actworldに映したfootorigincoord原点，actworldに映したrefworldの傾き, 微分するとゼロ
         if(act_contact_eef.size() > 0){
@@ -1092,8 +1092,8 @@ public:
                 //wrench
                 size_t CC_idx=0;
                 for(size_t i=0;i<support_eef.size(); i++){
-                    C1.block(CC_idx,0,Cs[i].rows(),m_robot->numJoints()).noalias() = - Cs[i] * dF.block(i*6,0,6,dF.cols()) * K1;
-                    d1.segment(CC_idx,Cs[i].rows()) = - lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1);
+                    C1.block(CC_idx,0,Cs[i].rows(),m_robot->numJoints()).noalias() = - 1.0 / eforcevel_weight * Cs[i] * dF.block(i*6,0,6,dF.cols()) * K1;
+                    d1.segment(CC_idx,Cs[i].rows()).noalias() = 1.0 / eforcevel_weight * (- lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1));
                     CC_idx+=Cs[i].rows();
                 }
 #ifdef USE_OSQP
@@ -1102,23 +1102,23 @@ public:
                 CC_idx = 0;
                 for(size_t i=0; i < support_eef.size(); i++){
                     for(size_t j=0; j < weights[i].size(); j++){
-                        WC1(CC_idx,CC_idx) = weights[i][j] * eforce_weight;
+                        WC1(CC_idx,CC_idx) = weights[i][j] * eforce_weight * std::pow(eforcevel_weight,2);
                         CC_idx++;
                     }
                 }
             }
             {
                 //torque
-                C1.block(num_CC,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = dtau * K1;
-                d1.segment(num_CC,m_robot->numJoints()) = dangertaumaxv - acttauv;
-                C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()).noalias() = - dtau * K1;
-                d1.segment(num_CC+m_robot->numJoints(),m_robot->numJoints()) = dangertaumaxv + acttauv;
+                C1.block(num_CC,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = 1.0 / etauvel_weight * dtau * K1;
+                d1.segment(num_CC,m_robot->numJoints()).noalias() = 1.0 / etauvel_weight * (dangertaumaxv - acttauv);
+                C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()).noalias() = - 1.0 / etauvel_weight * dtau * K1;
+                d1.segment(num_CC+m_robot->numJoints(),m_robot->numJoints()).noalias() = 1.0 / etauvel_weight * (dangertaumaxv + acttauv);
 #ifdef USE_OSQP
                 C1_sparse.block(num_CC,0,m_robot->numJoints()*2,m_robot->numJoints()).setOnes();
 #endif
 
                 for(size_t i=0; i < m_robot->numJoints()*2; i++){
-                    WC1(num_CC+i,num_CC+i) = etau_weight;
+                    WC1(num_CC+i,num_CC+i) = etau_weight * std::pow(etauvel_weight,2);
                 }
 
             }
