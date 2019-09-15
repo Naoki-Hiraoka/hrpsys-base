@@ -1351,22 +1351,24 @@ public:
                 error_num = status;
             }else{
 
-                A3_bar = hrp::dmatrix(A2_bar.rows()+A2.rows(), m_robot->numJoints());
-                b3_bar = hrp::dvector(b2_bar.rows()+b2.rows());
-                A3_bar << A2_bar,
-                          A2;
-                b3_bar << b2_bar,
-                          A2*x;
+                A3_bar = A2_bar;
+                b3_bar = b2_bar;
+                hrp::dvector tmp_A2xminusb = (A2 * x - b2).cwiseAbs();
                 hrp::dvector tmp_C2x = C2 * x;
                 for(size_t i=0; i<d2.rows();i++){
                     if(tmp_C2x[i]>d2[i]) d2[i] = tmp_C2x[i];
                 }
-                C3_bar = hrp::dmatrix(C2_bar.rows()+C2.rows(), m_robot->numJoints());
-                d3_bar = hrp::dvector(d2_bar.rows()+d2.rows());
+                C3_bar = hrp::dmatrix(C2_bar.rows()+A2.rows()*2+C2.rows(), m_robot->numJoints());
+                d3_bar = hrp::dvector(d2_bar.rows()+b2.rows()*2+d2.rows());
                 C3_bar << C2_bar,
+                          A2,
+                          -A2,
                           C2;
                 d3_bar << d2_bar,
+                          b2+tmp_A2xminusb,
+                          -b2+tmp_A2xminusb,
                           d2;
+
 // #ifdef USE_OSQP
 //                 C3_bar_sparse = hrp::dmatrix(C2_bar.rows()+C2.rows(), m_robot->numJoints());
 //                 C3_bar_sparse << C2_bar_sparse,
