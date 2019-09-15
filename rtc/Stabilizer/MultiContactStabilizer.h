@@ -536,6 +536,7 @@ public:
         for (size_t i = 0; i< eefnum; i++){
             endeffector[i]->ref_p_origin/*ref_footorigin系*/ = ref_footorigin_R/*refworld系*/.transpose() * (endeffector[i]->ref_p/*refworld系*/ - ref_footorigin_p/*refworld系*/);
             endeffector[i]->ref_R_origin/*ref_footorigin系*/ = ref_footorigin_R/*refworld系*/.transpose() * endeffector[i]->ref_R/*refworld系*/;
+            endeffector[i]->ref_R_act/*actworld系*/ = act_footorigin_R/*actworld系*/ * endeffector[i]->ref_R_origin/*ref_footorigin系*/;
             endeffector[i]->act_p_origin/*act_footorigin系*/ = act_footorigin_R/*actworld系*/.transpose() * (endeffector[i]->act_p/*actworld系*/ - act_footorigin_p/*actworld系*/);
             endeffector[i]->act_R_origin/*act_footorigin系*/ = act_footorigin_R/*actworld系*/.transpose() * endeffector[i]->act_R/*actworld系*/;
         }
@@ -660,7 +661,7 @@ public:
             if(endeffector[i]->act_contact_state) support_eef.push_back(endeffector[i]);
         }
 
-        hrp::dmatrix supportJ/*act eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*support_eef.size(),6+m_robot->numJoints());
+        hrp::dmatrix supportJ/*act eef系(ContactWrench評価用local系),eefまわり<->joint*/ = hrp::dmatrix::Zero(6*support_eef.size(),6+m_robot->numJoints());
         //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
         for(size_t i=0;i<support_eef.size();i++){
             supportJ.block<3,3>(i*6,0)= support_eef[i]->act_R/*actworld系*/.transpose();
@@ -668,20 +669,35 @@ public:
             supportJ.block<3,3>(i*6+3,3)= support_eef[i]->act_R/*actworld系*/.transpose();
             hrp::dmatrix JJ;
             support_eef[i]->jpe->calcJacobian(JJ,support_eef[i]->localp);
-            JJ.block(0,0,3,JJ.cols()) = support_eef[i]->act_R/*actworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
-            JJ.block(3,0,3,JJ.cols()) = support_eef[i]->act_R/*actworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
+            hrp::dmatrix contactR/*actworld系<->ContactWrench評価用local系*/ = support_eef[i]->getRforContactWrench();
+            JJ.block(0,0,3,JJ.cols()) = contactR/*actworld系*/.transpose() * JJ.block(0,0,3,JJ.cols());
+            JJ.block(3,0,3,JJ.cols()) = contactR/*actworld系*/.transpose() * JJ.block(3,0,3,JJ.cols());
             for(size_t j = 0; j < support_eef[i]->jpe->numJoints(); j++){
                 supportJ.block<6,1>(i*6,6+support_eef[i]->jpe->joint(j)->jointId)=JJ.block<6,1>(0,j);
             }
         }
 
+        size_t num_controllablewrench = 0;
+        for(size_t i=0;i<support_eef.size();i++){
+            num_controllablewrench += support_eef[i]->getnumControllableWrench();
+        }
+        hrp::dmatrix supportS/*controllablewrench(eef系(ContactWrench評価用local系),eefまわり)<->wrench(eef系(ContactWrench評価用local系),eefまわり)*/ = hrp::dmatrix::Zero(num_controllablewrench,6*support_eef.size());
+        {
+            size_t wrench_idx = 0;
+            for(size_t i=0;i<support_eef.size();i++){
+                size_t wrench_num = support_eef[i]->getnumControllableWrench();
+                supportS.block(wrench_idx,i*6,wrench_num,6) = support_eef[i]->getControllableWrenchSelectMatrix();
+                wrench_idx += wrench_num;
+            }
+        }
+
         //位置制御matrix
-        hrp::dmatrix M = hrp::dmatrix::Zero(6+m_robot->numJoints()+supportJ.rows(),6+m_robot->numJoints()+supportJ.rows());
+        hrp::dmatrix M = hrp::dmatrix::Zero(6+m_robot->numJoints()+supportS.rows(),6+m_robot->numJoints()+supportS.rows());
         M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) = Jgrav;
         M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) += -Jcnt;
         M.block(6,6,m_robot->numJoints(),m_robot->numJoints()) += K;
-        M.bottomLeftCorner(supportJ.rows(),supportJ.cols()) = supportJ;
-        M.topRightCorner(supportJ.cols(),supportJ.rows()) = -supportJ.transpose();
+        M.bottomLeftCorner(supportS.rows(),supportJ.cols()).noalias() = supportS * supportJ;
+        M.topRightCorner(supportJ.cols(),supportS.rows()).noalias() = -supportJ.transpose() * supportS.transpose();
 
         hrp::dmatrix Minv;
         hrp::calcPseudoInverse(M, Minv,mcs_sv_ratio/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
@@ -692,15 +708,16 @@ public:
         // \Delta q^a = dqa \Delta q^c
         hrp::dmatrix dqa = Minv.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) * r;
         // \Delta F = dF \Delta q^c
-        hrp::dmatrix dF/*eef系,eefまわり*/ = Minv.bottomLeftCorner(supportJ.rows(),6+m_robot->numJoints()) * r;
+        hrp::dmatrix dF/*eef系(ContactWrench評価用local系),eefまわり*/ = supportS.transpose() * Minv.bottomLeftCorner(supportS.rows(),6+m_robot->numJoints()) * r;
         // \Delta \tau = dtau \Delta q^c
         hrp::dmatrix dtau = K - K * dqa.bottomRows(m_robot->numJoints());
 
         // F^a
-        hrp::dvector actwrenchv(supportJ.rows());
+        hrp::dvector actwrenchv(supportJ.rows())/*eef系(ContactWrench評価用local系),eefまわり*/;
         for(size_t i =0; i < support_eef.size(); i++){
-            actwrenchv.block<3,1>(i*6,0) = support_eef[i]->act_force_eef;
-            actwrenchv.block<3,1>(i*6+3,0) = support_eef[i]->act_moment_eef;
+            hrp::dmatrix contactR/*actworld系<->ContactWrench評価用local系*/ = support_eef[i]->getRforContactWrench();
+            actwrenchv.segment<3>(i*6).noalias() = contactR.transpose() * support_eef[i]->act_force/*actworld系*/;
+            actwrenchv.segment<3>(i*6+3).noalias() = contactR.transpose() * support_eef[i]->act_moment/*actworld系*/;
         }
 
         std::vector<boost::shared_ptr<EndEffector> > interact_eef;

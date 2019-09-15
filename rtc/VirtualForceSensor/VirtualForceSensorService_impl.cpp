@@ -11,6 +11,17 @@ VirtualForceSensorService_impl::~VirtualForceSensorService_impl()
 {
 }
 
+void VirtualForceSensorService_impl::getParameter(OpenHRP::VirtualForceSensorService::vsParam_out i_param)
+{
+  i_param = OpenHRP::VirtualForceSensorService::vsParam();
+  return m_vfsensor->getParameter(i_param);
+};
+
+void VirtualForceSensorService_impl::setParameter(const OpenHRP::VirtualForceSensorService::vsParam& i_stp)
+{
+    m_vfsensor->setParameter(i_stp);
+}
+
 CORBA::Boolean VirtualForceSensorService_impl::removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& sensorNames, CORBA::Double tm)
 {
 	return m_vfsensor->removeVirtualForceSensorOffset(sensorNames, tm);

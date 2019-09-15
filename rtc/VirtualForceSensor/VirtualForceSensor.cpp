@@ -192,7 +192,12 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   for (size_t i = 0; i < m_robot->numSensors(hrp::Sensor::FORCE); i++){
       jpe_v.push_back(hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->sensor(hrp::Sensor::FORCE, i)->link, m_dt, false, std::string(m_profile.instance_name))));
   }
-  
+
+  root_force_weight = 100.0;
+  root_moment_weight = 100.0;
+  joint_torque_weight = 1.0;
+  weight = 1e-6;
+
   return RTC::RTC_OK;
 }
 
@@ -238,11 +243,6 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
   static int loop = 0;
   loop ++;
 
-  coil::TimeValue coiltm(coil::gettimeofday());
-  RTC::Time tm;
-  tm.sec = coiltm.sec();
-  tm.nsec = coiltm.usec()*1000;
-
   if (m_qCurrentIn.isNew()) {
     m_qCurrentIn.read();
   }
@@ -257,7 +257,9 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
           m_wrenchesIn[i]->read();
       }
   }
-  
+
+  RTC::Time tm = m_qCurrent.tm;
+
   if ( m_qCurrent.data.length() ==  m_robot->numJoints() &&
        m_tauIn.data.length() ==  m_robot->numJoints()) {
     // robotの状態の更新
@@ -285,7 +287,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
       m_robot->joint(i)->ddq = ddqCurrent[i];
     }
     hrp::Matrix33 baseR = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
-    //hrp::Vector3 basew = rats::matrix_log( baseR * baseRprev.transpose() ) / m_dt;
+    //hrp::Vector3 basew = rats::matrix_log( baseR * baseRprev.transpose() ) / m_dt; TODO
     hrp::Vector3 basew = hrp::Vector3::Zero();
     basew = basewFilter->passFilter(basew);
     hrp::Vector3 basedw = (basew - basewprev) /m_dt;
@@ -426,11 +428,10 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         hrp::dmatrix g = hrp::dmatrix::Zero(1,6 * enable_sensors.size());
         std::vector<hrp::dmatrix> As;
         std::vector<hrp::dvector> lbAs;
-        std::vector<hrp::dvector> ubAs;
         hrp::dvector lb;
         hrp::dvector ub;
 
-        hrp::dmatrix J = hrp::dmatrix::Zero(6 * enable_sensors.size(),m_robot->numJoints());
+        hrp::dmatrix J = hrp::dmatrix::Zero(6 * enable_sensors.size(),6+m_robot->numJoints());
         {
             for (size_t i = 0 ; i < enable_sensors.size(); i++){
                 hrp::dmatrix JJ;
@@ -445,9 +446,23 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
                 }
             }
         }
+        hrp::dmatrix W = hrp::dmatrix::Zero(6+m_robot->numJoints(),6+m_robot->numJoints());
+        for(size_t i=0; i < 3; i++){
+            W(i,i) = root_force_weight;
+        }
+        for(size_t i=0; i < 3; i++){
+            W(3+i,3+i) = root_moment_weight;
+        }
+        for(size_t i=0; i < m_robot->numJoints(); i++){
+            W(6+i,6+i) = joint_torque_weight;
+        }
 
-        H = J * J.transpose();
-        g = - J * Tvirtual;
+        H = J * W * J.transpose();
+        g = - J * W * Tvirtual;
+
+        for(size_t i = 0; i < H.cols(); i++){
+            H(i,i) += weight;
+        }
 
         {
             hrp::dmatrix A = hrp::dmatrix::Zero(11 * enable_sensors.size(),6 * enable_sensors.size());
@@ -482,13 +497,10 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         }
         {
             hrp::dvector lbA = hrp::dvector::Zero(enable_sensors.size() * 11);
-            hrp::dvector ubA = hrp::dvector::Zero(enable_sensors.size() * 11);
             for (size_t i = 0; i < enable_sensors.size() * 11; i++){
                 lbA[i] = 0.0;
-                ubA[i] = 1e10;
             }
             lbAs.push_back(lbA);
-            ubAs.push_back(ubA);
         }
 
         /*****************************************************************/
@@ -500,7 +512,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
         qpOASES::real_t* qp_g = new qpOASES::real_t[state_len];// 0.5 xt H x + xt g が目的関数であることに注意
         qpOASES::real_t* qp_ub = NULL;
         qpOASES::real_t* qp_lb = NULL;
-        qpOASES::real_t* qp_ubA = new qpOASES::real_t[inequality_len];
+        qpOASES::real_t* qp_ubA = NULL;
         qpOASES::real_t* qp_lbA = new qpOASES::real_t[inequality_len];
 
         for (size_t i = 0; i < state_len; i++) {
@@ -521,7 +533,6 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
                         qp_A[state_len*inequality_idx + k] = As[i](j,k);
                     }
                     qp_lbA[inequality_idx] = lbAs[i][j];
-                    qp_ubA[inequality_idx] = ubAs[i][j];
                     inequality_idx++;
                 }
             }
@@ -717,6 +728,26 @@ RTC::ReturnCode_t VirtualForceSensor::onRateChanged(RTC::UniqueId ec_id)
   return RTC::RTC_OK;
 }
 */
+
+void VirtualForceSensor::setParameter(const OpenHRP::VirtualForceSensorService::vsParam& i_stp)
+{
+    root_force_weight = i_stp.root_force_weight;
+    std::cerr << "[" << m_profile.instance_name << "] root_force_weight " << root_force_weight << std::endl;
+    root_moment_weight = i_stp.root_moment_weight;
+    std::cerr << "[" << m_profile.instance_name << "] root_moment_weight " << root_moment_weight << std::endl;
+    joint_torque_weight = i_stp.joint_torque_weight;
+    std::cerr << "[" << m_profile.instance_name << "] joint_torque_weight " << joint_torque_weight << std::endl;
+    weight = i_stp.weight;
+    std::cerr << "[" << m_profile.instance_name << "] weight " << weight << std::endl;
+}
+
+void VirtualForceSensor::getParameter(OpenHRP::VirtualForceSensorService::vsParam& i_stp)
+{
+    i_stp.root_force_weight = root_force_weight;
+    i_stp.root_moment_weight = root_moment_weight;
+    i_stp.joint_torque_weight = joint_torque_weight;
+    i_stp.weight = weight;
+}
 
 bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& sensorNames, const double tm)
 {

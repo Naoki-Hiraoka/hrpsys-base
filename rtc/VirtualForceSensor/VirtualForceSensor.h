@@ -150,6 +150,9 @@ class VirtualForceSensor
   // no corresponding operation exists in OpenRTm-aist-0.2.0
   // virtual RTC::ReturnCode_t onRateChanged(RTC::UniqueId ec_id);
 
+  void getParameter(OpenHRP::VirtualForceSensorService::vsParam& i_stp);
+  void setParameter(const OpenHRP::VirtualForceSensorService::vsParam& i_stp);
+
   bool removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& sensorNames, const double tm);
 
   bool removeExternalForceOffset(const double tm);
@@ -242,6 +245,11 @@ class VirtualForceSensor
   coil::Mutex m_mutex;
 
   std::map<std::pair<int, int>, boost::shared_ptr<qpOASES::SQProblem> > sqp_map;
+
+  double root_force_weight;
+  double root_moment_weight;
+  double joint_torque_weight;
+  double weight;
 };
 
 
