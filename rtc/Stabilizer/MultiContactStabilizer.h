@@ -599,6 +599,10 @@ public:
             std::cerr << "calcMultiContactControl start" << std::endl;
         }
 
+        //hogehoge
+        struct timeval s_all, e_all;
+        gettimeofday(&s_all, NULL);
+
         coil::Guard<coil::Mutex> guard(m_mutex);
         const hrp::Vector3 gravity(0, 0, 9.80665);
 
@@ -677,24 +681,24 @@ public:
 
         //位置制御matrix
         hrp::dmatrix M = hrp::dmatrix::Zero(6+m_robot->numJoints()+supportJ.rows(),6+m_robot->numJoints()+supportJ.rows());
-        M.block(0,0,6+m_robot->numJoints(),6+m_robot->numJoints()) += Jgrav;
-        M.block(0,0,6+m_robot->numJoints(),6+m_robot->numJoints()) += -Jcnt;
+        M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) += Jgrav;
+        M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) += -Jcnt;
         M.block(6,6,m_robot->numJoints(),m_robot->numJoints()) += K;
-        M.block(6+m_robot->numJoints(),0,supportJ.rows(),6+m_robot->numJoints()) += supportJ;
-        M.block(0,6+m_robot->numJoints(),6+m_robot->numJoints(),supportJ.rows()) += -supportJ.transpose();
+        M.bottomLeftCorner(supportJ.rows(),supportJ.cols()) += supportJ;
+        M.topRightCorner(supportJ.cols(),supportJ.rows()) += -supportJ.transpose();
 
         hrp::dmatrix Minv;
         hrp::calcPseudoInverse(M, Minv,mcs_sv_ratio/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
 
         hrp::dmatrix r = hrp::dmatrix::Zero(6+m_robot->numJoints(),m_robot->numJoints());
-        r.block(6,0,m_robot->numJoints(),m_robot->numJoints()) = K;
+        r.bottomRows(m_robot->numJoints()) = K;
 
         // \Delta q^a = dqa \Delta q^c
-        hrp::dmatrix dqa = Minv.block(0,0,6+m_robot->numJoints(),6+m_robot->numJoints()) * r;
+        hrp::dmatrix dqa = Minv.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) * r;
         // \Delta F = dF \Delta q^c
-        hrp::dmatrix dF/*eef系,eefまわり*/ = Minv.block(6+m_robot->numJoints(),0,supportJ.rows(),6+m_robot->numJoints()) * r;
+        hrp::dmatrix dF/*eef系,eefまわり*/ = Minv.bottomLeftCorner(supportJ.rows(),6+m_robot->numJoints()) * r;
         // \Delta \tau = dtau \Delta q^c
-        hrp::dmatrix dtau = K - K * dqa.block(6,0,m_robot->numJoints(),m_robot->numJoints());
+        hrp::dmatrix dtau = K - K * dqa.bottomRows(m_robot->numJoints());
 
         // F^a
         hrp::dvector actwrenchv(supportJ.rows());
@@ -726,18 +730,20 @@ public:
         }
 
         //重心ヤコビアン、角運動量ヤコビアン
-        hrp::dmatrix tmp_CM_J;
-        m_robot->calcCMJacobian(NULL,tmp_CM_J);//CM_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順
         hrp::dmatrix CM_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
-        CM_J.block<3,6>(0,0) = tmp_CM_J.block<3,6>(0,m_robot->numJoints());
-        CM_J.block(0,0,3,m_robot->numJoints()) = tmp_CM_J.block(0,0,3,m_robot->numJoints());
-
-        hrp::dmatrix tmp_MO_J;
-        m_robot->calcAngularMomentumJacobian(NULL,tmp_MO_J);//MO_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順.actworld系,cogまわり
+        if(debugloop){
+            hrp::dmatrix tmp_CM_J;
+            m_robot->calcCMJacobian(NULL,tmp_CM_J);//CM_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順
+            CM_J.block<3,6>(0,0) = tmp_CM_J.block<3,6>(0,m_robot->numJoints());
+            CM_J.block(0,0,3,m_robot->numJoints()) = tmp_CM_J.block(0,0,3,m_robot->numJoints());
+        }
         hrp::dmatrix MO_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
-        MO_J.block<3,6>(0,0) = tmp_MO_J.block<3,6>(0,m_robot->numJoints());
-        MO_J.block(0,0,3,m_robot->numJoints()) = tmp_MO_J.block(0,0,3,m_robot->numJoints());
-
+        if(debugloop){
+            hrp::dmatrix tmp_MO_J;
+            m_robot->calcAngularMomentumJacobian(NULL,tmp_MO_J);//MO_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順.actworld系,cogまわり
+            MO_J.block<3,6>(0,0) = tmp_MO_J.block<3,6>(0,m_robot->numJoints());
+            MO_J.block(0,0,3,m_robot->numJoints()) = tmp_MO_J.block(0,0,3,m_robot->numJoints());
+        }
 
         //関節角度上下限
         hrp::dvector llimit = hrp::dvector::Zero(m_robot->numJoints());
@@ -1747,6 +1753,10 @@ public:
         }
 
 
+        //hogehoge
+        gettimeofday(&e_all, NULL);
+        std::cerr << "all time: " << (e_all.tv_sec - s_all.tv_sec) + (e_all.tv_usec - s_all.tv_usec)*1.0E-6 << std::endl;
+
     }
 
     double solveAbCd(hrp::dvector& x,
@@ -1773,27 +1783,25 @@ public:
         hrp::dmatrix qp_A = hrp::dmatrix::Zero(inequality_len,state_len);
         hrp::dvector qp_ubA = hrp::dvector::Zero(inequality_len);
         hrp::dvector qp_lbA = hrp::dvector::Zero(0);
-        hrp::dvector qp_l = hrp::dvector::Zero(state_len);
-        hrp::dvector qp_u = hrp::dvector::Zero(state_len);
-        for(size_t i=0; i<state_len;i++){
-            qp_l[i]=-1e10;
-            qp_u[i]=1e10;
-        }
+        hrp::dvector qp_l = hrp::dvector(state_len);
+        hrp::dvector qp_u = hrp::dvector(state_len);
+        qp_l.fill(-1e10);
+        qp_u.fill(1e10);
 
-        qp_H.block(0,0,A_bar.cols(),A_bar.cols()) += A.transpose() * WA * A;
-        qp_g.block(0,0,1,A_bar.cols()) += - b.transpose() * WA * A;
-        qp_H.block(A_bar.cols(),A_bar.cols(),C.rows(),C.rows()) += WC;
-        qp_A.block(0,0,A_bar.rows(),A_bar.cols()) += A_bar;
-        qp_ubA.block(0,0,A_bar.rows(),1) += b_bar;
+        qp_H.topLeftCorner(A_bar.cols(),A_bar.cols()) += A.transpose() * WA * A;
+        qp_g.leftCols(A_bar.cols()) += - b.transpose() * WA * A;
+        qp_H.bottomRightCorner(C.rows(),C.rows()) += WC;
+        qp_A.topLeftCorner(A_bar.rows(),A_bar.cols()) += A_bar;
+        qp_ubA.head(A_bar.rows()) += b_bar;
         qp_A.block(A_bar.rows(),0,A_bar.rows(),A_bar.cols()) += -A_bar;
-        qp_ubA.block(A_bar.rows(),0,A_bar.rows(),1) += -b_bar;
+        qp_ubA.segment(A_bar.rows(),A_bar.rows()) += -b_bar;
         qp_A.block(A_bar.rows()*2,0,C_bar.rows(),C_bar.cols()) += C_bar;
-        qp_ubA.block(A_bar.rows()*2,0,C_bar.rows(),1) += d_bar;
-        qp_A.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),C.cols()) += C;
-        qp_A.block(A_bar.rows()*2+C_bar.rows(),A_bar.cols(),C.rows(),C.rows()) += -hrp::dmatrix::Identity(C.rows(),C.rows());
-        qp_ubA.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),1) += d;
-        qp_l.block(0,0,l_bar.rows(),1) = l_bar;
-        qp_u.block(0,0,u_bar.rows(),1) = u_bar;
+        qp_ubA.segment(A_bar.rows()*2,C_bar.rows()) += d_bar;
+        qp_A.bottomLeftCorner(C.rows(),C.cols()) += C;
+        qp_A.bottomRightCorner(C.rows(),C.rows()).setIdentity();
+        qp_ubA.tail(C.rows()) += d;
+        qp_l.head(l_bar.rows()) = l_bar;
+        qp_u.head(u_bar.rows()) = u_bar;
         for(size_t i=0; i<A_bar.cols();i++){
             qp_H(i,i)+=vel_w;
         }
@@ -1814,7 +1822,7 @@ public:
                                  debugloop);
         if(solved){
             if(x.rows() != A_bar.cols())x=hrp::dvector::Zero(A_bar.cols());
-            x = xOpt.block(0,0,x.rows(),1);
+            x = xOpt.head(x.rows());
         }
         return solved;
     }
@@ -1847,46 +1855,42 @@ public:
         hrp::dmatrix qp_A = hrp::dmatrix::Zero(inequality_len,state_len);
         hrp::dvector qp_ubA = hrp::dvector::Zero(inequality_len);
         hrp::dvector qp_lbA = hrp::dvector::Zero(0);
-        hrp::dvector qp_l = hrp::dvector::Zero(state_len);
-        hrp::dvector qp_u = hrp::dvector::Zero(state_len);
-        for(size_t i=0; i<state_len;i++){
-            qp_l[i]=-1e10;
-            qp_u[i]=1e10;
-        }
+        hrp::dvector qp_l = hrp::dvector(state_len);
+        hrp::dvector qp_u = hrp::dvector(state_len);
+        qp_l.fill(-1e10);
+        qp_u.fill(1e10);
 
-        qp_H.block(0,0,A_bar.cols(),A_bar.cols()) += A.transpose() * WA * A;
-        qp_g.block(0,0,1,A_bar.cols()) += - b.transpose() * WA * A;
-        qp_H.block(A_bar.cols(),A_bar.cols(),C.rows(),C.rows()) += WC;
-        qp_A.block(0,0,A_bar.rows(),A_bar.cols()) += A_bar;
-        qp_ubA.block(0,0,A_bar.rows(),1) += b_bar;
+        qp_H.topLeftCorner(A_bar.cols(),A_bar.cols()) += A.transpose() * WA * A;
+        qp_g.leftCols(A_bar.cols()) += - b.transpose() * WA * A;
+        qp_H.bottomRightCorner(C.rows(),C.rows()) += WC;
+        qp_A.topLeftCorner(A_bar.rows(),A_bar.cols()) += A_bar;
+        qp_ubA.head(A_bar.rows()) += b_bar;
         qp_A.block(A_bar.rows(),0,A_bar.rows(),A_bar.cols()) += -A_bar;
-        qp_ubA.block(A_bar.rows(),0,A_bar.rows(),1) += -b_bar;
+        qp_ubA.segment(A_bar.rows(),A_bar.rows()) += -b_bar;
         qp_A.block(A_bar.rows()*2,0,C_bar.rows(),C_bar.cols()) += C_bar;
-        qp_ubA.block(A_bar.rows()*2,0,C_bar.rows(),1) += d_bar;
-        qp_A.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),C.cols()) += C;
-        qp_A.block(A_bar.rows()*2+C_bar.rows(),A_bar.cols(),C.rows(),C.rows()) += -hrp::dmatrix::Identity(C.rows(),C.rows());
-        qp_ubA.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),1) += d;
-        qp_l.block(0,0,l_bar.rows(),1) = l_bar;
-        qp_u.block(0,0,u_bar.rows(),1) = u_bar;
+        qp_ubA.segment(A_bar.rows()*2,C_bar.rows()) += d_bar;
+        qp_A.bottomLeftCorner(C.rows(),C.cols()) += C;
+        qp_A.bottomRightCorner(C.rows(),C.rows()).setIdentity();
+        qp_ubA.tail(C.rows()) += d;
+        qp_l.head(l_bar.rows()) = l_bar;
+        qp_u.head(u_bar.rows()) = u_bar;
         for(size_t i=0; i<A_bar.cols();i++){
             qp_H(i,i)+=vel_w;
         }
 
 #ifdef USE_OSQP
-        qp_lbA = hrp::dvector::Zero(inequality_len);
-        for(size_t i=0; i<inequality_len;i++){
-            qp_lbA[i]=-1e10;
-        }
+        qp_lbA = hrp::dvector(inequality_len);
+        qp_lbA.fill(-1e10);
         hrp::dmatrix qp_Hsparse = hrp::dmatrix::Identity(state_len,state_len);
         hrp::dmatrix qp_Asparse = hrp::dmatrix::Zero(inequality_len,state_len);
 
-        if(A.rows() > 0) qp_Hsparse.block(0,0,A_bar.cols(),A_bar.cols()) = hrp::dmatrix::Ones(A_bar.cols(),A_bar.cols());
+        if(A.rows() > 0) qp_Hsparse.topLeftCorner(A_bar.cols(),A_bar.cols()).setOnes();
 
-        qp_Asparse.block(0,0,A_bar.rows(),A_bar.cols()) = hrp::dmatrix::Ones(A_bar.rows(),A_bar.cols());
-        qp_Asparse.block(A_bar.rows(),0,A_bar.rows(),A_bar.cols()) = hrp::dmatrix::Ones(A_bar.rows(),A_bar.cols());
+        qp_Asparse.topLeftCorner(A_bar.rows(),A_bar.cols()).setOnes();
+        qp_Asparse.block(A_bar.rows(),0,A_bar.rows(),A_bar.cols()).setOnes();
         qp_Asparse.block(A_bar.rows()*2,0,C_bar.rows(),C_bar.cols()) = C_bar_sparse;
-        qp_Asparse.block(A_bar.rows()*2+C_bar.rows(),0,C.rows(),C.cols()) = C_sparse;
-        qp_Asparse.block(A_bar.rows()*2+C_bar.rows(),A_bar.cols(),C.rows(),C.rows()) = hrp::dmatrix::Identity(C.rows(),C.rows());
+        qp_Asparse.bottomLeftCorner(C.rows(),C.cols()) = C_sparse;
+        qp_Asparse.bottomRightCorner(C.rows(),C.rows()).setIdentity();
 
         hrp::dvector xOpt;
         bool solved = solve_osqp(osqp_map,
@@ -1923,7 +1927,7 @@ public:
 #endif
         if(solved){
             if(x.rows() != A_bar.cols())x=hrp::dvector::Zero(A_bar.cols());
-            x = xOpt.block(0,0,x.rows(),1);
+            x = xOpt.head(x.rows());
         }
         return solved;
     }
