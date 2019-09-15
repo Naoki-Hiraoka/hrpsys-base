@@ -261,7 +261,7 @@ public:
         eforce_time = 5;
         tau_weight = 1e1;
         tauvel_weight = 1e1;
-
+        col_scale = 1e0;
         tau_M = 10.0;
         tau_D = 200.0;
         tau_K = 400.0;
@@ -668,7 +668,7 @@ public:
         //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
         for(size_t i=0;i<support_eef.size();i++){
             supportJ.block<3,3>(i*6,0)= support_eef[i]->act_R/*actworld系*/.transpose();
-            supportJ.block<3,3>(i*6,3)= support_eef[i]->act_R/*actworld系*/.transpose() * - hrp::hat(support_eef[i]->act_p/*actworld系*/ - m_robot->rootLink()->p/*actworld系*/);
+            supportJ.block<3,3>(i*6,3).noalias() = -1.0 * support_eef[i]->act_R/*actworld系*/.transpose() * hrp::hat(support_eef[i]->act_p/*actworld系*/ - m_robot->rootLink()->p/*actworld系*/);
             supportJ.block<3,3>(i*6+3,3)= support_eef[i]->act_R/*actworld系*/.transpose();
             hrp::dmatrix JJ;
             support_eef[i]->jpe->calcJacobian(JJ,support_eef[i]->localp);
@@ -681,11 +681,11 @@ public:
 
         //位置制御matrix
         hrp::dmatrix M = hrp::dmatrix::Zero(6+m_robot->numJoints()+supportJ.rows(),6+m_robot->numJoints()+supportJ.rows());
-        M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) += Jgrav;
+        M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) = Jgrav;
         M.topLeftCorner(6+m_robot->numJoints(),6+m_robot->numJoints()) += -Jcnt;
         M.block(6,6,m_robot->numJoints(),m_robot->numJoints()) += K;
-        M.bottomLeftCorner(supportJ.rows(),supportJ.cols()) += supportJ;
-        M.topRightCorner(supportJ.cols(),supportJ.rows()) += -supportJ.transpose();
+        M.bottomLeftCorner(supportJ.rows(),supportJ.cols()) = supportJ;
+        M.topRightCorner(supportJ.cols(),supportJ.rows()) = -supportJ.transpose();
 
         hrp::dmatrix Minv;
         hrp::calcPseudoInverse(M, Minv,mcs_sv_ratio/*最大固有値の何倍以下の固有値を0とみなすか default 1.0e-3*/);
@@ -718,7 +718,7 @@ public:
         //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
         for(size_t i=0;i<interact_eef.size();i++){
             interactJ.block<3,3>(i*6,0)= interact_eef[i]->act_R/*actworld系*/.transpose();
-            interactJ.block<3,3>(i*6,3)= interact_eef[i]->act_R/*actworld系*/.transpose() * - hrp::hat(interact_eef[i]->act_p/*actworld系*/ - m_robot->rootLink()->p/*actworld系*/);
+            interactJ.block<3,3>(i*6,3).noalias() = -1.0 * interact_eef[i]->act_R/*actworld系*/.transpose() * hrp::hat(interact_eef[i]->act_p/*actworld系*/ - m_robot->rootLink()->p/*actworld系*/);
             interactJ.block<3,3>(i*6+3,3)= interact_eef[i]->act_R/*actworld系*/.transpose();
             hrp::dmatrix JJ;
             interact_eef[i]->jpe->calcJacobian(JJ,interact_eef[i]->localp);
@@ -730,15 +730,17 @@ public:
         }
 
         //重心ヤコビアン、角運動量ヤコビアン
-        hrp::dmatrix CM_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
+        hrp::dmatrix CM_J;
         if(debugloop){
+            CM_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
             hrp::dmatrix tmp_CM_J;
             m_robot->calcCMJacobian(NULL,tmp_CM_J);//CM_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順
             CM_J.block<3,6>(0,0) = tmp_CM_J.block<3,6>(0,m_robot->numJoints());
             CM_J.block(0,0,3,m_robot->numJoints()) = tmp_CM_J.block(0,0,3,m_robot->numJoints());
         }
-        hrp::dmatrix MO_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
+        hrp::dmatrix MO_J;
         if(debugloop){
+            MO_J=hrp::dmatrix::Zero(3,6+m_robot->numJoints());
             hrp::dmatrix tmp_MO_J;
             m_robot->calcAngularMomentumJacobian(NULL,tmp_MO_J);//MO_J[(全Joint) (rootlinkのworld側に付いているvirtualjoint)]の並び順.actworld系,cogまわり
             MO_J.block<3,6>(0,0) = tmp_MO_J.block<3,6>(0,m_robot->numJoints());
@@ -977,13 +979,13 @@ public:
                     double norm = (p1 - p2).norm();
 
                     if(norm !=0){
-                        C0.block(i,0,1,m_robot->numJoints()) = - (p1 - p2).transpose() * (J1 - J2) / norm * K0;
+                        C0.block(i,0,1,m_robot->numJoints()) = - col_scale * (p1 - p2).transpose() * (J1 - J2) / norm * K0;
 #ifdef USE_OSQP
                         for(size_t j=0; j<m_robot->numJoints();j++){
                             C0_sparse(i,j)=std::abs(J1_sparse(0,j)-J2_sparse(0,j));
                         }
 #endif
-                        d0[i] = (distance - mcs_collisionthre);
+                        d0[i] = col_scale * (distance - mcs_collisionthre);
                     }else{
                         d0[i] = 1e10;
                     }
@@ -1029,14 +1031,14 @@ public:
 
             //(automatical success)
 
-            A1_bar = hrp::dmatrix::Zero(A0_bar.rows()+A0.rows(), m_robot->numJoints());
-            b1_bar = hrp::dvector::Zero(b0_bar.rows()+b0.rows());
+            A1_bar = hrp::dmatrix(A0_bar.rows()+A0.rows(), m_robot->numJoints());
+            b1_bar = hrp::dvector(b0_bar.rows()+b0.rows());
             A1_bar << A0_bar,
                       A0;
             b1_bar << b0_bar,
                       b0;
-            C1_bar = hrp::dmatrix::Zero(C0_bar.rows()+C0.rows(), m_robot->numJoints());
-            d1_bar = hrp::dvector::Zero(d0_bar.rows()+d0.rows());
+            C1_bar = hrp::dmatrix(C0_bar.rows()+C0.rows(), m_robot->numJoints());
+            d1_bar = hrp::dvector(d0_bar.rows()+d0.rows());
             C1_bar << C0_bar,
                       C0;
             d1_bar << d0_bar,
@@ -1044,7 +1046,7 @@ public:
             l_bar = l;
             u_bar = u;
 #ifdef USE_OSQP
-            C1_bar_sparse = hrp::dmatrix::Zero(C0_bar.rows()+C0.rows(), m_robot->numJoints());
+            C1_bar_sparse = hrp::dmatrix(C0_bar.rows()+C0.rows(), m_robot->numJoints());
             C1_bar_sparse << C0_bar_sparse,
                              C0_sparse;
 #endif
@@ -1061,7 +1063,6 @@ public:
 #endif
 
         if(qp_solved){
-            //TODO leave weight
 
             size_t num_CC=0;
             std::vector<hrp::dmatrix> Cs(support_eef.size());
@@ -1095,12 +1096,12 @@ public:
                 //wrench
                 size_t CC_idx=0;
                 for(size_t i=0;i<support_eef.size(); i++){
-                    C1.block(CC_idx,0,Cs[i].rows(),m_robot->numJoints()) = - Cs[i] * dF.block(i*6,0,6,dF.cols()) * K1;
-                    d1.block(CC_idx,0,Cs[i].rows(),1) = - lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1);
+                    C1.block(CC_idx,0,Cs[i].rows(),m_robot->numJoints()).noalias() = - Cs[i] * dF.block(i*6,0,6,dF.cols()) * K1;
+                    d1.segment(CC_idx,Cs[i].rows()) = - lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1);
                     CC_idx+=Cs[i].rows();
                 }
 #ifdef USE_OSQP
-                C1_sparse.block(0,0,num_CC,m_robot->numJoints()) = hrp::dmatrix::Ones(num_CC,m_robot->numJoints());
+                C1_sparse.block(0,0,num_CC,m_robot->numJoints()).setOnes();
 #endif
                 CC_idx = 0;
                 for(size_t i=0; i < support_eef.size(); i++){
@@ -1112,12 +1113,12 @@ public:
             }
             {
                 //torque
-                C1.block(num_CC,0,m_robot->numJoints(),m_robot->numJoints()) = dtau * K1;
-                d1.block(num_CC,0,m_robot->numJoints(),1) = dangertaumaxv - acttauv;
-                C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()) = - dtau * K1;
-                d1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),1) = dangertaumaxv + acttauv;
+                C1.block(num_CC,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = dtau * K1;
+                d1.segment(num_CC,m_robot->numJoints()) = dangertaumaxv - acttauv;
+                C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()).noalias() = - dtau * K1;
+                d1.segment(num_CC+m_robot->numJoints(),m_robot->numJoints()) = dangertaumaxv + acttauv;
 #ifdef USE_OSQP
-                C1_sparse.block(num_CC,0,m_robot->numJoints()*2,m_robot->numJoints()) = hrp::dmatrix::Ones(m_robot->numJoints()*2,m_robot->numJoints());
+                C1_sparse.block(num_CC,0,m_robot->numJoints()*2,m_robot->numJoints()).setOnes();
 #endif
 
                 for(size_t i=0; i < m_robot->numJoints()*2; i++){
@@ -1186,8 +1187,8 @@ public:
                 error_num = status;
             }else{
 
-                A2_bar = hrp::dmatrix::Zero(A1_bar.rows()+A1.rows(), m_robot->numJoints());
-                b2_bar = hrp::dvector::Zero(b1_bar.rows()+b1.rows());
+                A2_bar = hrp::dmatrix(A1_bar.rows()+A1.rows(), m_robot->numJoints());
+                b2_bar = hrp::dvector(b1_bar.rows()+b1.rows());
                 A2_bar << A1_bar,
                           A1;
                 b2_bar << b1_bar,
@@ -1196,8 +1197,8 @@ public:
                 for(size_t i=0; i<d1.rows();i++){
                     if(tmp_C1x[i]>d1[i]) d1[i] = tmp_C1x[i];
                 }
-                C2_bar = hrp::dmatrix::Zero(C1_bar.rows()+C1.rows(), m_robot->numJoints());
-                d2_bar = hrp::dvector::Zero(d1_bar.rows()+d1.rows());
+                C2_bar = hrp::dmatrix(C1_bar.rows()+C1.rows(), m_robot->numJoints());
+                d2_bar = hrp::dvector(d1_bar.rows()+d1.rows());
                 C2_bar << C1_bar,
                           C1;
                 d2_bar << d1_bar,
@@ -1354,8 +1355,8 @@ public:
                 error_num = status;
             }else{
 
-                A3_bar = hrp::dmatrix::Zero(A2_bar.rows()+A2.rows(), m_robot->numJoints());
-                b3_bar = hrp::dvector::Zero(b2_bar.rows()+b2.rows());
+                A3_bar = hrp::dmatrix(A2_bar.rows()+A2.rows(), m_robot->numJoints());
+                b3_bar = hrp::dvector(b2_bar.rows()+b2.rows());
                 A3_bar << A2_bar,
                           A2;
                 b3_bar << b2_bar,
@@ -1364,14 +1365,14 @@ public:
                 for(size_t i=0; i<d2.rows();i++){
                     if(tmp_C2x[i]>d2[i]) d2[i] = tmp_C2x[i];
                 }
-                C3_bar = hrp::dmatrix::Zero(C2_bar.rows()+C2.rows(), m_robot->numJoints());
-                d3_bar = hrp::dvector::Zero(d2_bar.rows()+d2.rows());
+                C3_bar = hrp::dmatrix(C2_bar.rows()+C2.rows(), m_robot->numJoints());
+                d3_bar = hrp::dvector(d2_bar.rows()+d2.rows());
                 C3_bar << C2_bar,
                           C2;
                 d3_bar << d2_bar,
                           d2;
 // #ifdef USE_OSQP
-//                 C3_bar_sparse = hrp::dmatrix::Zero(C2_bar.rows()+C2.rows(), m_robot->numJoints());
+//                 C3_bar_sparse = hrp::dmatrix(C2_bar.rows()+C2.rows(), m_robot->numJoints());
 //                 C3_bar_sparse << C2_bar_sparse,
 //                                  C2_sparse;
 // #endif
@@ -1433,8 +1434,8 @@ public:
 
             {
                 //wrench
-                A3.block(0,0,support_eef.size()*6,m_robot->numJoints()) = dF * K3;
-                b3.block(0,0,support_eef.size()*6,1) = - actwrenchv;
+                A3.block(0,0,support_eef.size()*6,m_robot->numJoints()).noalias() = dF * K3;
+                b3.head(support_eef.size()*6) = - actwrenchv;
                 for(size_t i=0; i < support_eef.size();i++){
                     for(size_t j=0; j<6;j++){
                         WA3(i*6+j,i*6+j) = force_weight * support_eef[i]->wrench_weight[j];
@@ -1445,7 +1446,7 @@ public:
             {
                 //torque
                 A3.block(support_eef.size()*6,0,m_robot->numJoints(),m_robot->numJoints()) = dtau * K3;
-                b3.block(support_eef.size()*6,0,m_robot->numJoints(),1) = - acttauv;
+                b3.block(support_eef.size()*6,0,m_robot->numJoints(),1).noalias() = - acttauv;
                 for(size_t i=0; i < m_robot->numJoints();i++){
                     WA3(support_eef.size()*6+i,support_eef.size()*6+i) = tau_weight / std::pow(safetaumaxv[i],2);
                 }
@@ -1473,18 +1474,18 @@ public:
             hrp::dmatrix C3max = hrp::dmatrix::Zero(C3.rows(), C3.cols()+1);
             hrp::dvector d3max = hrp::dvector::Zero(d3.rows());
             hrp::dmatrix WC3max = hrp::dmatrix::Zero(WC3.rows(), WC3.cols());
-            A3max_bar.block(0,0,A3_bar.rows(),A3_bar.cols()) = A3_bar;
-            b3max_bar.block(0,0,b3_bar.rows(),b3_bar.cols()) = b3_bar;
-            C3max_bar.block(0,0,C3_bar.rows(),C3_bar.cols()) = C3_bar;
-            d3max_bar.block(0,0,d3_bar.rows(),d3_bar.cols()) = d3_bar;
-            lmax_bar.block(0,0,l_bar.rows(),l_bar.cols()) = l_bar;
-            umax_bar.block(0,0,u_bar.rows(),u_bar.cols()) = u_bar;
-            A3max.block(0,0,A3.rows(),A3.cols()) = A3;
-            b3max.block(0,0,b3.rows(),b3.cols()) = b3;
-            WA3max.block(0,0,WA3.rows(),WA3.cols()) = WA3;
-            C3max.block(0,0,C3.rows(),C3.cols()) = C3;
-            d3max.block(0,0,d3.rows(),d3.cols()) = d3;
-            WC3max.block(0,0,WC3.rows(),WC3.cols()) = WC3;
+            A3max_bar.topLeftCorner(A3_bar.rows(),A3_bar.cols()) = A3_bar;
+            b3max_bar.head(b3_bar.rows()) = b3_bar;
+            C3max_bar.topLeftCorner(C3_bar.rows(),C3_bar.cols()) = C3_bar;
+            d3max_bar.head(d3_bar.rows()) = d3_bar;
+            lmax_bar.head(l_bar.rows()) = l_bar;
+            umax_bar.head(u_bar.rows()) = u_bar;
+            A3max.topLeftCorner(A3.rows(),A3.cols()) = A3;
+            b3max.head(b3.rows()) = b3;
+            WA3max.topLeftCorner(WA3.rows(),WA3.cols()) = WA3;
+            C3max.topLeftCorner(C3.rows(),C3.cols()) = C3;
+            d3max.head(d3.rows()) = d3;
+            WC3max.topLeftCorner(WC3.rows(),WC3.cols()) = WC3;
 // #ifdef USE_OSQP
 //             hrp::dmatrix C3max_bar_sparse = hrp::dmatrix::Zero(C3_bar_sparse.rows()+m_robot->numJoints()*2, C3_bar_sparse.cols()+1);//taumax
 //             hrp::dmatrix C3max_sparse = hrp::dmatrix::Zero(C3_sparse.rows(), C3_sparse.cols()+1);
@@ -1505,10 +1506,10 @@ public:
                 b3max[b3max.rows()-1] = - acttaumax;
                 WA3max(WA3max.rows()-1,WA3max.cols()-1) = tau_weight * taumax_weight;
 
-                C3max_bar.block(C3max_bar.rows()-m_robot->numJoints()*2,0,m_robot->numJoints(),m_robot->numJoints()) = W * dtau * K3;
-                C3max_bar.block(C3max_bar.rows()-m_robot->numJoints()*1,0,m_robot->numJoints(),m_robot->numJoints()) = W * -dtau * K3;
-                d3max_bar.block(d3max_bar.rows()-m_robot->numJoints()*2,0,m_robot->numJoints(),1)=W * -acttauv;
-                d3max_bar.block(d3max_bar.rows()-m_robot->numJoints()*1,0,m_robot->numJoints(),1)=W * acttauv;
+                C3max_bar.block(C3max_bar.rows()-m_robot->numJoints()*2,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = W * dtau * K3;
+                C3max_bar.block(C3max_bar.rows()-m_robot->numJoints()*1,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = W * -dtau * K3;
+                d3max_bar.segment(d3max_bar.rows()-m_robot->numJoints()*2,m_robot->numJoints()).noalias() =W * -acttauv;
+                d3max_bar.segment(d3max_bar.rows()-m_robot->numJoints()*1,m_robot->numJoints()).noalias() =W * acttauv;
                 for(size_t i=0; i < m_robot->numJoints();i++){
                     C3max_bar(C3max_bar.rows()-m_robot->numJoints()*2+i,m_robot->numJoints())=-taumaxvel_weight;//scale
                     C3max_bar(C3max_bar.rows()-m_robot->numJoints()*1+i,m_robot->numJoints())=-taumaxvel_weight;//scale
@@ -1585,7 +1586,7 @@ public:
                 qp_solved = false;
                 error_num = status;
             }else{
-                optimal_x = xmax.block(0,0,m_robot->numJoints(),1);
+                optimal_x = xmax.head(m_robot->numJoints());
 
                 if(debugloop){
                     std::cerr << "result3" << std::endl;
@@ -1667,17 +1668,17 @@ public:
         }
 
         /*****************************************************************/
-        prev_P = CM_J * dqa * command_dq;
-        prev_L = MO_J * dqa * command_dq;
-        prev_dtauv = dtau * command_dq;
-        prev_command_dq = command_dq;
-        for(size_t i=0; i < support_eef.size(); i++){
-            support_eef[i]->setprevDeltaWrench(dF.block(i*6,0,6,dF.cols()) * command_dq);
-            if(debugloop){
-                std::cerr << "deltawrench" << i << std::endl;
-                std::cerr << support_eef[i]->prev_C * dF.block(i*6,0,6,dF.cols()) * command_dq << std::endl;
-            }
-        }
+        // prev_P = CM_J * dqa * command_dq;
+        // prev_L = MO_J * dqa * command_dq;
+        // prev_dtauv = dtau * command_dq;
+        // prev_command_dq = command_dq;
+        // for(size_t i=0; i < support_eef.size(); i++){
+        //     support_eef[i]->setprevDeltaWrench(dF.block(i*6,0,6,dF.cols()) * command_dq);
+        //     if(debugloop){
+        //         std::cerr << "deltawrench" << i << std::endl;
+        //         std::cerr << support_eef[i]->prev_C * dF.block(i*6,0,6,dF.cols()) * command_dq << std::endl;
+        //     }
+        // }
 
         hrp::dmatrix eefJ/*eef系,eefまわり<->joint*/ = hrp::dmatrix::Zero(6*eefnum,6+m_robot->numJoints());
         //calcjacobianで出てくるJはactworld系,eefまわり<->joint であることに注意
@@ -2057,6 +2058,8 @@ public:
 
         taumaxvel_weight = i_stp.taumaxvel_weight;
         std::cerr << "[" << instance_name << "]  taumaxvel_weight = " << taumaxvel_weight << std::endl;
+        col_scale = i_stp.col_scale;
+        std::cerr << "[" << instance_name << "]  col_scale = " << col_scale << std::endl;
 
         tau_M = i_stp.tau_M;
         std::cerr << "[" << instance_name << "]  tau_M = " << tau_M << std::endl;
@@ -2152,7 +2155,7 @@ public:
         i_stp.eforce_time = eforce_time;
         i_stp.taumax_weight = taumax_weight;
         i_stp.taumaxvel_weight = taumaxvel_weight;
-
+        i_stp.col_scale = col_scale;
         i_stp.tau_M = tau_M;
         i_stp.tau_D = tau_D;
         i_stp.tau_K = tau_K;
@@ -2382,7 +2385,7 @@ private:
     double eforcevel_weight;
     double taumax_weight;
     double taumaxvel_weight;
-
+    double col_scale;
     double tau_M;
     double tau_D;
     double tau_K;

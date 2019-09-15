@@ -331,6 +331,7 @@ module OpenHRP
       double taumax_weight;
       /// taumaxvel weight
       double taumaxvel_weight;
+      double col_scale;
       /// tau_M
       double tau_M;
       /// tau_D
