@@ -151,6 +151,10 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     coil::stringTo(p->lower_cop_x_margin, virtual_force_sensor[i*15+12].c_str());
     coil::stringTo(p->upper_cop_y_margin, virtual_force_sensor[i*15+13].c_str());
     coil::stringTo(p->lower_cop_y_margin, virtual_force_sensor[i*15+14].c_str());
+    std::cerr << "[" << m_profile.instance_name << "]               upper_cop_x_margin : " << p->upper_cop_x_margin << std::endl;
+    std::cerr << "[" << m_profile.instance_name << "]               lower_cop_x_margin : " << p->lower_cop_x_margin << std::endl;
+    std::cerr << "[" << m_profile.instance_name << "]               upper_cop_y_margin : " << p->upper_cop_y_margin << std::endl;
+    std::cerr << "[" << m_profile.instance_name << "]               lower_cop_y_margin : " << p->lower_cop_y_margin << std::endl;
     p->off_sensor_force_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(10, m_dt, hrp::Vector3::Zero())); // [Hz]
     p->off_sensor_moment_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(10, m_dt, hrp::Vector3::Zero())); // [Hz]
     m_sensors[name] = p;
@@ -679,7 +683,7 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             
             if((*it).second->is_enable){
                 (*it).second->off_sensor_force = (*it).second->off_sensor_force_filter->passFilter( (*it).second->sensor_force - (*it).second->forceOffset);
-                (*it).second->off_sensor_moment = (*it).second->off_sensor_moment_filter->passFilter( (*it).second->off_sensor_moment - (*it).second->momentOffset);
+                (*it).second->off_sensor_moment = (*it).second->off_sensor_moment_filter->passFilter( (*it).second->sensor_moment - (*it).second->momentOffset);
             }else{
                 (*it).second->off_sensor_force = hrp::Vector3::Zero();
                 (*it).second->off_sensor_moment = hrp::Vector3::Zero();
