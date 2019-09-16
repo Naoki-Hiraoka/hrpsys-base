@@ -254,11 +254,11 @@ public:
         vel_weight = 1e-3;
         reference_weight = 1e-3;
         etau_weight = 1e1;
-        etauvel_weight = 1e1;
-        etau_time = 5;
+        etau_scale = 1e1;
+        etau_scale2 = 5;
         eforce_weight = 1e1;
-        eforcevel_weight = 1e1;
-        eforce_time = 5;
+        eforce_scale = 1e1;
+        eforce_scale2 = 5;
         tau_weight = 1e1;
         tauvel_weight = 1e1;
         col_scale = 1e0;
@@ -1109,8 +1109,8 @@ public:
                 //wrench
                 size_t CC_idx=0;
                 for(size_t i=0;i<support_eef.size(); i++){
-                    C1.block(CC_idx,0,Cs[i].rows(),m_robot->numJoints()).noalias() = - 1.0 / eforcevel_weight * Cs[i] * dF.block(i*6,0,6,dF.cols()) * K1;
-                    d1.segment(CC_idx,Cs[i].rows()).noalias() = 1.0 / eforcevel_weight * (- lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1));
+                    C1.block(CC_idx,0,Cs[i].rows(),m_robot->numJoints()).noalias() = - 1.0 / eforce_scale * Cs[i] * dF.block(i*6,0,6,dF.cols()) * K1;
+                    d1.segment(CC_idx,Cs[i].rows()).noalias() = 1.0 / eforce_scale * (- lbs[i] + Cs[i] * actwrenchv.block(i*6,0,6,1));
                     CC_idx+=Cs[i].rows();
                 }
 #ifdef USE_OSQP
@@ -1119,23 +1119,23 @@ public:
                 CC_idx = 0;
                 for(size_t i=0; i < support_eef.size(); i++){
                     for(size_t j=0; j < weights[i].size(); j++){
-                        WC1(CC_idx,CC_idx) = weights[i][j] * eforce_weight * std::pow(eforcevel_weight,2);
+                        WC1(CC_idx,CC_idx) = weights[i][j] * eforce_weight * std::pow(eforce_scale,2);
                         CC_idx++;
                     }
                 }
             }
             {
                 //torque
-                C1.block(num_CC,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = 1.0 / etauvel_weight * dtau * K1;
-                d1.segment(num_CC,m_robot->numJoints()).noalias() = 1.0 / etauvel_weight * (dangertaumaxv - acttauv);
-                C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()).noalias() = - 1.0 / etauvel_weight * dtau * K1;
-                d1.segment(num_CC+m_robot->numJoints(),m_robot->numJoints()).noalias() = 1.0 / etauvel_weight * (dangertaumaxv + acttauv);
+                C1.block(num_CC,0,m_robot->numJoints(),m_robot->numJoints()).noalias() = 1.0 / etau_scale * dtau * K1;
+                d1.segment(num_CC,m_robot->numJoints()).noalias() = 1.0 / etau_scale * (dangertaumaxv - acttauv);
+                C1.block(num_CC+m_robot->numJoints(),0,m_robot->numJoints(),m_robot->numJoints()).noalias() = - 1.0 / etau_scale * dtau * K1;
+                d1.segment(num_CC+m_robot->numJoints(),m_robot->numJoints()).noalias() = 1.0 / etau_scale * (dangertaumaxv + acttauv);
 #ifdef USE_OSQP
                 C1_sparse.block(num_CC,0,m_robot->numJoints()*2,m_robot->numJoints()).setOnes();
 #endif
 
                 for(size_t i=0; i < m_robot->numJoints()*2; i++){
-                    WC1(num_CC+i,num_CC+i) = etau_weight * std::pow(etauvel_weight,2);
+                    WC1(num_CC+i,num_CC+i) = etau_weight * std::pow(etau_scale,2);
                 }
 
             }
@@ -1206,6 +1206,10 @@ public:
                           A1;
                 b2_bar << b1_bar,
                           A1*x;
+                C1.topRows(num_CC) *= eforce_scale2;
+                d1.head(num_CC) *= eforce_scale2;
+                C1.block(num_CC,0,m_robot->numJoints()*2,C1.cols()) *= etau_scale2;
+                d1.segment(num_CC,m_robot->numJoints()*2) *= etau_scale2;
                 hrp::dvector tmp_C1x = C1 * x;
                 for(size_t i=0; i<d1.rows();i++){
                     if(tmp_C1x[i]>d1[i]) d1[i] = tmp_C1x[i];
@@ -2052,20 +2056,20 @@ public:
         etau_weight = i_stp.etau_weight;
         std::cerr << "[" << instance_name << "]  etau_weight = " << etau_weight << std::endl;
 
-        etauvel_weight = i_stp.etauvel_weight;
-        std::cerr << "[" << instance_name << "]  etauvel_weight = " << etauvel_weight << std::endl;
+        etau_scale = i_stp.etau_scale;
+        std::cerr << "[" << instance_name << "]  etau_scale = " << etau_scale << std::endl;
 
-        etau_time = i_stp.etau_time;
-        std::cerr << "[" << instance_name << "]  etau_time = " << etau_time << std::endl;
+        etau_scale2 = i_stp.etau_scale2;
+        std::cerr << "[" << instance_name << "]  etau_scale2 = " << etau_scale2 << std::endl;
 
         eforce_weight = i_stp.eforce_weight;
         std::cerr << "[" << instance_name << "]  eforce_weight = " << eforce_weight << std::endl;
 
-        eforcevel_weight = i_stp.eforcevel_weight;
-        std::cerr << "[" << instance_name << "]  eforcevel_weight = " << eforcevel_weight << std::endl;
+        eforce_scale = i_stp.eforce_scale;
+        std::cerr << "[" << instance_name << "]  eforce_scale = " << eforce_scale << std::endl;
 
-        eforce_time = i_stp.eforce_time;
-        std::cerr << "[" << instance_name << "]  eforce_time = " << eforce_time << std::endl;
+        eforce_scale2 = i_stp.eforce_scale2;
+        std::cerr << "[" << instance_name << "]  eforce_scale2 = " << eforce_scale2 << std::endl;
 
         taumax_weight = i_stp.taumax_weight;
         std::cerr << "[" << instance_name << "]  taumax_weight = " << taumax_weight << std::endl;
@@ -2162,11 +2166,11 @@ public:
         i_stp.acc_weight = acc_weight;
         i_stp.reference_weight = reference_weight;
         i_stp.etau_weight = etau_weight;
-        i_stp.etauvel_weight = etauvel_weight;
-        i_stp.etau_time = etau_time;
+        i_stp.etau_scale = etau_scale;
+        i_stp.etau_scale2 = etau_scale2;
         i_stp.eforce_weight = eforce_weight;
-        i_stp.eforcevel_weight = eforcevel_weight;
-        i_stp.eforce_time = eforce_time;
+        i_stp.eforce_scale = eforce_scale;
+        i_stp.eforce_scale2 = eforce_scale2;
         i_stp.taumax_weight = taumax_weight;
         i_stp.taumaxvel_weight = taumaxvel_weight;
         i_stp.col_scale = col_scale;
@@ -2392,11 +2396,11 @@ private:
     double acc_weight;
     double reference_weight;
     double etau_weight;
-    double etauvel_weight;
-    double etau_time;
+    double etau_scale;
+    double etau_scale2;
     double eforce_weight;
-    double eforce_time;
-    double eforcevel_weight;
+    double eforce_scale2;
+    double eforce_scale;
     double taumax_weight;
     double taumaxvel_weight;
     double col_scale;

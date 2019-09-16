@@ -318,15 +318,15 @@ module OpenHRP
       /// etau weight
       double etau_weight;
       /// etauvel weight
-      double etauvel_weight;
+      double etau_scale;
       /// etau time
-      double etau_time;
+      double etau_scale2;
       /// eforce weight
       double eforce_weight;
       /// eforce vel weight
-      double eforcevel_weight;
+      double eforce_scale;
       /// eforce time
-      double eforce_time;
+      double eforce_scale2;
       /// taumax weight
       double taumax_weight;
       /// taumaxvel weight
