@@ -112,6 +112,7 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
   }
   m_wrenches.resize(npforce);
   m_wrenchesIn.resize(npforce);
+  wrenchFilter.resize(npforce);
   std::cerr << "[" << m_profile.instance_name << "] force sensor ports (" << npforce << ")" << std::endl;
   for (unsigned int i=0; i<npforce; ++i) {
       std::string force_sensor_name = force_sensor_names[i];
@@ -119,6 +120,7 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
       m_wrenchesIn[i] = new RTC::InPort<RTC::TimedDoubleSeq>(force_sensor_name.c_str(), m_wrenches[i]);
       m_wrenches[i].data.length(6);
       registerInPort(force_sensor_name.c_str(), *m_wrenchesIn[i]);
+      wrenchFilter[i] = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector6> >(new FirstOrderLowPassFilter<hrp::dvector6>(1.0, m_dt, hrp::dvector6::Zero())); // [Hz]
       std::cerr << "[" << m_profile.instance_name << "]   name = " << force_sensor_name << std::endl;
   }
 
@@ -149,8 +151,8 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     coil::stringTo(p->lower_cop_x_margin, virtual_force_sensor[i*15+12].c_str());
     coil::stringTo(p->upper_cop_y_margin, virtual_force_sensor[i*15+13].c_str());
     coil::stringTo(p->lower_cop_y_margin, virtual_force_sensor[i*15+14].c_str());
-    p->off_sensor_force_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
-    p->off_sensor_moment_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
+    p->off_sensor_force_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(10, m_dt, hrp::Vector3::Zero())); // [Hz]
+    p->off_sensor_moment_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(10, m_dt, hrp::Vector3::Zero())); // [Hz]
     m_sensors[name] = p;
     if ( m_sensors[name]->path->numJoints() == 0 ) {
       std::cerr << "[" << m_profile.instance_name << "] ERROR : Unknown link path " << m_sensors[name]->target_name  << std::endl;
@@ -174,12 +176,12 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     it++; i++;
   }
   
-  qCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  qCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   dqCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   ddqCurrentFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   basewFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
   basedwFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, m_dt, hrp::Vector3::Zero())); // [Hz]
-  tauFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250.0, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
+  tauFilter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(1, m_dt, hrp::dvector::Zero(m_robot->numJoints()))); // [Hz]
   qprev = hrp::dvector::Zero(m_robot->numJoints());
   dqprev = hrp::dvector::Zero(m_robot->numJoints());
   baseRprev = hrp::Matrix33::Identity();
@@ -360,9 +362,12 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
             J.block<6,1>(0,6+jpe_v[i]->joint(j)->jointId) = JJ.block<6,1>(0,j);
         }
 
+        hrp::dvector6 wrench_filtered;
+        wrench_filtered << m_wrenches[i].data[0],m_wrenches[i].data[1],m_wrenches[i].data[2],m_wrenches[i].data[3],m_wrenches[i].data[4],m_wrenches[i].data[5];
+        wrench_filtered = wrenchFilter[i]->passFilter(wrench_filtered);
         hrp::dvector6 wrench;
-        wrench.block<3,1>(0,0) = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[0],m_wrenches[i].data[1],m_wrenches[i].data[2]);
-        wrench.block<3,1>(3,0) = (sensor->link->R * sensor->localR) * hrp::Vector3(m_wrenches[i].data[3],m_wrenches[i].data[4],m_wrenches[i].data[5]);
+        wrench.block<3,1>(0,0) = (sensor->link->R * sensor->localR) * wrench_filtered.head<3>();
+        wrench.block<3,1>(3,0) = (sensor->link->R * sensor->localR) * wrench_filtered.tail<3>();
 
         Tvirtual -= J.transpose() * wrench;
     }
@@ -739,6 +744,25 @@ void VirtualForceSensor::setParameter(const OpenHRP::VirtualForceSensorService::
     std::cerr << "[" << m_profile.instance_name << "] joint_torque_weight " << joint_torque_weight << std::endl;
     weight = i_stp.weight;
     std::cerr << "[" << m_profile.instance_name << "] weight " << weight << std::endl;
+
+    qCurrentFilter->setCutOffFreq(i_stp.q_cutoff_freq);
+    std::cerr << "[" << m_profile.instance_name << "]  q_cutoff_freq = " << qCurrentFilter->getCutOffFreq() << std::endl;
+
+    tauFilter->setCutOffFreq(i_stp.tau_cutoff_freq);
+    std::cerr << "[" << m_profile.instance_name << "]  tau_cutoff_freq = " << tauFilter->getCutOffFreq() << std::endl;
+
+    for(size_t i=0; i < wrenchFilter.size() ; i++){
+        wrenchFilter[i]->setCutOffFreq(i_stp.wrench_cutoff_freq);
+    }
+    std::cerr << "[" << m_profile.instance_name << "]  wrench_cutoff_freq = " << i_stp.wrench_cutoff_freq << std::endl;
+
+    std::map<std::string, boost::shared_ptr<VirtualForceSensorParam> >::iterator it = m_sensors.begin();
+    while ( it != m_sensors.end() ) {
+        (*it).second->off_sensor_force_filter->setCutOffFreq(i_stp.out_cutoff_freq);
+        (*it).second->off_sensor_moment_filter->setCutOffFreq(i_stp.out_cutoff_freq);
+        it++;
+    }
+    std::cerr << "[" << m_profile.instance_name << "]  out_cutoff_freq = " << i_stp.out_cutoff_freq << std::endl;
 }
 
 void VirtualForceSensor::getParameter(OpenHRP::VirtualForceSensorService::vsParam& i_stp)
@@ -747,6 +771,19 @@ void VirtualForceSensor::getParameter(OpenHRP::VirtualForceSensorService::vsPara
     i_stp.root_moment_weight = root_moment_weight;
     i_stp.joint_torque_weight = joint_torque_weight;
     i_stp.weight = weight;
+
+    i_stp.q_cutoff_freq = qCurrentFilter->getCutOffFreq();
+    i_stp.tau_cutoff_freq = tauFilter->getCutOffFreq();
+    if(wrenchFilter.size()>0){
+        i_stp.wrench_cutoff_freq = wrenchFilter[0]->getCutOffFreq();
+    }else{
+        i_stp.wrench_cutoff_freq = 1.0;
+    }
+    if(m_sensors.size()>0){
+        i_stp.out_cutoff_freq = (*m_sensors.begin()).second->off_sensor_force_filter->getCutOffFreq();
+    }else{
+        i_stp.out_cutoff_freq = 10;
+    }
 }
 
 bool VirtualForceSensor::removeVirtualForceSensorOffset(const ::OpenHRP::VirtualForceSensorService::StrSequence& sensorNames, const double tm)
@@ -846,6 +883,7 @@ bool VirtualForceSensor::removeExternalForceOffset(const double tm)
       std::cerr << "[" << m_profile.instance_name << "]   Calibrate done (calib time = " << tm << "[s])" << std::endl;
       std::cerr << "force_offset = " << extforceOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][N]")) << ", ";
       std::cerr << "moment_offset = " << extmomentOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][Nm]")) << std::endl;
+      std::cerr << "jointtorqueOffset = " << exttorqueOffset.format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", "[", "][Nm]")) << std::endl;
   }
 
   std::cerr << "[" << m_profile.instance_name << "] removeExternalForceOffset...done" << std::endl;

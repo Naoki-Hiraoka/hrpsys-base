@@ -1304,8 +1304,11 @@ public:
                 A2 = interactJ * dqa;
                 b2 = delta_interact_eef;
 
-                for(size_t i=0; i < WA2.rows(); i++){
-                    WA2(i,i) = intvel_weight;
+                for(size_t i=0; i < interact_eef.size(); i++){
+                    for(size_t j=0; j < 3;j++){
+                        WA2(i*6+j,i*6+j) = intvel_weight*interact_eef[i]->pos_interact_weight;
+                        WA2(i*6+3+j,i*6+3+j) = intvel_weight*interact_eef[i]->rot_interact_weight;
+                    }
                 }
 
             }

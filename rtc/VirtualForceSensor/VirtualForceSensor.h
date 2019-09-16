@@ -225,6 +225,7 @@ class VirtualForceSensor
   boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > basewFilter;
   boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > basedwFilter;
   boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > tauFilter;
+  std::vector<boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector6> > > wrenchFilter;
   hrp::dvector qprev;
   hrp::dvector dqprev;
   hrp::Matrix33 baseRprev;
@@ -250,6 +251,7 @@ class VirtualForceSensor
   double root_moment_weight;
   double joint_torque_weight;
   double weight;
+
 };
 
 

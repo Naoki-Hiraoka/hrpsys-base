@@ -22,6 +22,11 @@ module OpenHRP
         double root_moment_weight;
         double joint_torque_weight;
         double weight;
+
+        double q_cutoff_freq;
+        double tau_cutoff_freq;
+        double wrench_cutoff_freq;
+        double out_cutoff_freq;
     };
 
     /**
