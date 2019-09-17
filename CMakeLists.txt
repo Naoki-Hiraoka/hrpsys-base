@@ -213,7 +213,7 @@ add_subdirectory(lib)
 add_subdirectory(ec)
 # option for 3rdparty
 option(USE_QPOASES "Build qpOASES" ON)
-option(USE_OSQP "Build osqp" OFF)
+option(USE_OSQP "Build osqp" ON)
 add_subdirectory(3rdparty)
 add_subdirectory(rtc)
 option(ENABLE_DOXYGEN "Use Doxygen" ON)
