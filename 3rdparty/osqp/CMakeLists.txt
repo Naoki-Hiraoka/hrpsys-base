@@ -1,4 +1,4 @@
-if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/osqp)
+if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/osqpproj-prefix)
   include(ExternalProject)
   ExternalProject_Add(osqpproj
   GIT_REPOSITORY https://github.com/oxfordcontrol/osqp.git
