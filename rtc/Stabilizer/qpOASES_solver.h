@@ -1,5 +1,6 @@
 #include <sys/time.h>
 #include <iostream>
+#include <map>
 #include <qpOASES.hpp>
 #include <hrpUtil/EigenTypes.h>
 #include <boost/shared_ptr.hpp>
