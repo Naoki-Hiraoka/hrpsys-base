@@ -150,7 +150,8 @@ public:
                 if(ref_contact_state){
                     lb[constraint_idx] = -max_fz;
                 }else{
-                    lb[constraint_idx] = -target_max_fz;
+                    //lb[constraint_idx] = -target_max_fz;
+                    lb[constraint_idx] = -0.0;
                     weights[constraint_idx] = z_leave_weight;
                 }
                 constraint_idx++;
