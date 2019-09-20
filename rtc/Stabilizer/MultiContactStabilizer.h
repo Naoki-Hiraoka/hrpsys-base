@@ -2215,7 +2215,59 @@ public:
         }
         return;
     }
-        
+
+    void setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param){
+        coil::Guard<coil::Mutex> guard(m_mutex);
+        if(i_param.length() == endeffector.size()){
+            for(size_t i=0; i < endeffector.size() ; i++){
+                if(i_param[i]==1) endeffector[i]->is_ik_enable=true;
+                if(i_param[i]==0 && !endeffector[i]->ref_contact_state && !endeffector[i]->act_contact_state) endeffector[i]->is_ik_enable=false;
+            }
+        }
+        std::cerr << "[" << instance_name << "] setIsIkEnables [";
+        for(size_t i=0; i < endeffector.size() ; i++){
+            if(endeffector[i]->is_ik_enable) std::cerr << "1 ";
+            else std::cerr << "0 ";
+        }
+        std::cerr << "]" << std::endl;
+    }
+
+    void getIsIkEnables(OpenHRP::StabilizerService::LongSequence_out& i_param){
+        i_param->length(endeffector.size());
+        for(size_t i=0; i < endeffector.size() ; i++){
+            i_param[i] = (endeffector[i]->is_ik_enable)?1:0;
+        }
+    }
+
+    void setIsIkEnable(const char *name, CORBA::Long i_param){
+        coil::Guard<coil::Mutex> guard(m_mutex);
+        bool found = false;
+        for(size_t i=0; i < endeffector.size() ; i++){
+            if(endeffector[i]->name == name){
+                if(i_param==1) endeffector[i]->is_ik_enable=true;
+                if(i_param==0 && !endeffector[i]->ref_contact_state && !endeffector[i]->act_contact_state) endeffector[i]->is_ik_enable=false;
+                std::cerr << "[" << instance_name << "] setIsIkEnable " << name << " " << ((endeffector[i]->is_ik_enable)?1:0) << std::endl;
+                found = true;
+            }
+        }
+        if(!found){
+            std::cerr << "[" << instance_name << "] setIsIkEnable no such endeffector named " << name << std::endl;
+        }
+    }
+
+    void getIsIkEnable(const char *name, CORBA::Long& i_param){
+        bool found = false;
+        for(size_t i=0; i < endeffector.size() ; i++){
+            if(endeffector[i]->name == name){
+                i_param = (endeffector[i]->is_ik_enable)?1:0;
+                found = true;
+            }
+        }
+        if(!found){
+            std::cerr << "[" << instance_name << "] getIsIkEnable no such endeffector named " << name << std::endl;
+        }
+    }
+
 private:
     hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         hrp::Vector3 mlog;

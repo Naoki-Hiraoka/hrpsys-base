@@ -2720,6 +2720,22 @@ void Stabilizer::setActiveJoint(const char *jname){
     multicontactstabilizer.setActiveJoint(jname);
 }
 
+void Stabilizer::setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param){
+    multicontactstabilizer.setIsIkEnables(i_param);
+}
+
+void Stabilizer::getIsIkEnables(OpenHRP::StabilizerService::LongSequence_out& i_param){
+    multicontactstabilizer.getIsIkEnables(i_param);
+}
+
+void Stabilizer::setIsIkEnable(const char *name, CORBA::Long i_param){
+    multicontactstabilizer.setIsIkEnable(name,i_param);
+}
+
+void Stabilizer::getIsIkEnable(const char *name, CORBA::Long& i_param){
+    multicontactstabilizer.getIsIkEnable(name,i_param);
+}
+
 std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService::STAlgorithm _st_algorithm)
 {
     switch (_st_algorithm) {

@@ -57,6 +57,27 @@ void StabilizerService_impl::setActiveJoints(const OpenHRP::StabilizerService::S
 	}
 }
 
+void StabilizerService_impl::setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param)
+{
+	m_stabilizer->setIsIkEnables(i_param);
+}
+
+void StabilizerService_impl::getIsIkEnables(OpenHRP::StabilizerService::LongSequence_out i_param)
+{
+	i_param = new OpenHRP::StabilizerService::LongSequence();
+	m_stabilizer->getIsIkEnables(i_param);
+}
+
+void StabilizerService_impl::setIsIkEnable(const char *name, CORBA::Long i_param)
+{
+	m_stabilizer->setIsIkEnable(name,i_param);
+}
+
+void StabilizerService_impl::getIsIkEnable(const char *name, CORBA::Long_out i_param)
+{
+	m_stabilizer->getIsIkEnable(name,i_param);
+}
+
 void StabilizerService_impl::getParameter(OpenHRP::StabilizerService::stParam_out i_param)
 {
   i_param = new OpenHRP::StabilizerService::stParam();

@@ -13,6 +13,7 @@ module OpenHRP
     typedef double DblArray4[4];
     typedef sequence<boolean> BoolSequence;
     typedef sequence<string> StrSequence;
+    typedef sequence<long> LongSequence;
 
     /**
      * @enum STAlgorithm
@@ -95,8 +96,6 @@ module OpenHRP
      * @brief EndEfector
      */
     struct EndEffectorParam {
-        /// whether the end effector is used for limb IK.
-        boolean is_ik_enable;
         double contact_decision_threshold;
         /// Cutoff frequency of LPF in calculation of actual force [Hz]
         double act_force_cutoff_freq;
@@ -424,6 +423,28 @@ module OpenHRP
      * @param name joint name
      */
     void setActiveJoints(in StrSequence names);
+
+    /**
+     * @brief set is_ik_enable
+     * @param list (1 or 0)
+     */
+    void setIsIkEnables(in LongSequence i_param);
+
+    /**
+     * @brief get is_ik_enable
+     * @param list (1 or 0)
+     */
+    void getIsIkEnables(out LongSequence i_param);
+
+    /**
+     * @brief set is_ik_enable
+     */
+    void setIsIkEnable(in string name ,in long i_param);
+
+    /**
+     * @brief get is_ik_enable
+     */
+    void getIsIkEnable(in string name ,out long i_param);
 
     /**
      * @brief Start Stabilizer mode.

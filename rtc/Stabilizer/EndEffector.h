@@ -476,9 +476,6 @@ public:
     }
 
     void setParameter(const OpenHRP::StabilizerService::EndEffectorParam& i_ccp,std::string instance_name){
-        is_ik_enable = i_ccp.is_ik_enable;
-        std::cerr << "[" << instance_name << "]  is_ik_enable = " << is_ik_enable << std::endl;
-
         contact_decision_threshold = i_ccp.contact_decision_threshold;
         std::cerr << "[" << instance_name << "]  " << name <<  " contact_decision_threshold = " << contact_decision_threshold << std::endl;
 
@@ -581,7 +578,6 @@ public:
     }
 
     void getParameter(OpenHRP::StabilizerService::EndEffectorParam& i_ccp){
-        i_ccp.is_ik_enable = is_ik_enable;
         i_ccp.contact_decision_threshold = contact_decision_threshold;
         i_ccp.act_force_cutoff_freq = act_force_filter->getCutOffFreq();
         i_ccp.act_moment_cutoff_freq = act_moment_filter->getCutOffFreq();
