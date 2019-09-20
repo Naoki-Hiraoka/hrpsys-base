@@ -26,7 +26,7 @@
 #include "StabilizerService_impl.h"
 #include "TwoDofController.h"
 #include "ZMPDistributor.h"
-#include "MultiContactStabilizer.h"
+#include "MultiContactStabilizerUtil.h"
 #include "../ImpedanceController/JointPathEx.h"
 #include "../ImpedanceController/RatsMatrix.h"
 #include "../TorqueFilter/IIRFilter.h"
@@ -355,7 +355,7 @@ class Stabilizer
   hrp::Vector3 pos_ctrl;
   hrp::Vector3 ref_total_force, ref_total_moment;
   // MultiContact ST
-  MultiContactStabilizer multicontactstabilizer;
+  MultiContactStabilizerUtil multicontactstabilizer;
   // Total foot moment around the foot origin coords (relative to foot origin coords)
   hrp::Vector3 ref_total_foot_origin_moment, act_total_foot_origin_moment;
   hrp::Vector3 eefm_swing_pos_damping_gain, eefm_swing_rot_damping_gain;
