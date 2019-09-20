@@ -241,30 +241,20 @@ public:
         mcs_sv_ratio = 1e-12;
         is_joint_enable.resize(m_robot->numJoints(),true);
         tau_weight = 1e0;
-        tauvel_weight = 1e0;
         temp_safe_time = 100;//[s]
         temp_danger_time = 10;//[s]
         force_weight = 1e0;
-        forcevel_weight = 1e0;
         intvel_weight = 1e0;
-        P_weight = 1e0;
-        Pvel_weight = 1e0;
-        L_weight = 1e0;
-        Lvel_weight = 1e0;
         vel_weight = 1e-3;
-        reference_weight = 1e-3;
         etau_weight = 1e1;
         etau_scale = 1e1;
         etau_scale2 = 5;
         eforce_weight = 1e1;
         eforce_scale = 1e1;
         eforce_scale2 = 5;
-        tau_weight = 1e1;
-        tauvel_weight = 1e1;
+        taumax_weight = 1e1;
+        taumaxvel_scale = 1e1;
         col_scale = 1e0;
-        tau_M = 10.0;
-        tau_D = 200.0;
-        tau_K = 400.0;
 
         sync2activetime = 2.0;
         sync2referencetime = 2.0;
@@ -1524,7 +1514,7 @@ public:
                     if(is_joint_enable[i]) W(i,i) = 1.0 / safetaumaxv[i];
                     if(value > acttaumax) acttaumax = value;
                 }
-                A3max(A3max.rows()-1,A3max.cols()-1) = taumaxvel_weight;//scale
+                A3max(A3max.rows()-1,A3max.cols()-1) = taumaxvel_scale;//scale
                 b3max[b3max.rows()-1] = - acttaumax;
                 WA3max(WA3max.rows()-1,WA3max.cols()-1) = tau_weight * taumax_weight;
 
@@ -1533,8 +1523,8 @@ public:
                 d3max_bar.segment(d3max_bar.rows()-m_robot->numJoints()*2,m_robot->numJoints()).noalias() =W * -acttauv;
                 d3max_bar.segment(d3max_bar.rows()-m_robot->numJoints()*1,m_robot->numJoints()).noalias() =W * acttauv;
                 for(size_t i=0; i < m_robot->numJoints();i++){
-                    C3max_bar(C3max_bar.rows()-m_robot->numJoints()*2+i,m_robot->numJoints())=-taumaxvel_weight;//scale
-                    C3max_bar(C3max_bar.rows()-m_robot->numJoints()*1+i,m_robot->numJoints())=-taumaxvel_weight;//scale
+                    C3max_bar(C3max_bar.rows()-m_robot->numJoints()*2+i,m_robot->numJoints())=-taumaxvel_scale;//scale
+                    C3max_bar(C3max_bar.rows()-m_robot->numJoints()*1+i,m_robot->numJoints())=-taumaxvel_scale;//scale
                     d3max_bar[d3max_bar.rows()-m_robot->numJoints()*2+i]+=acttaumax;
                     d3max_bar[d3max_bar.rows()-m_robot->numJoints()*1+i]+=acttaumax;
                 }
@@ -1746,10 +1736,6 @@ public:
                 if(endeffector[i]->is_ik_enable && endeffector[i]->act_contact_state){
                     log_cur_force_eef[i] = endeffector[i]->cur_force_eef/*eef系*/;
                     log_cur_moment_eef[i] = endeffector[i]->cur_moment_eef/*eef系*/;
-                    if(endeffector[i]->act_outside_upper_xcop_state) log_cur_moment_eef[i][1] = - endeffector[i]->act_force_eef[2] * endeffector[i]->upper_cop_x_margin;
-                    if(endeffector[i]->act_outside_lower_xcop_state) log_cur_moment_eef[i][1] = - endeffector[i]->act_force_eef[2] * endeffector[i]->lower_cop_x_margin;
-                    if(endeffector[i]->act_outside_upper_ycop_state) log_cur_moment_eef[i][0] = endeffector[i]->act_force_eef[2] * endeffector[i]->upper_cop_y_margin;
-                    if(endeffector[i]->act_outside_lower_ycop_state) log_cur_moment_eef[i][0] = endeffector[i]->act_force_eef[2] * endeffector[i]->lower_cop_y_margin;
                 }else if(endeffector[i]->is_ik_enable && endeffector[i]->ref_contact_state){
                     log_cur_force_eef[i] = endeffector[i]->ref_force_eef/*eef系*/;
                     log_cur_force_eef[i][2] = endeffector[i]->contact_decision_threshold;
@@ -1967,7 +1953,6 @@ public:
         for(size_t i=0; i< eefnum;i++){
             endeffector[i]->prev_pos_vel/*eef系*/ = hrp::Vector3::Zero();
             endeffector[i]->prev_rot_vel/*eef系*/ = hrp::Vector3::Zero();
-            endeffector[i]->prev_delta_wrench = hrp::dvector::Zero(0);
         }
 
         prev_P = hrp::Vector3::Zero();
@@ -2014,9 +1999,6 @@ public:
         tau_weight = i_stp.tau_weight;
         std::cerr << "[" << instance_name << "]  tau_weight = " << tau_weight << std::endl;
 
-        tauvel_weight = i_stp.tauvel_weight;
-        std::cerr << "[" << instance_name << "]  tauvel_weight = " << tauvel_weight << std::endl;
-
         temp_safe_time = i_stp.temp_safe_time;
         std::cerr << "[" << instance_name << "]  temp_safe_time = " << temp_safe_time << std::endl;
 
@@ -2026,32 +2008,11 @@ public:
         force_weight = i_stp.force_weight;
         std::cerr << "[" << instance_name << "]  force_weight = " << force_weight << std::endl;
 
-        forcevel_weight = i_stp.forcevel_weight;
-        std::cerr << "[" << instance_name << "]  forcevel_weight = " << forcevel_weight << std::endl;
-
         intvel_weight = i_stp.intvel_weight;
         std::cerr << "[" << instance_name << "]  intvel_weight = " << intvel_weight << std::endl;
 
-        P_weight = i_stp.P_weight;
-        std::cerr << "[" << instance_name << "]  P_weight = " << P_weight << std::endl;
-
-        Pvel_weight = i_stp.Pvel_weight;
-        std::cerr << "[" << instance_name << "]  Pvel_weight = " << Pvel_weight << std::endl;
-
-        L_weight = i_stp.L_weight;
-        std::cerr << "[" << instance_name << "]  L_weight = " << L_weight << std::endl;
-
-        Lvel_weight = i_stp.Lvel_weight;
-        std::cerr << "[" << instance_name << "]  Lvel_weight = " << Lvel_weight << std::endl;
-
         vel_weight = i_stp.vel_weight;
         std::cerr << "[" << instance_name << "]  vel_weight = " << vel_weight << std::endl;
-
-        acc_weight = i_stp.acc_weight;
-        std::cerr << "[" << instance_name << "]  acc_weight = " << acc_weight << std::endl;
-
-        reference_weight = i_stp.reference_weight;
-        std::cerr << "[" << instance_name << "]  reference_weight = " << reference_weight << std::endl;
 
         etau_weight = i_stp.etau_weight;
         std::cerr << "[" << instance_name << "]  etau_weight = " << etau_weight << std::endl;
@@ -2074,19 +2035,10 @@ public:
         taumax_weight = i_stp.taumax_weight;
         std::cerr << "[" << instance_name << "]  taumax_weight = " << taumax_weight << std::endl;
 
-        taumaxvel_weight = i_stp.taumaxvel_weight;
-        std::cerr << "[" << instance_name << "]  taumaxvel_weight = " << taumaxvel_weight << std::endl;
+        taumaxvel_scale = i_stp.taumaxvel_scale;
+        std::cerr << "[" << instance_name << "]  taumaxvel_scale = " << taumaxvel_scale << std::endl;
         col_scale = i_stp.col_scale;
         std::cerr << "[" << instance_name << "]  col_scale = " << col_scale << std::endl;
-
-        tau_M = i_stp.tau_M;
-        std::cerr << "[" << instance_name << "]  tau_M = " << tau_M << std::endl;
-
-        tau_D = i_stp.tau_D;
-        std::cerr << "[" << instance_name << "]  tau_D = " << tau_D << std::endl;
-
-        tau_K = i_stp.tau_K;
-        std::cerr << "[" << instance_name << "]  tau_K = " << tau_K << std::endl;
 
         sync2activetime = i_stp.mcs_sync2activetime;
         sync2referencetime = i_stp.mcs_sync2referencetime;
@@ -2152,19 +2104,11 @@ public:
         i_stp.mcs_coiltemp_cutoff_freq = coiltemp_filter->getCutOffFreq();
         i_stp.mcs_surfacetemp_cutoff_freq = surfacetemp_filter->getCutOffFreq();
         i_stp.tau_weight = tau_weight;
-        i_stp.tauvel_weight = tauvel_weight;
         i_stp.temp_safe_time = temp_safe_time;
         i_stp.temp_danger_time = temp_danger_time;
         i_stp.force_weight = force_weight;
-        i_stp.forcevel_weight = forcevel_weight;
         i_stp.intvel_weight = intvel_weight;
-        i_stp.P_weight = P_weight;
-        i_stp.Pvel_weight = Pvel_weight;
-        i_stp.L_weight = L_weight;
-        i_stp.Lvel_weight = Lvel_weight;
         i_stp.vel_weight = vel_weight;
-        i_stp.acc_weight = acc_weight;
-        i_stp.reference_weight = reference_weight;
         i_stp.etau_weight = etau_weight;
         i_stp.etau_scale = etau_scale;
         i_stp.etau_scale2 = etau_scale2;
@@ -2172,11 +2116,8 @@ public:
         i_stp.eforce_scale = eforce_scale;
         i_stp.eforce_scale2 = eforce_scale2;
         i_stp.taumax_weight = taumax_weight;
-        i_stp.taumaxvel_weight = taumaxvel_weight;
+        i_stp.taumaxvel_scale = taumaxvel_scale;
         i_stp.col_scale = col_scale;
-        i_stp.tau_M = tau_M;
-        i_stp.tau_D = tau_D;
-        i_stp.tau_K = tau_K;
 
         i_stp.mcs_sync2activetime = sync2activetime;
         i_stp.mcs_sync2referencetime = sync2referencetime;
@@ -2382,19 +2323,11 @@ private:
     std::vector<bool> is_joint_enable;//トルクを評価するか
 
     double tau_weight;
-    double tauvel_weight;
     double temp_safe_time;
     double temp_danger_time;
     double force_weight;
-    double forcevel_weight;
     double intvel_weight;
-    double P_weight;
-    double Pvel_weight;
-    double L_weight;
-    double Lvel_weight;
     double vel_weight;
-    double acc_weight;
-    double reference_weight;
     double etau_weight;
     double etau_scale;
     double etau_scale2;
@@ -2402,11 +2335,8 @@ private:
     double eforce_scale2;
     double eforce_scale;
     double taumax_weight;
-    double taumaxvel_weight;
+    double taumaxvel_scale;
     double col_scale;
-    double tau_M;
-    double tau_D;
-    double tau_K;
 
     double sync2activetime;
     double sync2referencetime;

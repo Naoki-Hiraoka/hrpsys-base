@@ -111,13 +111,8 @@ module OpenHRP
         double lower_cop_y_margin;
         double max_fz;
         double min_fz;
-        double target_max_fz;
         double z_leave_weight;
-        double z_leavevel_weight;
         double other_leave_weight;
-        double wrench_M;
-        double wrench_D;
-        double wrench_K;
         sequence<double, 6> wrench_weight;
         /// interact weight. o(1 / pos_compensation_limit^2)
         double pos_interact_weight;
@@ -145,18 +140,8 @@ module OpenHRP
         double rot_compensation_limit;
         /// footorigin weight
         double footorigin_weight;
-        /// z contact weight
-        double z_contact_weight;
         /// z contact velocity [m/s]
         double z_contact_vel;
-        /// rz,ry contact weight
-        double rot_contact_weight;
-        /// rz,ry contact velocity [rad/s]
-        double rot_contact_vel;
-        double outside_upper_cop_x_margin;
-        double outside_lower_cop_x_margin;
-        double outside_upper_cop_y_margin;
-        double outside_lower_cop_y_margin;
     };
 
     /**
@@ -289,32 +274,16 @@ module OpenHRP
       BoolSequence is_joint_enable;
       /// tau weight
       double tau_weight;
-      /// tauvel weight
-      double tauvel_weight;
       /// temperature safe time
       double temp_safe_time;
       /// temperature danger time
       double temp_danger_time;
       /// force weight
       double force_weight;
-      /// force vel weight
-      double forcevel_weight;
       /// interact eef vel weight
       double intvel_weight;
-      /// P weight
-      double P_weight;
-      /// \dot P weight
-      double Pvel_weight;
-      /// L weight
-      double L_weight;
-      /// \dot L weight
-      double Lvel_weight;
       /// velocity weight
       double vel_weight;
-      /// velocity weight
-      double acc_weight;
-      /// reference weight
-      double reference_weight;
       /// etau weight
       double etau_weight;
       /// etauvel weight
@@ -330,14 +299,8 @@ module OpenHRP
       /// taumax weight
       double taumax_weight;
       /// taumaxvel weight
-      double taumaxvel_weight;
+      double taumaxvel_scale;
       double col_scale;
-      /// tau_M
-      double tau_M;
-      /// tau_D
-      double tau_D;
-      /// tau_K
-      double tau_K;
       /// joint passive velocity [rad/s]
       double mcs_passive_vel;
       /// joint passive2active time [s]
