@@ -99,12 +99,16 @@ public:
         ref_footorigin_R = hrp::Matrix33::Identity();
 
         qactv = hrp::dvector::Zero(m_robot->numJoints());
+        qactv_filtered = hrp::dvector::Zero(m_robot->numJoints());
         qactv_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(250.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
         acttauv = hrp::dvector::Zero(m_robot->numJoints());
+        acttauv_filtered = hrp::dvector::Zero(m_robot->numJoints());
         acttauv_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
         coiltemp = hrp::dvector::Zero(m_robot->numJoints());
+        coiltemp_filtered = hrp::dvector::Zero(m_robot->numJoints());
         coiltemp_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
         surfacetemp = hrp::dvector::Zero(m_robot->numJoints());
+        surfacetemp_filtered = hrp::dvector::Zero(m_robot->numJoints());
         surfacetemp_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> >(new FirstOrderLowPassFilter<hrp::dvector>(50.0, dt, hrp::dvector::Zero(m_robot->numJoints())));//[Hz]
         act_root_p = hrp::Vector3::Zero();
         act_root_R = hrp::Matrix33::Identity();
@@ -375,17 +379,53 @@ public:
 
     }
 
+
+    void getActualParametersFilter(hrp::BodyPtr& m_robot,
+                                   const hrp::dvector& _qactv,
+                                   const hrp::dvector& _acttauv,
+                                   const RTC::TimedDoubleSeq& _coiltemp,
+                                   const RTC::TimedDoubleSeq& _surfacetemp,
+                                   const std::vector <hrp::Vector3>& _act_force/*sensor系*/,
+                                   const std::vector <hrp::Vector3>& _act_moment/*sensor系,sensorまわり*/
+                                   ){
+        qactv_filtered = qactv_filter->passFilter(_qactv);
+        acttauv_filtered = acttauv_filter->passFilter(_acttauv);
+        if(_coiltemp.data.length()==m_robot->numJoints()){
+            hrp::dvector rawcoiltemp(m_robot->numJoints());
+            for(size_t i = 0; i < m_robot->numJoints(); i++){
+                rawcoiltemp[i] = _coiltemp.data[i];
+            }
+            coiltemp_filtered = coiltemp_filter->passFilter(rawcoiltemp);
+        }
+        if(_surfacetemp.data.length()==m_robot->numJoints()){
+            hrp::dvector rawsurfacetemp(m_robot->numJoints());
+            for(size_t i = 0; i < m_robot->numJoints(); i++){
+                rawsurfacetemp[i] = _surfacetemp.data[i];
+            }
+            surfacetemp_filtered = surfacetemp_filter->passFilter(rawsurfacetemp);
+        }
+        act_force_filtered.resize(_act_force.size(),hrp::Vector3::Zero());
+        act_moment_filtered.resize(_act_moment.size(),hrp::Vector3::Zero());
+        for (int i = 0; i < eefnum;i++){
+            hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(endeffector[i]->sensor_name);
+            act_force_filtered[sensor->id]/*sensor系*/ = endeffector[i]->act_force_filter->passFilter(_act_force[sensor->id]/*sensor系*/);
+            act_moment_filtered[sensor->id]/*sensor系,sensorまわり*/ = endeffector[i]->act_moment_filter->passFilter(_act_moment[sensor->id]/*sensor系*/);
+        }
+    }
+
     //on_groundかを返す
     bool getActualParameters(hrp::BodyPtr& m_robot,
                              const hrp::dvector& _qactv,
                              const hrp::Vector3& _act_root_p/*actworld系*/,
                              const hrp::Matrix33& _act_root_R/*actworld系*/,
+                             const std::vector <hrp::Vector3>& _act_force_raw/*sensor系*/,
+                             const std::vector <hrp::Vector3>& _act_moment_raw/*sensor系,sensorまわり*/,
                              const std::vector <hrp::Vector3>& _act_force/*sensor系*/,
                              const std::vector <hrp::Vector3>& _act_moment/*sensor系,sensorまわり*/,
                              std::vector<bool>& act_contact_states,
                              const double& contact_decision_threshold,
-                             const RTC::TimedDoubleSeq& _coiltemp,
-                             const RTC::TimedDoubleSeq& _surfacetemp,
+                             const hrp::dvector& _coiltemp,
+                             const hrp::dvector& _surfacetemp,
                              hrp::Vector3& log_act_cog/*refworld系*/,
                              hrp::Vector3& log_act_cogvel/*refworld系*/,
                              std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/,
@@ -399,22 +439,11 @@ public:
         //接触eefとの相対位置関係と，重力方向さえ正確なら，root位置，yaw,は微分が正確なら誤差が蓄積しても良い
 
         //Pg Pgdot Fg hg Ngの実際の値を受け取る
-        qactv = qactv_filter->passFilter(_qactv);
-        acttauv = acttauv_filter->passFilter(_acttauv);
-        if(_coiltemp.data.length()==m_robot->numJoints()){
-            hrp::dvector rawcoiltemp(m_robot->numJoints());
-            for(size_t i = 0; i < m_robot->numJoints(); i++){
-                rawcoiltemp[i] = _coiltemp.data[i];
-            }
-            coiltemp = coiltemp_filter->passFilter(rawcoiltemp);
-        }
-        if(_surfacetemp.data.length()==m_robot->numJoints()){
-            hrp::dvector rawsurfacetemp(m_robot->numJoints());
-            for(size_t i = 0; i < m_robot->numJoints(); i++){
-                rawsurfacetemp[i] = _surfacetemp.data[i];
-            }
-            surfacetemp = surfacetemp_filter->passFilter(rawsurfacetemp);
-        }
+        qactv = _qactv;
+        acttauv = _acttauv;
+        coiltemp = _coiltemp;
+        surfacetemp = _surfacetemp;
+
         act_root_R/*actworld系*/ = _act_root_R/*原点不明,actworld系*/;
         act_root_p/*actworld系*/ = _act_root_p/*actworld系*/;
 
@@ -432,11 +461,11 @@ public:
             endeffector[i]->act_p/*actworld系*/ = target->p + target->R * endeffector[i]->localp;
             endeffector[i]->act_R/*actworld系*/ = target->R * endeffector[i]->localR;
             hrp::Sensor* sensor = m_robot->sensor<hrp::ForceSensor>(endeffector[i]->sensor_name);
-            endeffector[i]->act_force_raw/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force[sensor->id]/*sensor系*/;
-            hrp::Vector3 act_force/*sensor系*/ = endeffector[i]->act_force_filter->passFilter(_act_force[sensor->id]/*sensor系*/);
+            endeffector[i]->act_force_raw/*actworld系*/ = (sensor->link->R * sensor->localR) * _act_force_raw[sensor->id]/*sensor系*/;
+            hrp::Vector3 act_force/*sensor系*/ = _act_force[sensor->id]/*sensor系*/;
             endeffector[i]->act_force/*actworld系*/ = (sensor->link->R * sensor->localR) * act_force/*sensor系*/;
-            endeffector[i]->act_moment_raw/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment[sensor->id]/*sensor系*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force_raw/*actworld系*/);
-            hrp::Vector3 act_moment/*sensor系,sensorまわり*/ = endeffector[i]->act_moment_filter->passFilter(_act_moment[sensor->id]/*sensor系*/);
+            endeffector[i]->act_moment_raw/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * _act_moment_raw[sensor->id]/*sensor系*/ + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force_raw/*actworld系*/);
+            hrp::Vector3 act_moment/*sensor系,sensorまわり*/ = _act_moment[sensor->id]/*sensor系*/;
             endeffector[i]->act_moment/*actworld系,eefまわり*/ = (sensor->link->R * sensor->localR) * act_moment + ((sensor->link->R * sensor->localPos + sensor->link->p) - (target->R * endeffector[i]->localp + target->p)).cross(endeffector[i]->act_force/*actworld系*/);
             endeffector[i]->act_force_eef_raw/*acteef系*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_force_raw/*actworld系*/;
             endeffector[i]->act_moment_eef_raw/*acteef系,eef周り*/ = endeffector[i]->act_R/*actworld系*/.transpose() * endeffector[i]->act_moment_raw/*actworld系*/;
@@ -2268,6 +2297,12 @@ public:
         }
     }
 
+    hrp::dvector qactv_filtered;
+    hrp::dvector acttauv_filtered;
+    hrp::dvector coiltemp_filtered;
+    hrp::dvector surfacetemp_filtered;
+    std::vector <hrp::Vector3> act_force_filtered;
+    std::vector <hrp::Vector3> act_moment_filtered;
 private:
     hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         hrp::Vector3 mlog;

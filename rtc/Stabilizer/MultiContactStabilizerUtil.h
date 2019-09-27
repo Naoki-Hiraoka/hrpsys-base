@@ -78,22 +78,31 @@ public:
                              std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/,
                              hrp::Vector3& log_act_base_rpy/*world系*/,
                              const hrp::dvector& _acttauv) {
+        multicontactstabilizer.getActualParametersFilter(m_robot,
+                                                         _qactv,
+                                                         _acttauv,
+                                                         _coiltemp,
+                                                         _surfacetemp,
+                                                         _act_force,
+                                                         _act_moment);
         return multicontactstabilizer.getActualParameters(m_robot,
-                                                          _qactv,
+                                                          multicontactstabilizer.qactv_filtered,
                                                           _act_root_p,
                                                           _act_root_R,
                                                           _act_force,
                                                           _act_moment,
+                                                          multicontactstabilizer.act_force_filtered,
+                                                          multicontactstabilizer.act_moment_filtered,
                                                           act_contact_states,
                                                           contact_decision_threshold,
-                                                          _coiltemp,
-                                                          _surfacetemp,
+                                                          multicontactstabilizer.coiltemp_filtered,
+                                                          multicontactstabilizer.surfacetemp_filtered,
                                                           log_act_cog,
                                                           log_act_cogvel,
                                                           log_act_force_eef,
                                                           log_act_moment_eef,
                                                           log_act_base_rpy,
-                                                          _acttauv
+                                                          multicontactstabilizer.acttauv_filtered
                                                           );
     }
 
