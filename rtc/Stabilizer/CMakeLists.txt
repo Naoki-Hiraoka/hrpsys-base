@@ -33,13 +33,19 @@ set_target_properties(Stabilizer PROPERTIES PREFIX "")
 add_executable(StabilizerComp StabilizerComp.cpp ${comp_sources})
 target_link_libraries(StabilizerComp ${libs})
 
-set(target Stabilizer StabilizerComp)
+add_library(RemoteStabilizer SHARED RemoteStabilizer.cpp)
+target_link_libraries(RemoteStabilizer Stabilizer)
+set_target_properties(RemoteStabilizer PROPERTIES PREFIX "")
+add_executable(RemoteStabilizerComp RemoteStabilizerComp.cpp RemoteStabilizer.cpp)
+target_link_libraries(RemoteStabilizerComp Stabilizer)
+
+set(target Stabilizer StabilizerComp RemoteStabilizer RemoteStabilizerComp)
 
 add_executable(testTwoDofController testTwoDofController.cpp TwoDofController.cpp Integrator.cpp)
 target_link_libraries(testTwoDofController ${libs})
 add_executable(testZMPDistributor testZMPDistributor.cpp ZMPDistributor.h ../ImpedanceController/JointPathEx.cpp)
 target_link_libraries(testZMPDistributor ${libs})
-set(target Stabilizer StabilizerComp testTwoDofController testZMPDistributor)
+set(target Stabilizer StabilizerComp RemoteStabilizer RemoteStabilizerComp testTwoDofController testZMPDistributor)
 
 add_test(testZMPDistributor_HRP2JSK_EEFM_Test0 testZMPDistributor --hrp2jsk --test0 --use-gnuplot false)
 add_test(testZMPDistributor_HRP2JSK_EEFM_Test1 testZMPDistributor --hrp2jsk --test1 --use-gnuplot false)

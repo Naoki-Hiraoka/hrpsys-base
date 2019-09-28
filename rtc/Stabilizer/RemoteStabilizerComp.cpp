@@ -1,6 +1,6 @@
 // -*- C++ -*-
 /*!
- * @file StabilizerComp.cpp
+ * @file RemoteStabilizerComp.cpp
  * @brief Standalone component
  * @date $Date$
  *
@@ -10,16 +10,16 @@
 #include <rtm/Manager.h>
 #include <iostream>
 #include <string>
-#include "Stabilizer.h"
+#include "RemoteStabilizer.h"
 
 
 void MyModuleInit(RTC::Manager* manager)
 {
-  StabilizerInit(manager);
+  RemoteStabilizerInit(manager);
   RTC::RtcBase* comp;
 
   // Create a component
-  comp = manager->createComponent("Stabilizer");
+  comp = manager->createComponent("RemoteStabilizer");
 
 
   // Example
