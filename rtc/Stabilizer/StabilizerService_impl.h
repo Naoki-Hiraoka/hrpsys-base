@@ -36,6 +36,8 @@ public:
 	void setIsIkEnable(const char *name, CORBA::Long i_param);
 	void getIsIkEnable(const char *name, CORBA::Long_out i_param);
 	void stabilizer(Stabilizer *i_stabilizer);
+	void callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut_out o_param);
+	void sync_2_st();
 
 	bool dummy();
 private:

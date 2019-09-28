@@ -67,6 +67,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_rpyIn("rpy", m_rpy),
     m_zmpRefIn("zmpRef", m_zmpRef),
     m_StabilizerServicePort("StabilizerService"),
+    m_StabilizerServiceClientPort("StabilizerServiceClient"),
     m_basePosIn("basePosIn", m_basePos),
     m_baseRpyIn("baseRpyIn", m_baseRpy),
     m_contactStatesIn("contactStates", m_contactStates),
@@ -113,7 +114,8 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     emergency_check_mode(OpenHRP::StabilizerService::NO_CHECK),
     szd(NULL),
     // </rtc-template>
-    m_debugLevel(0)
+    m_debugLevel(0),
+    multicontactstabilizer(m_serviceclient0)
 {
   m_service0.stabilizer(this);
 }
@@ -187,9 +189,11 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   m_StabilizerServicePort.registerProvider("service0", "StabilizerService", m_service0);
   
   // Set service consumers to Ports
-  
+  m_StabilizerServicePort.registerConsumer("serviceclient0", "StabilizerService", m_serviceclient0);
+
   // Set CORBA Service Ports
   addPort(m_StabilizerServicePort);
+  addPort(m_StabilizerServiceClientPort);
   
   // </rtc-template>
   RTC::Properties& prop = getProperties();
@@ -890,7 +894,7 @@ void Stabilizer::getCurrentParameters ()
   for ( int i = 0; i < m_robot->numJoints(); i++ ){
     qorg[i] = m_robot->joint(i)->q;
   }
-  multicontactstabilizer.getCurrentParameters(m_robot, qorg);
+  multicontactstabilizer.getCurrentParameters(m_robot, qorg, control_mode==MODE_ST);
 }
 
 void Stabilizer::calcFootOriginCoords (hrp::Vector3& foot_origin_pos, hrp::Matrix33& foot_origin_rot)
@@ -986,7 +990,10 @@ void Stabilizer::getActualParameters ()
                                                              act_force_eef/*eef系*/,
                                                              act_moment_eef/*eef系*/,
                                                              act_base_rpy/*refworld系*/,
-                                                             acttauv);
+                                                             acttauv,
+                                                             m_pgain,
+                                                             m_collisioninfo,
+                                                             control_mode==MODE_ST);
 
       if (control_mode == MODE_IDLE || control_mode == MODE_AIR) {
           for ( int i = 0; i < m_robot->numJoints(); i++ ){
@@ -1832,8 +1839,6 @@ void Stabilizer::calcEEForceMomentControl() {
     if(st_algorithm == OpenHRP::StabilizerService::MCS){
         if(m_pgain.data.length() == m_robot->numJoints()){
             multicontactstabilizer.calcMultiContactControl(m_robot,
-                                                           m_pgain,
-                                                           m_collisioninfo,
                                                            current_base_pos,
                                                            current_base_rpy,
                                                            current_force_eef,
@@ -2734,6 +2739,10 @@ void Stabilizer::setIsIkEnable(const char *name, CORBA::Long i_param){
 
 void Stabilizer::getIsIkEnable(const char *name, CORBA::Long& i_param){
     multicontactstabilizer.getIsIkEnable(name,i_param);
+}
+
+void Stabilizer::callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut& o_param){
+    multicontactstabilizer.callRemoteStabilizer(i_param,o_param);
 }
 
 std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService::STAlgorithm _st_algorithm)

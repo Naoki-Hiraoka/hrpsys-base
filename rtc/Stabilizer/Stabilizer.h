@@ -113,6 +113,7 @@ class Stabilizer
   void getIsIkEnables(OpenHRP::StabilizerService::LongSequence_out& i_param);
   void setIsIkEnable(const char *name, CORBA::Long i_param);
   void getIsIkEnable(const char *name, CORBA::Long& i_param);
+  void callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut& o_param);
   void getCurrentParameters ();
   void getActualParameters ();
   void getTargetParameters ();
@@ -267,13 +268,13 @@ class Stabilizer
   // Service declaration
   // <rtc-template block="service_declare">
   RTC::CorbaPort m_StabilizerServicePort;
-  
+  RTC::CorbaPort m_StabilizerServiceClientPort;
   // </rtc-template>
 
   // Consumer declaration
   // <rtc-template block="consumer_declare">
   StabilizerService_impl m_service0;
-  
+  RTC::CorbaConsumer<OpenHRP::StabilizerService> m_serviceclient0;
   // </rtc-template>
 
  private:

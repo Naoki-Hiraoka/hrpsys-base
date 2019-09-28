@@ -10,17 +10,6 @@
 #ifndef REMOTESTABILIZER_COMPONENT_H
 #define REMOTESTABILIZER_COMPONENT_H
 
-#include <rtm/idl/BasicDataType.hh>
-#include <rtm/idl/ExtendedDataTypes.hh>
-#include <rtm/Manager.h>
-#include <rtm/DataFlowComponentBase.h>
-#include <rtm/CorbaPort.h>
-#include <rtm/DataInPort.h>
-#include <rtm/DataOutPort.h>
-#include <rtm/idl/BasicDataTypeSkel.h>
-#include <rtm/idl/ExtendedDataTypesSkel.h>
-#include <hrpModel/Body.h>
-
 // Service implementation headers
 // <rtc-template block="service_impl_h">
 #include "Stabilizer.h"

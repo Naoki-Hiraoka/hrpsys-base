@@ -374,6 +374,42 @@ module OpenHRP
       boolean use_zmp_truncation;
     };
 
+    struct RSParamIn {
+        // targetparameter
+        double transition_smooth_gain;
+        sequence<double> qrefv;
+        DblArray3 ref_root_pos;
+        DblArray3 ref_root_rpy;
+        sequence<DblArray3> ref_force;
+        sequence<DblArray3> ref_moment;
+        sequence<boolean> ref_contact_states;
+        sequence<double> swing_support_gains;
+        // actualparameter
+        sequence<double> qactv;
+        DblArray3 act_root_pos;
+        DblArray3 act_root_rpy;
+        sequence<DblArray3> act_force_raw;
+        sequence<DblArray3> act_moment_raw;
+        sequence<DblArray3> act_force;
+        sequence<DblArray3> act_moment;
+        double contact_decision_threshold;
+        sequence<double> coiltemp;
+        sequence<double> surfacetemp;
+        sequence<double> acttauv;
+        sequence<double> pgain;
+        sequence<double> collisioninfo;
+
+        boolean mode_st;
+    };
+
+    struct RSParamOut {
+        sequence<double> qcurv;
+        DblArray3 cur_root_pos;
+        DblArray3 cur_root_rpy;
+        sequence<boolean> act_contact_states;
+        boolean on_ground;
+    };
+
     /**
      * @brief Get Stabilizer parameters.
      * @param i_param is output parameters
@@ -459,6 +495,10 @@ module OpenHRP
      * @return
      */
     void stopStabilizer();
+
+    void callRemoteStabilizer(in RSParamIn i_param, out RSParamOut o_param);
+    void sync_2_st();
+
     boolean dummy();
   };
 };

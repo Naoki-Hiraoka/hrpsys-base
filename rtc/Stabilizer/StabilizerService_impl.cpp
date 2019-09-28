@@ -89,6 +89,17 @@ void StabilizerService_impl::setParameter(const OpenHRP::StabilizerService::stPa
 	m_stabilizer->setParameter(i_stp);
 }
 
+void StabilizerService_impl::callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut_out o_param)
+{
+	o_param = new OpenHRP::StabilizerService::RSParamOut();
+	m_stabilizer->callRemoteStabilizer(i_param, *o_param);
+}
+
+void StabilizerService_impl::sync_2_st()
+{
+	m_stabilizer->sync_2_st();
+}
+
 bool StabilizerService_impl::dummy()
 {
 	std::cout << "StabilizerService: " << std::endl;

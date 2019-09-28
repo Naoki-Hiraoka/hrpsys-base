@@ -51,7 +51,6 @@ RTC::ReturnCode_t RemoteStabilizer::onInitialize()
   Stabilizer::onInitialize();
 
   //Remote Stabilizer configulation
-  //TODO
   return RTC::RTC_OK;
 }
 

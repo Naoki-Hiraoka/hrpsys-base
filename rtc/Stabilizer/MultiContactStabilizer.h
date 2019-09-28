@@ -364,14 +364,14 @@ public:
             ref_total_moment/*refworld系,cogまわり*/ += (endeffector[i]->ref_p/*refworld系*/-ref_cog/*refworld系*/).cross(endeffector[i]->ref_force/*refworld系*/) + endeffector[i]->ref_moment/*refworld系,eefまわり*/;
         }
 
-        log_ref_cog/*refcogorigin系*/ = ref_cog/*refworld系*/ - ref_footorigin_p/*refworld系*/;
-        log_ref_cogvel = hrp::Vector3::Zero()/*refworld系*/;
-        for(size_t i = 0; i < eefnum; i++){
-            log_ref_force_eef[i] = endeffector[i]->ref_force_eef/*refeef系*/;
-            log_ref_moment_eef[i] = endeffector[i]->ref_moment_eef/*refeef系*/;
-         }
-        log_ref_base_pos = ref_root_p/*refworld系*/;
-        log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
+        // log_ref_cog/*refcogorigin系*/ = ref_cog/*refworld系*/ - ref_footorigin_p/*refworld系*/;
+        // log_ref_cogvel = hrp::Vector3::Zero()/*refworld系*/;
+        // for(size_t i = 0; i < eefnum; i++){
+        //     log_ref_force_eef[i] = endeffector[i]->ref_force_eef/*refeef系*/;
+        //     log_ref_moment_eef[i] = endeffector[i]->ref_moment_eef/*refeef系*/;
+        //  }
+        // log_ref_base_pos = ref_root_p/*refworld系*/;
+        // log_ref_base_rpy = hrp::rpyFromRot(ref_root_R/*refworld系*/);
 
         if(debugloop){
             std::cerr << "getTargetParameters end" << std::endl;
@@ -431,7 +431,10 @@ public:
                              std::vector<hrp::Vector3>& log_act_force_eef/*eef系,eefまわり*/,
                              std::vector<hrp::Vector3>& log_act_moment_eef/*eef系,eefまわり*/,
                              hrp::Vector3& log_act_base_rpy/*world系*/,
-                             const hrp::dvector& _acttauv) {
+                             const hrp::dvector& _acttauv,
+                             const RTC::TimedDoubleSeq& _pgain,
+                             const RTC::TimedDoubleSeq& _collisioninfo
+                             ) {
         if(debugloop){
             std::cerr << "getActualParameters start" << std::endl;
         }
@@ -443,6 +446,8 @@ public:
         acttauv = _acttauv;
         coiltemp = _coiltemp;
         surfacetemp = _surfacetemp;
+        pgain = _pgain;
+        collisioninfo = _collisioninfo;
 
         act_root_R/*actworld系*/ = _act_root_R/*原点不明,actworld系*/;
         act_root_p/*actworld系*/ = _act_root_p/*actworld系*/;
@@ -560,20 +565,13 @@ public:
             endeffector[i]->act_R_origin/*act_footorigin系*/ = act_footorigin_R/*actworld系*/.transpose() * endeffector[i]->act_R/*actworld系*/;
         }
 
-        // 前回の出力へ.(sync_2_idle時に使う)
-        m_robot->rootLink()->R = cur_root_R/*refworld系*/;
-        m_robot->rootLink()->p = cur_root_p/*refworld系*/;
-        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
-            m_robot->joint(i)->q = qcurv[i];
-        }
-
-        log_act_cog/*act_footorigin系*/ = act_footorigin_R/*actworld系*/.transpose() * (act_cog/*refworld系*/ - act_footorigin_p);
-        log_act_cogvel = hrp::Vector3::Zero()/*act_footorigin系*/;
-        for(size_t i = 0; i < eefnum; i++){
-            log_act_force_eef[i] = endeffector[i]->act_force_eef/*eef系*/;
-            log_act_moment_eef[i] = endeffector[i]->act_moment_eef/*eef系*/;
-        }
-        log_act_base_rpy/*act_footorigin系*/ = hrp::rpyFromRot(act_footorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
+        // log_act_cog/*act_footorigin系*/ = act_footorigin_R/*actworld系*/.transpose() * (act_cog/*refworld系*/ - act_footorigin_p);
+        // log_act_cogvel = hrp::Vector3::Zero()/*act_footorigin系*/;
+        // for(size_t i = 0; i < eefnum; i++){
+        //     log_act_force_eef[i] = endeffector[i]->act_force_eef/*eef系*/;
+        //     log_act_moment_eef[i] = endeffector[i]->act_moment_eef/*eef系*/;
+        // }
+        // log_act_base_rpy/*act_footorigin系*/ = hrp::rpyFromRot(act_footorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
 
         if(debugloop){
             for(size_t i = 0; i < eefnum ; i++){
@@ -597,6 +595,15 @@ public:
         return act_total_force[2] > contact_decision_threshold;
     }
 
+    void revert_to_prev(hrp::BodyPtr& m_robot/*refworld系*/){
+        // 前回の出力へ.(sync_2_idle時に使う)
+        m_robot->rootLink()->R = cur_root_R/*refworld系*/;
+        m_robot->rootLink()->p = cur_root_p/*refworld系*/;
+        for ( int i = 0; i < m_robot->numJoints(); i++ ) {
+            m_robot->joint(i)->q = qcurv[i];
+        }
+    }
+
     bool calcStateForEmergencySignal(OpenHRP::StabilizerService::EmergencyCheckMode emergency_check_mode, bool on_ground, int transition_count, bool is_modeST) {
         //接触拘束を実際の値が満たしていなければEmergency TODO
         //refとactでcontactが全く一致しなければ
@@ -605,8 +612,6 @@ public:
     }
 
     void calcMultiContactControl(hrp::BodyPtr& m_robot/*refworld系*/,
-                                 const RTC::TimedDoubleSeq& pgain,
-                                 const RTC::TimedDoubleSeq& collisioninfo,
                                  hrp::Vector3& log_current_base_pos/*refworld系*/,
                                  hrp::Vector3& log_current_base_rpy/*refworld系*/,
                                  std::vector<hrp::Vector3>& log_cur_force_eef/*eef系,eefまわり*/,
@@ -1748,33 +1753,33 @@ public:
 
         /*****************************************************************/
         //m_qRef <- m_robotより
-        log_current_base_pos = m_robot->rootLink()->p/*refworld系*/;
-        log_current_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R/*refworld系*/);
-        log_d_cog_pos = hrp::Vector3::Zero();
-        {
-            for(size_t i = 0; i < eefnum; i++){
-                log_d_foot_pos[i] = endeffector[i]->ref_R_origin.transpose() * (endeffector[i]->act_p_origin - endeffector[i]->ref_p_origin);
-                log_d_foot_rpy[i] = hrp::rpyFromRot(endeffector[i]->ref_R_origin.transpose() * endeffector[i]->act_R_origin);
-                if(debugloop){
-                    std::cerr << "d_foot_pos " << endeffector[i]->name << std::endl;
-                    std::cerr << log_d_foot_pos[i] << std::endl;
-                    std::cerr << "d_foot_rpy " << endeffector[i]->name << std::endl;
-                    std::cerr << log_d_foot_rpy[i] << std::endl;
-                }
+        // log_current_base_pos = m_robot->rootLink()->p/*refworld系*/;
+        // log_current_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R/*refworld系*/);
+        // log_d_cog_pos = hrp::Vector3::Zero();
+        // {
+        //     for(size_t i = 0; i < eefnum; i++){
+        //         log_d_foot_pos[i] = endeffector[i]->ref_R_origin.transpose() * (endeffector[i]->act_p_origin - endeffector[i]->ref_p_origin);
+        //         log_d_foot_rpy[i] = hrp::rpyFromRot(endeffector[i]->ref_R_origin.transpose() * endeffector[i]->act_R_origin);
+        //         if(debugloop){
+        //             std::cerr << "d_foot_pos " << endeffector[i]->name << std::endl;
+        //             std::cerr << log_d_foot_pos[i] << std::endl;
+        //             std::cerr << "d_foot_rpy " << endeffector[i]->name << std::endl;
+        //             std::cerr << log_d_foot_rpy[i] << std::endl;
+        //         }
 
-                if(endeffector[i]->is_ik_enable && endeffector[i]->act_contact_state){
-                    log_cur_force_eef[i] = endeffector[i]->cur_force_eef/*eef系*/;
-                    log_cur_moment_eef[i] = endeffector[i]->cur_moment_eef/*eef系*/;
-                }else if(endeffector[i]->is_ik_enable && endeffector[i]->ref_contact_state){
-                    log_cur_force_eef[i] = endeffector[i]->ref_force_eef/*eef系*/;
-                    log_cur_force_eef[i][2] = endeffector[i]->contact_decision_threshold;
-                    log_cur_moment_eef[i] = endeffector[i]->ref_moment_eef/*eef系*/;
-                }else{
-                    log_cur_force_eef[i] = endeffector[i]->ref_force_eef/*eef系*/;
-                    log_cur_moment_eef[i] = endeffector[i]->ref_moment_eef/*eef系*/;
-                }
-            }
-        }
+        //         if(endeffector[i]->is_ik_enable && endeffector[i]->act_contact_state){
+        //             log_cur_force_eef[i] = endeffector[i]->cur_force_eef/*eef系*/;
+        //             log_cur_moment_eef[i] = endeffector[i]->cur_moment_eef/*eef系*/;
+        //         }else if(endeffector[i]->is_ik_enable && endeffector[i]->ref_contact_state){
+        //             log_cur_force_eef[i] = endeffector[i]->ref_force_eef/*eef系*/;
+        //             log_cur_force_eef[i][2] = endeffector[i]->contact_decision_threshold;
+        //             log_cur_moment_eef[i] = endeffector[i]->ref_moment_eef/*eef系*/;
+        //         }else{
+        //             log_cur_force_eef[i] = endeffector[i]->ref_force_eef/*eef系*/;
+        //             log_cur_moment_eef[i] = endeffector[i]->ref_moment_eef/*eef系*/;
+        //         }
+        //     }
+        // }
         
         //TODO
         //m_qRef <- m_robot OK
@@ -2303,6 +2308,7 @@ public:
     hrp::dvector surfacetemp_filtered;
     std::vector <hrp::Vector3> act_force_filtered;
     std::vector <hrp::Vector3> act_moment_filtered;
+    size_t eefnum;
 private:
     hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         hrp::Vector3 mlog;
@@ -2336,7 +2342,6 @@ private:
     int debugloopnum;
     std::string instance_name;
     double dt;
-    size_t eefnum;
     std::map<std::string, hrp::JointLimitTable> joint_limit_tables;
     std::vector<boost::shared_ptr<EndEffector> > endeffector;
     std::map<std::string, size_t> endeffector_index_map;
@@ -2396,6 +2401,8 @@ private:
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > coiltemp_filter;
     hrp::dvector surfacetemp;
     boost::shared_ptr<FirstOrderLowPassFilter<hrp::dvector> > surfacetemp_filter;
+    RTC::TimedDoubleSeq pgain;
+    RTC::TimedDoubleSeq collisioninfo;
 
     hrp::Vector3 prev_P/*actworld系*/, prev_L/*actworld系,cogまわり*/;
     hrp::dvector prev_dtauv;
