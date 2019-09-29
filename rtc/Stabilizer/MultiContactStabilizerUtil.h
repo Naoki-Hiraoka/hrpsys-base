@@ -19,31 +19,23 @@ public:
     MultiContactStabilizerUtil(RTC::CorbaConsumer<OpenHRP::StabilizerService>& _m_serviceclient0) :multicontactstabilizer(),
                                                                                                    m_serviceclient0(_m_serviceclient0),
                                                                                                    use_remote(false),
-                                                                                                   mode_st(false),
-                                                                                                   rcv_data()
+                                                                                                   mode_st(false)
     {
     }
 
     ~MultiContactStabilizerUtil(){
-        delete rcv_data;
     }
 
     void initialize(std::string _instance_name, hrp::BodyPtr& m_robot, const double& _dt,const RTC::Properties& prop){
         multicontactstabilizer.initialize(_instance_name,m_robot,_dt,prop);
         m_Rrobot = m_robot;
-        rcv_data = new OpenHRP::StabilizerService::RSParamOut();
-        rcv_data->qcurv.length(m_robot->numJoints());
-        for(size_t i=0; i< m_robot->numJoints(); i++){
-            rcv_data->qcurv[i]=0;
-        }
-        for(size_t i=0; i < 3; i++){
-            rcv_data->cur_root_pos[i]=0;
-            rcv_data->cur_root_rpy[i]=0;
-        }
-        rcv_data->on_ground = false;
-        rcv_data->act_contact_states.length(multicontactstabilizer.eefnum);
-        for(size_t i=0; i<rcv_data->act_contact_states.length();i++){
-            rcv_data->act_contact_states[i] = false;
+        rcv_qcurv=hrp::dvector::Zero(m_robot->numJoints());
+        rcv_cur_root_pos = hrp::Vector3::Zero();
+        rcv_cur_root_rpy = hrp::Vector3::Zero();
+        rcv_on_ground = false;
+        rcv_act_contact_states.resize(multicontactstabilizer.eefnum);
+        for(size_t i=0; i<rcv_act_contact_states.size();i++){
+            rcv_act_contact_states[i] = false;
         }
     }
 
@@ -98,10 +90,16 @@ public:
             snd_data.ref_root_pos[0] = _ref_root_p[0];
             snd_data.ref_root_pos[1] = _ref_root_p[1];
             snd_data.ref_root_pos[2] = _ref_root_p[2];
-            hrp::Vector3 ref_root_rpy = hrp::rpyFromRot(_ref_root_R);
-            snd_data.ref_root_rpy[0] = ref_root_rpy[0];
-            snd_data.ref_root_rpy[1] = ref_root_rpy[1];
-            snd_data.ref_root_rpy[2] = ref_root_rpy[2];
+            snd_data.ref_root_R.length(9);
+            snd_data.ref_root_R[0] = _ref_root_R(0,0);
+            snd_data.ref_root_R[1] = _ref_root_R(0,1);
+            snd_data.ref_root_R[2] = _ref_root_R(0,2);
+            snd_data.ref_root_R[3] = _ref_root_R(1,0);
+            snd_data.ref_root_R[4] = _ref_root_R(1,1);
+            snd_data.ref_root_R[5] = _ref_root_R(1,2);
+            snd_data.ref_root_R[6] = _ref_root_R(2,0);
+            snd_data.ref_root_R[7] = _ref_root_R(2,1);
+            snd_data.ref_root_R[8] = _ref_root_R(2,2);
             snd_data.ref_force.length(_ref_force.size());
             snd_data.ref_moment.length(_ref_moment.size());
             snd_data.ref_contact_states.length(_ref_contact_states.size());
@@ -128,6 +126,8 @@ public:
             for(size_t i=0; i < _swing_support_gains.size() ;i++){
                 snd_data.swing_support_gains[i] = _swing_support_gains[i];
             }
+
+
         }
     }
 
@@ -187,10 +187,16 @@ public:
             snd_data.act_root_pos[0] = _act_root_p[0];
             snd_data.act_root_pos[1] = _act_root_p[1];
             snd_data.act_root_pos[2] = _act_root_p[2];
-            hrp::Vector3 act_root_rpy = hrp::rpyFromRot(_act_root_R);
-            snd_data.act_root_rpy[0] = act_root_rpy[0];
-            snd_data.act_root_rpy[1] = act_root_rpy[1];
-            snd_data.act_root_rpy[2] = act_root_rpy[2];
+            snd_data.act_root_R.length(9);
+            snd_data.act_root_R[0] = _act_root_R(0,0);
+            snd_data.act_root_R[1] = _act_root_R(0,1);
+            snd_data.act_root_R[2] = _act_root_R(0,2);
+            snd_data.act_root_R[3] = _act_root_R(1,0);
+            snd_data.act_root_R[4] = _act_root_R(1,1);
+            snd_data.act_root_R[5] = _act_root_R(1,2);
+            snd_data.act_root_R[6] = _act_root_R(2,0);
+            snd_data.act_root_R[7] = _act_root_R(2,1);
+            snd_data.act_root_R[8] = _act_root_R(2,2);
             snd_data.act_force_raw.length(_act_force.size());
             snd_data.act_moment_raw.length(_act_moment.size());
             snd_data.act_force.length(_act_force.size());
@@ -227,8 +233,14 @@ public:
             snd_data.coiltemp.length(m_robot->numJoints());
             snd_data.surfacetemp.length(m_robot->numJoints());
             snd_data.acttauv.length(m_robot->numJoints());
-            snd_data.pgain = pgain.data;
-            snd_data.collisioninfo = collisioninfo.data;
+            snd_data.pgain.length(pgain.data.length());
+            for(size_t i=0; i< pgain.data.length();i++){
+                snd_data.pgain[i] = pgain.data[i];
+            }
+            snd_data.collisioninfo.length(collisioninfo.data.length());
+            for(size_t i=0; i< collisioninfo.data.length();i++){
+                snd_data.collisioninfo[i] = collisioninfo.data[i];
+            }
             for ( size_t i = 0; i < m_Rrobot->numJoints(); i++ ){
                 snd_data.acttauv[i] = multicontactstabilizer.acttauv_filtered[i];
                 snd_data.coiltemp[i] = multicontactstabilizer.coiltemp_filtered[i];
@@ -239,7 +251,18 @@ public:
                 snd_data.mode_st = false;
                 try
                     {
+                        OpenHRP::StabilizerService::RSParamOut* rcv_data;
                         m_serviceclient0->callRemoteStabilizer(snd_data,rcv_data);
+                        for(size_t i=0; i< m_robot->numJoints(); i++){
+                            rcv_qcurv[i]=rcv_data->qcurv[i];
+                        }
+                        rcv_cur_root_pos = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
+                        rcv_cur_root_rpy = hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]);
+                        rcv_on_ground = rcv_data->on_ground;
+                        for(size_t i=0; i<rcv_act_contact_states.size();i++){
+                            rcv_act_contact_states[i] = rcv_data->act_contact_states[i];
+                        }
+                        delete rcv_data;
                     }
                 catch (CORBA::SystemException &e)
                     {
@@ -258,11 +281,11 @@ public:
             }
 
             for(size_t i=0; i < act_contact_states.size() ;i++){
-                act_contact_states[i] = rcv_data->act_contact_states[i];
+                act_contact_states[i] = rcv_act_contact_states[i];
             }
-
             multicontactstabilizer.revert_to_prev(m_robot);
-            return rcv_data->on_ground;
+            return rcv_on_ground;
+
         }
     }
 
@@ -295,7 +318,18 @@ public:
 
             try
                 {
+                    OpenHRP::StabilizerService::RSParamOut* rcv_data;
                     m_serviceclient0->callRemoteStabilizer(snd_data,rcv_data);
+                    for(size_t i=0; i< m_robot->numJoints(); i++){
+                        rcv_qcurv[i]=rcv_data->qcurv[i];
+                    }
+                    rcv_cur_root_pos = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
+                    rcv_cur_root_rpy = hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]);
+                    rcv_on_ground = rcv_data->on_ground;
+                    for(size_t i=0; i<rcv_act_contact_states.size();i++){
+                        rcv_act_contact_states[i] = rcv_data->act_contact_states[i];
+                    }
+                    delete rcv_data;
                 }
             catch (CORBA::SystemException &e)
                 {
@@ -309,10 +343,10 @@ public:
                 }
 
             for ( int i = 0;i< m_robot->numJoints();i++){
-                m_robot->joint(i)->q = rcv_data->qcurv[i];
+                m_robot->joint(i)->q = rcv_qcurv[i];
             }
-            m_robot->rootLink()->p = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
-            m_robot->rootLink()->R = hrp::rotFromRpy(hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]));
+            m_robot->rootLink()->p = rcv_cur_root_pos;
+            m_robot->rootLink()->R = hrp::rotFromRpy(rcv_cur_root_rpy);
 
         }
     }
@@ -595,7 +629,16 @@ public:
         {
             hrp::dvector qrefv = hrp::dvector(m_Rrobot->numJoints());
             hrp::Vector3 ref_root_p(i_param.ref_root_pos[0],i_param.ref_root_pos[1],i_param.ref_root_pos[2]);
-            hrp::Matrix33 ref_root_R = hrp::rotFromRpy(i_param.ref_root_rpy[0],i_param.ref_root_rpy[1],i_param.ref_root_rpy[2]);
+            hrp::Matrix33 ref_root_R;
+            ref_root_R(0,0) = i_param.ref_root_R[0];
+            ref_root_R(0,1) = i_param.ref_root_R[1];
+            ref_root_R(0,2) = i_param.ref_root_R[2];
+            ref_root_R(1,0) = i_param.ref_root_R[3];
+            ref_root_R(1,1) = i_param.ref_root_R[4];
+            ref_root_R(1,2) = i_param.ref_root_R[5];
+            ref_root_R(2,0) = i_param.ref_root_R[6];
+            ref_root_R(2,1) = i_param.ref_root_R[7];
+            ref_root_R(2,2) = i_param.ref_root_R[8];
             std::vector <hrp::Vector3> ref_force(i_param.ref_force.length()), ref_moment(i_param.ref_moment.length());
             std::vector<bool> ref_contact_states(i_param.ref_contact_states.length());
             std::vector<double>  swing_support_gains(i_param.swing_support_gains.length());
@@ -643,7 +686,16 @@ public:
         {
             hrp::dvector qactv = hrp::dvector(m_Rrobot->numJoints());
             hrp::Vector3 act_root_p(i_param.act_root_pos[0],i_param.act_root_pos[1],i_param.act_root_pos[2]);
-            hrp::Matrix33 act_root_R = hrp::rotFromRpy(i_param.act_root_rpy[0],i_param.act_root_rpy[1],i_param.act_root_rpy[2]);
+            hrp::Matrix33 act_root_R;
+            act_root_R(0,0) = i_param.act_root_R[0];
+            act_root_R(0,1) = i_param.act_root_R[1];
+            act_root_R(0,2) = i_param.act_root_R[2];
+            act_root_R(1,0) = i_param.act_root_R[3];
+            act_root_R(1,1) = i_param.act_root_R[4];
+            act_root_R(1,2) = i_param.act_root_R[5];
+            act_root_R(2,0) = i_param.act_root_R[6];
+            act_root_R(2,1) = i_param.act_root_R[7];
+            act_root_R(2,2) = i_param.act_root_R[8];
             std::vector <hrp::Vector3> act_force_raw(i_param.act_force_raw.length()), act_moment_raw(i_param.act_moment_raw.length());
             std::vector <hrp::Vector3> act_force(i_param.act_force.length()), act_moment(i_param.act_moment.length());
             std::vector<bool> act_contact_states(multicontactstabilizer.eefnum);
@@ -713,7 +765,15 @@ public:
             m_Rrobot->rootLink()->p[0] = i_param.ref_root_pos[0];
             m_Rrobot->rootLink()->p[1] = i_param.ref_root_pos[1];
             m_Rrobot->rootLink()->p[2] = i_param.ref_root_pos[2];
-            m_Rrobot->rootLink()->R = hrp::rotFromRpy(i_param.ref_root_rpy[0],i_param.ref_root_rpy[1],i_param.ref_root_rpy[2]);
+            m_Rrobot->rootLink()->R(0,0) = i_param.ref_root_R[0];
+            m_Rrobot->rootLink()->R(0,1) = i_param.ref_root_R[1];
+            m_Rrobot->rootLink()->R(0,2) = i_param.ref_root_R[2];
+            m_Rrobot->rootLink()->R(1,0) = i_param.ref_root_R[3];
+            m_Rrobot->rootLink()->R(1,1) = i_param.ref_root_R[4];
+            m_Rrobot->rootLink()->R(1,2) = i_param.ref_root_R[5];
+            m_Rrobot->rootLink()->R(2,0) = i_param.ref_root_R[6];
+            m_Rrobot->rootLink()->R(2,1) = i_param.ref_root_R[7];
+            m_Rrobot->rootLink()->R(2,2) = i_param.ref_root_R[8];
 
             o_param.qcurv.length(m_Rrobot->numJoints());
             for ( int i = 0; i < m_Rrobot->numJoints(); i++ ){
@@ -824,7 +884,11 @@ private:
     bool mode_st;
     hrp::BodyPtr m_Rrobot;
     OpenHRP::StabilizerService::RSParamIn snd_data;
-    OpenHRP::StabilizerService::RSParamOut* rcv_data;
+    hrp::dvector rcv_qcurv;
+    hrp::Vector3 rcv_cur_root_pos;
+    hrp::Vector3 rcv_cur_root_rpy;
+    bool rcv_on_ground;
+    std::vector<bool> rcv_act_contact_states;
 };
 
 

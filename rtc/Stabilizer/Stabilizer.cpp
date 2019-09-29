@@ -974,11 +974,13 @@ void Stabilizer::getActualParameters ()
           act_force_sen[i] = hrp::Vector3(m_wrenches[i].data[0], m_wrenches[i].data[1], m_wrenches[i].data[2]);
           act_moment_sen[i] = hrp::Vector3(m_wrenches[i].data[3], m_wrenches[i].data[4], m_wrenches[i].data[5]);
       }
+      const hrp::Vector3 act_root_p = m_robot->rootLink()->p/*Zero*/;
+      const hrp::Matrix33 act_root_R = m_robot->rootLink()->R/*actworld系*/;
 
       on_ground = multicontactstabilizer.getActualParameters(m_robot,
                                                              qactv,
-                                                             m_robot->rootLink()->p/*Zero*/,
-                                                             m_robot->rootLink()->R/*actworld系*/,
+                                                             act_root_p,
+                                                             act_root_R,
                                                              act_force_sen/*sensor系*/,
                                                              act_moment_sen/*sensor系,sensorまわり*/,
                                                              act_contact_states,
@@ -1378,7 +1380,6 @@ void Stabilizer::getTargetParameters ()
   target_root_R = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
   m_robot->rootLink()->R = target_root_R;
   ref_base_rpy = hrp::rpyFromRot(m_robot->rootLink()->R);
-  m_robot->calcForwardKinematics();
 
   if(st_algorithm == OpenHRP::StabilizerService::MCS){
       // Calc swing support limb gain param
@@ -1414,7 +1415,8 @@ void Stabilizer::getTargetParameters ()
                                                  ref_base_rpy/*refworld系*/);
       return;
   }
-  
+
+  m_robot->calcForwardKinematics();
   ref_zmp = m_robot->rootLink()->R * hrp::Vector3(m_zmpRef.data.x, m_zmpRef.data.y, m_zmpRef.data.z) + m_robot->rootLink()->p; // base frame -> world frame
   hrp::Vector3 foot_origin_pos;
   hrp::Matrix33 foot_origin_rot;

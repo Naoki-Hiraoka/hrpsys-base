@@ -379,7 +379,7 @@ module OpenHRP
         double transition_smooth_gain;
         sequence<double> qrefv;
         DblArray3 ref_root_pos;
-        DblArray3 ref_root_rpy;
+        sequence<double, 9> ref_root_R;
         sequence<sequence<double, 3> > ref_force;
         sequence<sequence<double, 3> > ref_moment;
         sequence<boolean> ref_contact_states;
@@ -387,7 +387,7 @@ module OpenHRP
         // actualparameter
         sequence<double> qactv;
         DblArray3 act_root_pos;
-        DblArray3 act_root_rpy;
+        sequence<double, 9> act_root_R;
         sequence<sequence<double, 3> > act_force_raw;
         sequence<sequence<double, 3> > act_moment_raw;
         sequence<sequence<double, 3> > act_force;

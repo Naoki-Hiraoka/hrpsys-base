@@ -329,6 +329,20 @@ public:
         ref_root_p/*refworld系*/ = _ref_root_p/*refworld系*/;
         ref_root_w/*refworld系*/ = matrix_logEx(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) / dt;
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
+
+        for ( int i = 0;i< m_robot->numJoints();i++){
+            m_robot->joint(i)->q = qrefv[i];
+        }
+        m_robot->rootLink()->p/*refworld系*/ = ref_root_p/*refworld系*/;
+        m_robot->rootLink()->v/*refworld系*/ = ref_root_v/*refworld系*/;
+        m_robot->rootLink()->R/*refworld系*/ = ref_root_R/*refworld系*/;
+        m_robot->rootLink()->w/*refworld系*/ = ref_root_w/*refworld系*/;
+        m_robot->calcForwardKinematics();
+        m_robot->calcForwardKinematics(true);
+        ref_cog/*refworld系*/ = m_robot->calcCM();
+        m_robot->calcTotalMomentum(ref_P/*refworld系*/,ref_L/*refworld系,原点まわり*/);
+        ref_L/*refworld系cogまわり*/ = ref_L/*refworld系,原点まわり*/ - ref_cog/*refworld系*/.cross(ref_P/*refworld系*/);
+
         for(size_t i = 0; i < eefnum; i++){
             hrp::Link* target/*refworld系*/ = m_robot->link(endeffector[i]->link_name);
             endeffector[i]->prev_prev_ref_p/*refworld系*/ = endeffector[i]->prev_ref_p/*refworld系*/;
@@ -345,18 +359,6 @@ public:
             endeffector[i]->ref_contact_state = _ref_contact_states[i];
         }
 
-        for ( int i = 0;i< m_robot->numJoints();i++){
-            m_robot->joint(i)->q = qrefv[i];
-        }
-        m_robot->rootLink()->p/*refworld系*/ = ref_root_p/*refworld系*/;
-        m_robot->rootLink()->v/*refworld系*/ = ref_root_v/*refworld系*/;
-        m_robot->rootLink()->R/*refworld系*/ = ref_root_R/*refworld系*/;
-        m_robot->rootLink()->w/*refworld系*/ = ref_root_w/*refworld系*/;
-        m_robot->calcForwardKinematics();
-        m_robot->calcForwardKinematics(true);
-        ref_cog/*refworld系*/ = m_robot->calcCM();
-        m_robot->calcTotalMomentum(ref_P/*refworld系*/,ref_L/*refworld系,原点まわり*/);
-        ref_L/*refworld系cogまわり*/ = ref_L/*refworld系,原点まわり*/ - ref_cog/*refworld系*/.cross(ref_P/*refworld系*/);
         ref_total_force/*refworld系*/ = hrp::Vector3::Zero();
         ref_total_moment/*refworld系,cogまわり*/ = hrp::Vector3::Zero();
         for (size_t i = 0; i < eefnum;i++){
@@ -603,6 +605,7 @@ public:
         for ( int i = 0; i < m_robot->numJoints(); i++ ) {
             m_robot->joint(i)->q = qcurv[i];
         }
+
     }
 
     bool calcStateForEmergencySignal(OpenHRP::StabilizerService::EmergencyCheckMode emergency_check_mode, bool on_ground, int transition_count, bool is_modeST) {
