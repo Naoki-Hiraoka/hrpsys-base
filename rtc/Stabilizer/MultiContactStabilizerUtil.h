@@ -19,6 +19,7 @@ public:
     MultiContactStabilizerUtil(RTC::CorbaConsumer<OpenHRP::StabilizerService>& _m_serviceclient0) :multicontactstabilizer(),
                                                                                                    m_serviceclient0(_m_serviceclient0),
                                                                                                    use_remote(false),
+                                                                                                   mode_st(false),
                                                                                                    rcv_data()
     {
     }
@@ -46,17 +47,8 @@ public:
         }
     }
 
-    void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv, bool mode_st) {
-        //remoteを使用するかどうかを選択する
-        if(!mode_st){
-            if(CORBA::is_nil(m_serviceclient0._ptr()) //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
-               || m_serviceclient0 ->_non_existent() //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
-               ){
-                use_remote = false;
-            }else{
-                use_remote = true;
-            }
-        }
+    void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv, bool _mode_st) {
+        mode_st = _mode_st;
 
         if(!use_remote){
             multicontactstabilizer.getCurrentParameters(m_robot,_qcurv);
@@ -119,11 +111,13 @@ public:
                 snd_data.qrefv[i] = _qrefv[i];
             }
             for(size_t i=0; i < _ref_force.size() ; i++){
+                snd_data.ref_force[i].length(3);
                 snd_data.ref_force[i][0] = _ref_force[i][0];
                 snd_data.ref_force[i][1] = _ref_force[i][1];
                 snd_data.ref_force[i][2] = _ref_force[i][2];
             }
             for(size_t i=0; i < _ref_moment.size() ; i++){
+                snd_data.ref_moment[i].length(3);
                 snd_data.ref_moment[i][0] = _ref_moment[i][0];
                 snd_data.ref_moment[i][1] = _ref_moment[i][1];
                 snd_data.ref_moment[i][2] = _ref_moment[i][2];
@@ -155,8 +149,8 @@ public:
                              hrp::Vector3& log_act_base_rpy/*world系*/,
                              const hrp::dvector& _acttauv,
                              const RTC::TimedDoubleSeq& pgain,
-                             const RTC::TimedDoubleSeq& collisioninfo,
-                             bool mode_st) {
+                             const RTC::TimedDoubleSeq& collisioninfo
+                             ) {
         multicontactstabilizer.getActualParametersFilter(m_robot,
                                                          _qactv,
                                                          _acttauv,
@@ -207,21 +201,25 @@ public:
                 snd_data.qactv[i] = multicontactstabilizer.qactv_filtered[i];
             }
             for(size_t i=0; i < _act_force.size() ; i++){
+                snd_data.act_force_raw[i].length(3);
                 snd_data.act_force_raw[i][0] = _act_force[i][0];
                 snd_data.act_force_raw[i][1] = _act_force[i][1];
                 snd_data.act_force_raw[i][2] = _act_force[i][2];
             }
             for(size_t i=0; i < _act_moment.size() ; i++){
+                snd_data.act_moment_raw[i].length(3);
                 snd_data.act_moment_raw[i][0] = _act_moment[i][0];
                 snd_data.act_moment_raw[i][1] = _act_moment[i][1];
                 snd_data.act_moment_raw[i][2] = _act_moment[i][2];
             }
             for(size_t i=0; i < _act_force.size() ; i++){
+                snd_data.act_force[i].length(3);
                 snd_data.act_force[i][0] = multicontactstabilizer.act_force_filtered[i][0];
                 snd_data.act_force[i][1] = multicontactstabilizer.act_force_filtered[i][1];
                 snd_data.act_force[i][2] = multicontactstabilizer.act_force_filtered[i][2];
             }
             for(size_t i=0; i < _act_moment.size() ; i++){
+                snd_data.act_moment[i].length(3);
                 snd_data.act_moment[i][0] = multicontactstabilizer.act_moment_filtered[i][0];
                 snd_data.act_moment[i][1] = multicontactstabilizer.act_moment_filtered[i][1];
                 snd_data.act_moment[i][2] = multicontactstabilizer.act_moment_filtered[i][2];
@@ -247,17 +245,23 @@ public:
                     {
                         // 例外捕捉時の処理
                         std::cerr << "ポートが接続されていません" << std::endl;
+                        use_remote = false;
+                        std::cerr << "use_remote " << use_remote << std::endl;
                     }
                 catch (...)
                     {
                         // その他の例外
                         std::cerr << "unexpected error" << std::endl;
+                        use_remote = false;
+                        std::cerr << "use_remote " << use_remote << std::endl;
                     }
             }
 
             for(size_t i=0; i < act_contact_states.size() ;i++){
                 act_contact_states[i] = rcv_data->act_contact_states[i];
             }
+
+            multicontactstabilizer.revert_to_prev(m_robot);
             return rcv_data->on_ground;
         }
     }
@@ -398,6 +402,26 @@ public:
         multicontactstabilizer.setPassiveJoint(i_jname);
     }
 
+    void getPassiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+        if(use_remote){
+            try
+                {
+                    m_serviceclient0->getPassiveJoints(jnames);
+                }
+            catch (CORBA::SystemException &e)
+                {
+                    // 例外捕捉時の処理
+                    std::cerr << "ポートが接続されていません" << std::endl;
+                }
+            catch (...)
+                {
+                    // その他の例外
+                    std::cerr << "unexpected error" << std::endl;
+                }
+        }
+        multicontactstabilizer.getPassiveJoints(jnames);
+    }
+
     void setReferenceJoint(const char *i_jname){
         if(use_remote){
             try
@@ -418,6 +442,26 @@ public:
         multicontactstabilizer.setReferenceJoint(i_jname);
     }
 
+    void getReferenceJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+        if(use_remote){
+            try
+                {
+                    m_serviceclient0->getReferenceJoints(jnames);
+                }
+            catch (CORBA::SystemException &e)
+                {
+                    // 例外捕捉時の処理
+                    std::cerr << "ポートが接続されていません" << std::endl;
+                }
+            catch (...)
+                {
+                    // その他の例外
+                    std::cerr << "unexpected error" << std::endl;
+                }
+        }
+        multicontactstabilizer.getReferenceJoints(jnames);
+    }
+
     void setActiveJoint(const char *i_jname){
         if(use_remote){
             try
@@ -436,6 +480,26 @@ public:
                 }
         }
         multicontactstabilizer.setActiveJoint(i_jname);
+    }
+
+    void getActiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+        if(use_remote){
+            try
+                {
+                    m_serviceclient0->getActiveJoints(jnames);
+                }
+            catch (CORBA::SystemException &e)
+                {
+                    // 例外捕捉時の処理
+                    std::cerr << "ポートが接続されていません" << std::endl;
+                }
+            catch (...)
+                {
+                    // その他の例外
+                    std::cerr << "unexpected error" << std::endl;
+                }
+        }
+        multicontactstabilizer.getActiveJoints(jnames);
     }
 
     void setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param){
@@ -582,7 +646,7 @@ public:
             hrp::Matrix33 act_root_R = hrp::rotFromRpy(i_param.act_root_rpy[0],i_param.act_root_rpy[1],i_param.act_root_rpy[2]);
             std::vector <hrp::Vector3> act_force_raw(i_param.act_force_raw.length()), act_moment_raw(i_param.act_moment_raw.length());
             std::vector <hrp::Vector3> act_force(i_param.act_force.length()), act_moment(i_param.act_moment.length());
-            std::vector<bool> act_contact_states(i_param.act_force.length());
+            std::vector<bool> act_contact_states(multicontactstabilizer.eefnum);
             hrp::dvector coiltemp = hrp::dvector(m_Rrobot->numJoints());
             hrp::dvector surfacetemp = hrp::dvector(m_Rrobot->numJoints());
             hrp::dvector acttauv = hrp::dvector(m_Rrobot->numJoints());
@@ -641,7 +705,29 @@ public:
             }
         }
 
-        if(i_param.mode_st){
+        if(!i_param.mode_st){
+            //次のloopのgetCurrentparametersで用いる
+            for ( int i = 0; i < m_Rrobot->numJoints(); i++ ){
+                m_Rrobot->joint(i)->q = i_param.qrefv[i];
+            }
+            m_Rrobot->rootLink()->p[0] = i_param.ref_root_pos[0];
+            m_Rrobot->rootLink()->p[1] = i_param.ref_root_pos[1];
+            m_Rrobot->rootLink()->p[2] = i_param.ref_root_pos[2];
+            m_Rrobot->rootLink()->R = hrp::rotFromRpy(i_param.ref_root_rpy[0],i_param.ref_root_rpy[1],i_param.ref_root_rpy[2]);
+
+            o_param.qcurv.length(m_Rrobot->numJoints());
+            for ( int i = 0; i < m_Rrobot->numJoints(); i++ ){
+                o_param.qcurv[i] = m_Rrobot->joint(i)->q;
+            }
+            o_param.cur_root_pos[0] = m_Rrobot->rootLink()->p[0];
+            o_param.cur_root_pos[1] = m_Rrobot->rootLink()->p[1];
+            o_param.cur_root_pos[2] = m_Rrobot->rootLink()->p[2];
+            hrp::Vector3 cur_root_rpy = hrp::rpyFromRot(m_Rrobot->rootLink()->R);
+            o_param.cur_root_rpy[0] = cur_root_rpy[0];
+            o_param.cur_root_rpy[1] = cur_root_rpy[1];
+            o_param.cur_root_rpy[2] = cur_root_rpy[2];
+
+        }else{
             hrp::Vector3 log_current_base_pos/*refworld系*/;
             hrp::Vector3 log_current_base_rpy/*refworld系*/;
             std::vector<hrp::Vector3> log_cur_force_eef/*eef系,eefまわり*/;
@@ -674,10 +760,68 @@ public:
         }
     }
 
+    void useRemoteStabilizer(const bool use, StabilizerService_impl& m_service0){
+        if(!mode_st){
+            if(use){
+                if(!use_remote){
+                    if(CORBA::is_nil(m_serviceclient0._ptr()) //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
+                       || m_serviceclient0->_non_existent() //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
+                       ){
+                        use_remote = false;
+                    }else{
+                        OpenHRP::StabilizerService::stParam* tmp;
+                        m_service0.getParameter(tmp);
+                        OpenHRP::StabilizerService::StrSequence* is_reference;
+                        OpenHRP::StabilizerService::StrSequence* is_passive;
+                        OpenHRP::StabilizerService::StrSequence* is_active;
+                        m_service0.getReferenceJoints(is_reference);
+                        m_service0.getPassiveJoints(is_passive);
+                        m_service0.getActiveJoints(is_active);
+                        OpenHRP::StabilizerService::LongSequence* is_ik_enables;
+                        m_service0.getIsIkEnables(is_ik_enables);
+                        try
+                            {
+                                m_serviceclient0->setParameter(*tmp);
+                                m_serviceclient0->setReferenceJoints(*is_reference);
+                                m_serviceclient0->setPassiveJoints(*is_passive);
+                                m_serviceclient0->setActiveJoints(*is_active);
+                                m_serviceclient0->setIsIkEnables(*is_ik_enables);
+
+                                use_remote = true;
+                            }
+                        catch (CORBA::SystemException &e)
+                            {
+                                // 例外捕捉時の処理
+                                std::cerr << "ポートが接続されていません" << std::endl;
+                                use_remote = false;
+                            }
+                        catch (...)
+                            {
+                                // その他の例外
+                                std::cerr << "unexpected error" << std::endl;
+                                use_remote = false;
+                            }
+                        delete tmp;
+                        delete is_reference;
+                        delete is_passive;
+                        delete is_active;
+                        delete is_ik_enables;
+                    }
+                }
+            }else{
+                use_remote = false;
+            }
+            std::cerr << "useRemoteStabilizer: use_remote " << use_remote << std::endl;
+        }else{
+            std::cerr << "useRemoteStabilizer cannot be called in MODE_ST" << std::endl;
+        }
+    }
+
 private:
     MultiContactStabilizer multicontactstabilizer;
     RTC::CorbaConsumer<OpenHRP::StabilizerService>& m_serviceclient0;
     bool use_remote;
+    bool mode_st;
     hrp::BodyPtr m_Rrobot;
     OpenHRP::StabilizerService::RSParamIn snd_data;
     OpenHRP::StabilizerService::RSParamOut* rcv_data;

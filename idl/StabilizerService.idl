@@ -380,18 +380,18 @@ module OpenHRP
         sequence<double> qrefv;
         DblArray3 ref_root_pos;
         DblArray3 ref_root_rpy;
-        sequence<DblArray3> ref_force;
-        sequence<DblArray3> ref_moment;
+        sequence<sequence<double, 3> > ref_force;
+        sequence<sequence<double, 3> > ref_moment;
         sequence<boolean> ref_contact_states;
         sequence<double> swing_support_gains;
         // actualparameter
         sequence<double> qactv;
         DblArray3 act_root_pos;
         DblArray3 act_root_rpy;
-        sequence<DblArray3> act_force_raw;
-        sequence<DblArray3> act_moment_raw;
-        sequence<DblArray3> act_force;
-        sequence<DblArray3> act_moment;
+        sequence<sequence<double, 3> > act_force_raw;
+        sequence<sequence<double, 3> > act_moment_raw;
+        sequence<sequence<double, 3> > act_force;
+        sequence<sequence<double, 3> > act_moment;
         double contact_decision_threshold;
         sequence<double> coiltemp;
         sequence<double> surfacetemp;
@@ -436,6 +436,8 @@ module OpenHRP
      */
     void setPassiveJoints(in StrSequence names);
 
+    void getPassiveJoints(out StrSequence names);
+
     /**
      * @brief set reference joint
      * @param name joint name
@@ -448,6 +450,8 @@ module OpenHRP
      */
     void setReferenceJoints(in StrSequence names);
 
+    void getReferenceJoints(out StrSequence names);
+
     /**
      * @brief set active joint
      * @param name joint name
@@ -459,6 +463,8 @@ module OpenHRP
      * @param name joint name
      */
     void setActiveJoints(in StrSequence names);
+
+    void getActiveJoints(out StrSequence names);
 
     /**
      * @brief set is_ik_enable
@@ -497,6 +503,7 @@ module OpenHRP
     void stopStabilizer();
 
     void callRemoteStabilizer(in RSParamIn i_param, out RSParamOut o_param);
+    void useRemoteStabilizer(in boolean use);
     void sync_2_st();
 
     boolean dummy();

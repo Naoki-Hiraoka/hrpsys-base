@@ -189,7 +189,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   m_StabilizerServicePort.registerProvider("service0", "StabilizerService", m_service0);
   
   // Set service consumers to Ports
-  m_StabilizerServicePort.registerConsumer("serviceclient0", "StabilizerService", m_serviceclient0);
+  m_StabilizerServiceClientPort.registerConsumer("service0", "StabilizerService", m_serviceclient0);
 
   // Set CORBA Service Ports
   addPort(m_StabilizerServicePort);
@@ -992,8 +992,7 @@ void Stabilizer::getActualParameters ()
                                                              act_base_rpy/*refworld系*/,
                                                              acttauv,
                                                              m_pgain,
-                                                             m_collisioninfo,
-                                                             control_mode==MODE_ST);
+                                                             m_collisioninfo);
 
       if (control_mode == MODE_IDLE || control_mode == MODE_AIR) {
           for ( int i = 0; i < m_robot->numJoints(); i++ ){
@@ -2717,12 +2716,24 @@ void Stabilizer::setPassiveJoint(const char *jname){
     multicontactstabilizer.setPassiveJoint(jname);
 }
 
+void Stabilizer::getPassiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+    multicontactstabilizer.getPassiveJoints(jnames);
+}
+
 void Stabilizer::setReferenceJoint(const char *jname){
     multicontactstabilizer.setReferenceJoint(jname);
 }
 
+void Stabilizer::getReferenceJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+    multicontactstabilizer.getReferenceJoints(jnames);
+}
+
 void Stabilizer::setActiveJoint(const char *jname){
     multicontactstabilizer.setActiveJoint(jname);
+}
+
+void Stabilizer::getActiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+    multicontactstabilizer.getActiveJoints(jnames);
 }
 
 void Stabilizer::setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param){
@@ -2743,6 +2754,10 @@ void Stabilizer::getIsIkEnable(const char *name, CORBA::Long& i_param){
 
 void Stabilizer::callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut& o_param){
     multicontactstabilizer.callRemoteStabilizer(i_param,o_param);
+}
+
+void Stabilizer::useRemoteStabilizer(const bool use){
+    multicontactstabilizer.useRemoteStabilizer(use, m_service0);
 }
 
 std::string Stabilizer::getStabilizerAlgorithmString (OpenHRP::StabilizerService::STAlgorithm _st_algorithm)

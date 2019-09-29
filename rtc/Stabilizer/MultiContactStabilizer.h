@@ -589,6 +589,7 @@ public:
             std::cerr << act_footorigin_p <<std::endl;
             std::cerr << "act_footorigin_R" <<std::endl;
             std::cerr << act_footorigin_R <<std::endl;
+            std::cerr << "on_ground " << act_total_force[2] << "/" << contact_decision_threshold << std::endl;
             std::cerr << "getActualParameters end" << std::endl;
 
         }
@@ -2200,7 +2201,20 @@ public:
         }
         return;
     }
-    
+
+    void getPassiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+        std::vector<std::string> tmp;
+        for(size_t i=0; i < const_robot->numJoints();i++){
+            if(is_passive[i]){
+                tmp.push_back(const_robot->joint(i)->name);
+            }
+        }
+        jnames->length(tmp.size());
+        for(size_t i=0; i< jnames->length();i++){
+            jnames[i] = tmp[i].c_str();
+        }
+    }
+
     void setReferenceJoint(const char *i_jname){
         const hrp::Link *l = NULL;
         if ((l = const_robot->link(i_jname))){
@@ -2225,7 +2239,21 @@ public:
         }
         return;
     }
-    
+
+    void getReferenceJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+        std::vector<std::string> tmp;
+        for(size_t i=0; i < const_robot->numJoints();i++){
+            if(is_reference[i]){
+                tmp.push_back(const_robot->joint(i)->name);
+            }
+        }
+        jnames->length(tmp.size());
+        for(size_t i=0; i< jnames->length();i++){
+            jnames[i] = tmp[i].c_str();
+        }
+
+    }
+
     void setActiveJoint(const char *i_jname){
         const hrp::Link *l = NULL;
         if ((l = const_robot->link(i_jname))){
@@ -2248,6 +2276,20 @@ public:
             return;
         }
         return;
+    }
+
+    void getActiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames){
+        std::vector<std::string> tmp;
+        for(size_t i=0; i < const_robot->numJoints();i++){
+            if(!is_reference[i] && !is_passive[i]){
+                tmp.push_back(const_robot->joint(i)->name);
+            }
+        }
+        jnames->length(tmp.size());
+        for(size_t i=0; i< jnames->length();i++){
+            jnames[i] = tmp[i].c_str();
+        }
+
     }
 
     void setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param){

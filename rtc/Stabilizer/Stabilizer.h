@@ -107,13 +107,17 @@ class Stabilizer
   void startStabilizer(void);
   void stopStabilizer(void);
   void setPassiveJoint(const char *jname);
+  void getPassiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames);
   void setReferenceJoint(const char *jname);
+  void getReferenceJoints(OpenHRP::StabilizerService::StrSequence_out& jnames);
   void setActiveJoint(const char *jname);
+  void getActiveJoints(OpenHRP::StabilizerService::StrSequence_out& jnames);
   void setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param);
   void getIsIkEnables(OpenHRP::StabilizerService::LongSequence_out& i_param);
   void setIsIkEnable(const char *name, CORBA::Long i_param);
   void getIsIkEnable(const char *name, CORBA::Long& i_param);
   void callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut& o_param);
+  void useRemoteStabilizer(const bool use);
   void getCurrentParameters ();
   void getActualParameters ();
   void getTargetParameters ();

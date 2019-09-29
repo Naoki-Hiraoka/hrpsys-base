@@ -33,6 +33,12 @@ void StabilizerService_impl::setPassiveJoints(const OpenHRP::StabilizerService::
 	}
 }
 
+void StabilizerService_impl::getPassiveJoints(OpenHRP::StabilizerService::StrSequence_out jnames)
+{
+	jnames = new OpenHRP::StabilizerService::StrSequence();
+	m_stabilizer->getPassiveJoints(jnames);
+}
+
 void StabilizerService_impl::setReferenceJoint(const char *jname)
 {
 	m_stabilizer->setReferenceJoint(jname);
@@ -45,6 +51,12 @@ void StabilizerService_impl::setReferenceJoints(const OpenHRP::StabilizerService
 	}
 }
 
+void StabilizerService_impl::getReferenceJoints(OpenHRP::StabilizerService::StrSequence_out jnames)
+{
+	jnames = new OpenHRP::StabilizerService::StrSequence();
+	m_stabilizer->getReferenceJoints(jnames);
+}
+
 void StabilizerService_impl::setActiveJoint(const char *jname)
 {
 	m_stabilizer->setActiveJoint(jname);
@@ -55,6 +67,12 @@ void StabilizerService_impl::setActiveJoints(const OpenHRP::StabilizerService::S
 	for(size_t i=0; i < jnames.length(); i++){
 		m_stabilizer->setActiveJoint(jnames[i]);
 	}
+}
+
+void StabilizerService_impl::getActiveJoints(OpenHRP::StabilizerService::StrSequence_out jnames)
+{
+	jnames = new OpenHRP::StabilizerService::StrSequence();
+	m_stabilizer->getActiveJoints(jnames);
 }
 
 void StabilizerService_impl::setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param)
@@ -93,6 +111,10 @@ void StabilizerService_impl::callRemoteStabilizer(const OpenHRP::StabilizerServi
 {
 	o_param = new OpenHRP::StabilizerService::RSParamOut();
 	m_stabilizer->callRemoteStabilizer(i_param, *o_param);
+}
+
+void StabilizerService_impl::useRemoteStabilizer(const bool use){
+	m_stabilizer->useRemoteStabilizer(use);
 }
 
 void StabilizerService_impl::sync_2_st()

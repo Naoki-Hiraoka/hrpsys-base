@@ -27,16 +27,20 @@ public:
 	void setParameter(const OpenHRP::StabilizerService::stParam& i_param);
 	void setPassiveJoint(const char *jname);
 	void setPassiveJoints(const OpenHRP::StabilizerService::StrSequence& jnames);
+	void getPassiveJoints(OpenHRP::StabilizerService::StrSequence_out jnames);
 	void setReferenceJoint(const char *jname);
 	void setReferenceJoints(const OpenHRP::StabilizerService::StrSequence& jnames);
+	void getReferenceJoints(OpenHRP::StabilizerService::StrSequence_out jnames);
 	void setActiveJoint(const char *jname);
 	void setActiveJoints(const OpenHRP::StabilizerService::StrSequence& jnames);
+	void getActiveJoints(OpenHRP::StabilizerService::StrSequence_out jnames);
 	void setIsIkEnables(const OpenHRP::StabilizerService::LongSequence& i_param);
 	void getIsIkEnables(OpenHRP::StabilizerService::LongSequence_out i_param);
 	void setIsIkEnable(const char *name, CORBA::Long i_param);
 	void getIsIkEnable(const char *name, CORBA::Long_out i_param);
 	void stabilizer(Stabilizer *i_stabilizer);
 	void callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut_out o_param);
+	void useRemoteStabilizer(const bool use);
 	void sync_2_st();
 
 	bool dummy();
