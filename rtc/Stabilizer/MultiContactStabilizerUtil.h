@@ -48,11 +48,13 @@ public:
 
     void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv, bool mode_st) {
         //remoteを使用するかどうかを選択する
-        if(m_serviceclient0._ptr()){
-            use_remote = true;
-        }else{
-            if(!mode_st){
+        if(!mode_st){
+            if(CORBA::is_nil(m_serviceclient0._ptr()) //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
+               || m_serviceclient0 ->_non_existent() //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
+               ){
                 use_remote = false;
+            }else{
+                use_remote = true;
             }
         }
 
@@ -261,8 +263,7 @@ public:
     }
 
     bool calcStateForEmergencySignal(OpenHRP::StabilizerService::EmergencyCheckMode emergency_check_mode, bool on_ground, int transition_count, bool is_modeST) {
-        //接触拘束を実際の値が満たしていなければEmergency TODO
-        //refとactでcontactが全く一致しなければ
+        //TODO
         return multicontactstabilizer.calcStateForEmergencySignal(emergency_check_mode,on_ground,transition_count,is_modeST);
     }
 
