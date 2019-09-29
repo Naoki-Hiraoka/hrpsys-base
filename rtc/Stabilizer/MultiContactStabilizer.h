@@ -242,6 +242,7 @@ public:
 
         //service parameter
         mcs_debug_ratio = 0;
+        mcs_step = 1;
         mcs_sv_ratio = 1e-12;
         is_joint_enable.resize(m_robot->numJoints(),true);
         tau_weight = 1e0;
@@ -2006,6 +2007,9 @@ public:
         mcs_debug_ratio = i_stp.mcs_debug_ratio;
         std::cerr << "[" << instance_name << "]  mcs_debug_ratio = " << mcs_debug_ratio << std::endl;
 
+        mcs_step = i_stp.mcs_step;
+        std::cerr << "[" << instance_name << "]  mcs_step = " << mcs_step << std::endl;
+
         mcs_sv_ratio = i_stp.mcs_sv_ratio;
         std::cerr << "[" << instance_name << "]  mcs_sv_ratio = " << mcs_sv_ratio << std::endl;
 
@@ -2132,6 +2136,7 @@ public:
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
         i_stp.mcs_debug_ratio = mcs_debug_ratio;
+        i_stp.mcs_step = mcs_step;
         i_stp.mcs_sv_ratio = mcs_sv_ratio;
         i_stp.is_joint_enable.length(m_robot->numJoints());
         for(size_t i = 0; i < m_robot->numJoints(); i++){
@@ -2354,6 +2359,9 @@ public:
     std::vector <hrp::Vector3> act_force_filtered;
     std::vector <hrp::Vector3> act_moment_filtered;
     size_t eefnum;
+
+    unsigned int mcs_step;
+    double dt;
 private:
     hrp::Vector3 matrix_logEx(const hrp::Matrix33& m) {
         hrp::Vector3 mlog;
@@ -2386,7 +2394,6 @@ private:
     bool debugloop;
     int debugloopnum;
     std::string instance_name;
-    double dt;
     std::map<std::string, hrp::JointLimitTable> joint_limit_tables;
     std::vector<boost::shared_ptr<EndEffector> > endeffector;
     std::map<std::string, size_t> endeffector_index_map;

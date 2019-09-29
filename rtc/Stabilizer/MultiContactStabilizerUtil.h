@@ -11,6 +11,8 @@
 #include <limits>
 //debug
 #include <sys/time.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #include "MultiContactStabilizer.h"
 
@@ -19,11 +21,16 @@ public:
     MultiContactStabilizerUtil(RTC::CorbaConsumer<OpenHRP::StabilizerService>& _m_serviceclient0) :multicontactstabilizer(),
                                                                                                    m_serviceclient0(_m_serviceclient0),
                                                                                                    use_remote(false),
-                                                                                                   mode_st(false)
+                                                                                                   mode_st(false),
+                                                                                                   terminate_remotethread(false),
+                                                                                                   current_step(0)
     {
     }
 
     ~MultiContactStabilizerUtil(){
+        terminate_remotethread = true;
+        void* ret;
+        pthread_join(remotethread, &ret);
     }
 
     void initialize(std::string _instance_name, hrp::BodyPtr& m_robot, const double& _dt,const RTC::Properties& prop){
@@ -37,10 +44,26 @@ public:
         for(size_t i=0; i<rcv_act_contact_states.size();i++){
             rcv_act_contact_states[i] = false;
         }
+
+        current_qcurv=hrp::dvector::Zero(m_robot->numJoints());
+        target_qcurv=hrp::dvector::Zero(m_robot->numJoints());
+        current_cur_root_pos = hrp::Vector3::Zero();
+        current_cur_root_rpy = hrp::Vector3::Zero();
+        current_on_ground = false;
+        current_act_contact_states.resize(multicontactstabilizer.eefnum);
+        for(size_t i=0; i<current_act_contact_states.size();i++){
+            current_act_contact_states[i] = false;
+        }
+
+
+        sem_init(&call_sem, 0, 0);
+        sem_init(&done_sem, 0, 0);
+        pthread_create(&remotethread, NULL, &MultiContactStabilizerUtil::remotethreadfunc, this);
     }
 
     void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv, bool _mode_st) {
         mode_st = _mode_st;
+        current_qcurv = _qcurv;
 
         if(!use_remote){
             multicontactstabilizer.getCurrentParameters(m_robot,_qcurv);
@@ -249,42 +272,42 @@ public:
 
             if(!mode_st){
                 snd_data.mode_st = false;
-                try
-                    {
-                        OpenHRP::StabilizerService::RSParamOut* rcv_data;
-                        m_serviceclient0->callRemoteStabilizer(snd_data,rcv_data);
-                        for(size_t i=0; i< m_robot->numJoints(); i++){
-                            rcv_qcurv[i]=rcv_data->qcurv[i];
+
+                if(current_step==0){
+                    int val;
+                    sem_getvalue(&done_sem,&val);
+                    if(val>0){
+                        sem_wait(&done_sem);
+
+                        current_qcurv = target_qcurv;
+
+                        current_step = multicontactstabilizer.mcs_step;
+                        current_step--;
+
+                        target_qcurv = rcv_qcurv;
+                        current_cur_root_pos = rcv_cur_root_pos;
+                        current_cur_root_rpy = rcv_cur_root_rpy;
+                        current_on_ground = rcv_on_ground;
+                        for(size_t i=0; i < current_act_contact_states.size() ;i++){
+                            current_act_contact_states[i] = rcv_act_contact_states[i];
                         }
-                        rcv_cur_root_pos = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
-                        rcv_cur_root_rpy = hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]);
-                        rcv_on_ground = rcv_data->on_ground;
-                        for(size_t i=0; i<rcv_act_contact_states.size();i++){
-                            rcv_act_contact_states[i] = rcv_data->act_contact_states[i];
-                        }
-                        delete rcv_data;
+
+                        snd_data_copied = snd_data;
+                        sem_post(&call_sem);
+                    }else{
+                        current_qcurv = target_qcurv;
                     }
-                catch (CORBA::SystemException &e)
-                    {
-                        // 例外捕捉時の処理
-                        std::cerr << "ポートが接続されていません" << std::endl;
-                        use_remote = false;
-                        std::cerr << "use_remote " << use_remote << std::endl;
-                    }
-                catch (...)
-                    {
-                        // その他の例外
-                        std::cerr << "unexpected error" << std::endl;
-                        use_remote = false;
-                        std::cerr << "use_remote " << use_remote << std::endl;
-                    }
+                }else{
+                    current_qcurv = (current_step * current_qcurv + target_qcurv) / (current_step+1);
+                    current_step--;
+                }
             }
 
             for(size_t i=0; i < act_contact_states.size() ;i++){
-                act_contact_states[i] = rcv_act_contact_states[i];
+                act_contact_states[i] = current_act_contact_states[i];
             }
             multicontactstabilizer.revert_to_prev(m_robot);
-            return rcv_on_ground;
+            return current_on_ground;
 
         }
     }
@@ -316,37 +339,43 @@ public:
         }else{
             snd_data.mode_st = true;
 
-            try
-                {
-                    OpenHRP::StabilizerService::RSParamOut* rcv_data;
-                    m_serviceclient0->callRemoteStabilizer(snd_data,rcv_data);
-                    for(size_t i=0; i< m_robot->numJoints(); i++){
-                        rcv_qcurv[i]=rcv_data->qcurv[i];
+            if(current_step<=0){
+                int val;
+                sem_getvalue(&done_sem,&val);
+                if(val>0){
+                    sem_wait(&done_sem);
+
+                    current_qcurv = target_qcurv;
+
+                    current_step = multicontactstabilizer.mcs_step;
+                    current_step--;
+
+                    target_qcurv = rcv_qcurv;
+                    current_cur_root_pos = rcv_cur_root_pos;
+                    current_cur_root_rpy = rcv_cur_root_rpy;
+                    current_on_ground = rcv_on_ground;
+                    for(size_t i=0; i < current_act_contact_states.size() ;i++){
+                        current_act_contact_states[i] = rcv_act_contact_states[i];
                     }
-                    rcv_cur_root_pos = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
-                    rcv_cur_root_rpy = hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]);
-                    rcv_on_ground = rcv_data->on_ground;
-                    for(size_t i=0; i<rcv_act_contact_states.size();i++){
-                        rcv_act_contact_states[i] = rcv_data->act_contact_states[i];
-                    }
-                    delete rcv_data;
+
+                    snd_data_copied = snd_data;
+                    sem_post(&call_sem);
+                }else{
+                    std::cerr << "call time over " << current_step << std::endl;
+                    current_step--;
+                    current_qcurv = target_qcurv;
                 }
-            catch (CORBA::SystemException &e)
-                {
-                    // 例外捕捉時の処理
-                    std::cerr << "ポートが接続されていません" << std::endl;
-                }
-            catch (...)
-                {
-                    // その他の例外
-                    std::cerr << "unexpected error" << std::endl;
-                }
+            }else{
+                current_qcurv = (current_step * current_qcurv + target_qcurv) / (current_step+1);
+                current_step--;
+            }
+
 
             for ( int i = 0;i< m_robot->numJoints();i++){
-                m_robot->joint(i)->q = rcv_qcurv[i];
+                m_robot->joint(i)->q = current_qcurv[i];
             }
-            m_robot->rootLink()->p = rcv_cur_root_pos;
-            m_robot->rootLink()->R = hrp::rotFromRpy(rcv_cur_root_rpy);
+            m_robot->rootLink()->p = current_cur_root_pos;
+            m_robot->rootLink()->R = hrp::rotFromRpy(current_cur_root_rpy);
 
         }
     }
@@ -370,6 +399,8 @@ public:
         }
 
         multicontactstabilizer.sync_2_st();
+        current_step = 0;
+        target_qcurv = current_qcurv;
     }
 
     void setParameter(const OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
@@ -820,6 +851,44 @@ public:
         }
     }
 
+    static void *remotethreadfunc(void* arg){
+        MultiContactStabilizerUtil* mcsu = (MultiContactStabilizerUtil*)arg;
+
+        while(!mcsu->terminate_remotethread){
+            //snd_data_copiedが用意されるのを待つ
+            sem_post(&mcsu->done_sem);
+            sem_wait(&mcsu->call_sem);
+
+            try
+                {
+                    OpenHRP::StabilizerService::RSParamOut* rcv_data;
+                    mcsu->m_serviceclient0->callRemoteStabilizer(mcsu->snd_data_copied,rcv_data);
+                    for(size_t i=0; i< rcv_data->qcurv.length(); i++){
+                        mcsu->rcv_qcurv[i]=rcv_data->qcurv[i];
+                    }
+                    mcsu->rcv_cur_root_pos = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
+                    mcsu->rcv_cur_root_rpy = hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]);
+                    mcsu->rcv_on_ground = rcv_data->on_ground;
+                    for(size_t i=0; i<mcsu->rcv_act_contact_states.size();i++){
+                        mcsu->rcv_act_contact_states[i] = rcv_data->act_contact_states[i];
+                    }
+                    delete rcv_data;
+                }
+            catch (CORBA::SystemException &e)
+                {
+                    // 例外捕捉時の処理
+                    std::cerr << "ポートが接続されていません" << std::endl;
+                }
+            catch (...)
+                {
+                    // その他の例外
+                    std::cerr << "unexpected error" << std::endl;
+                }
+
+        }
+        return NULL;
+    }
+
     void useRemoteStabilizer(const bool use, StabilizerService_impl& m_service0){
         if(!mode_st){
             if(use){
@@ -877,18 +946,32 @@ public:
         }
     }
 
-private:
-    MultiContactStabilizer multicontactstabilizer;
-    RTC::CorbaConsumer<OpenHRP::StabilizerService>& m_serviceclient0;
-    bool use_remote;
-    bool mode_st;
-    hrp::BodyPtr m_Rrobot;
-    OpenHRP::StabilizerService::RSParamIn snd_data;
     hrp::dvector rcv_qcurv;
     hrp::Vector3 rcv_cur_root_pos;
     hrp::Vector3 rcv_cur_root_rpy;
     bool rcv_on_ground;
     std::vector<bool> rcv_act_contact_states;
+    OpenHRP::StabilizerService::RSParamIn snd_data_copied;
+    sem_t call_sem;
+    sem_t done_sem;
+    bool terminate_remotethread;
+    RTC::CorbaConsumer<OpenHRP::StabilizerService>& m_serviceclient0;
+    MultiContactStabilizer multicontactstabilizer;
+private:
+    bool use_remote;
+    bool mode_st;
+    hrp::BodyPtr m_Rrobot;
+    OpenHRP::StabilizerService::RSParamIn snd_data;
+    pthread_t remotethread;
+
+    short current_step;
+    hrp::dvector current_qcurv;
+    hrp::dvector target_qcurv;
+    hrp::Vector3 current_cur_root_pos;
+    hrp::Vector3 current_cur_root_rpy;
+    bool current_on_ground;
+    std::vector<bool> current_act_contact_states;
+
 };
 
 

@@ -260,6 +260,7 @@ module OpenHRP
       // for MCS
       ///debug ratio
       unsigned short mcs_debug_ratio;
+      unsigned short mcs_step;
       /// Cutoff frequency of LPF in calculation of actual angle [Hz]
       double mcs_qactv_cutoff_freq;
       /// Cutoff frequency of LPF in calculation of actual torque [Hz]
