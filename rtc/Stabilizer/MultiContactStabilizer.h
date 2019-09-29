@@ -324,11 +324,11 @@ public:
         prev_qrefv = qrefv;
         prev_ref_root_p/*refworld系*/ = ref_root_p/*refworld系*/;
         prev_ref_root_R/*refworld系*/ = ref_root_R/*refworld系*/;
-        dqrefv = (_qrefv - qrefv) / dt;
+        dqrefv = (_qrefv - qrefv) / (dt*mcs_step);
         qrefv = _qrefv;
-        ref_root_v/*refworld系*/ = (_ref_root_p/*refworld系*/ - ref_root_p/*refworld系*/) / dt;
+        ref_root_v/*refworld系*/ = (_ref_root_p/*refworld系*/ - ref_root_p/*refworld系*/) / (dt*mcs_step);
         ref_root_p/*refworld系*/ = _ref_root_p/*refworld系*/;
-        ref_root_w/*refworld系*/ = matrix_logEx(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) / dt;
+        ref_root_w/*refworld系*/ = matrix_logEx(_ref_root_R/*refworld系*/ * ref_root_R/*refworld系*/.transpose()) / (dt*mcs_step);
         ref_root_R/*refworld系*/ = _ref_root_R/*refworld系*/;
 
         for ( int i = 0;i< m_robot->numJoints();i++){
@@ -808,10 +808,10 @@ public:
                 prevpassive[i] = false;
             }
             if(sync2activecnt[i] > 0){
-                sync2activecnt[i] = std::max(0.0, sync2activecnt[i]-dt);
+                sync2activecnt[i] = std::max(0.0, sync2activecnt[i]-(dt*mcs_step));
             }
             if(sync2referencecnt[i] > 0){
-                sync2referencecnt[i] = std::max(0.0, sync2referencecnt[i]-dt);
+                sync2referencecnt[i] = std::max(0.0, sync2referencecnt[i]-(dt*mcs_step));
             }
         }
 
@@ -911,7 +911,7 @@ public:
                 if(is_reference[i]){
                     K0(i,i) = 1.0;
                 }else{
-                    K0(i,i) = k0 / dt;
+                    K0(i,i) = k0 / (dt*mcs_step);
                 }
             }
 
@@ -932,8 +932,8 @@ public:
 
                     if(is_passive[i]){
                         double target_vel=0;
-                        if(qcurv[i] + mcs_passive_vel * dt < qactv[i])target_vel = mcs_passive_vel * dt;
-                        else if (qcurv[i] - mcs_passive_vel * dt > qactv[i])target_vel = - mcs_passive_vel * dt;
+                        if(qcurv[i] + mcs_passive_vel * (dt*mcs_step) < qactv[i])target_vel = mcs_passive_vel * (dt*mcs_step);
+                        else if (qcurv[i] - mcs_passive_vel * (dt*mcs_step) > qactv[i])target_vel = - mcs_passive_vel * (dt*mcs_step);
                         else target_vel = qactv[i] - qcurv[i];
 
                         max = target_vel;
@@ -942,7 +942,7 @@ public:
                     else if(is_reference[i]){
                         double reference_vel=0;
                         if(sync2referencecnt[i]>0.0){
-                            reference_vel = (dt / sync2referencetime * 9.19) * 1/(1+exp(-9.19*((1.0 - sync2referencecnt[i]/sync2referencetime - 0.5)))) * (qrefv[i] - qcurv[i]);
+                            reference_vel = ((dt*mcs_step) / sync2referencetime * 9.19) * 1/(1+exp(-9.19*((1.0 - sync2referencecnt[i]/sync2referencetime - 0.5)))) * (qrefv[i] - qcurv[i]);
                         }else{
                             reference_vel = qrefv[i] - qcurv[i];
                         }
@@ -957,11 +957,11 @@ public:
                             if(m_robot->joint(i)->q < llimit[i]) min = std::max(min,0.0);
                         }
                         if(sync2activecnt[i]>0.0){
-                            max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * dt);
-                            min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * dt);
+                            max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * (dt*mcs_step));
+                            min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * (dt*mcs_step));
                         }else{
-                            max = std::min(max,m_robot->joint(i)->uvlimit * dt - 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
-                            min = std::max(min,m_robot->joint(i)->lvlimit * dt + 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
+                            max = std::min(max,m_robot->joint(i)->uvlimit * (dt*mcs_step) - 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
+                            min = std::max(min,m_robot->joint(i)->lvlimit * (dt*mcs_step) + 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
                         }
                     }
 
@@ -1130,7 +1130,7 @@ public:
                 if(is_reference[i]){
                     K1(i,i) = 1.0;
                 }else{
-                    K1(i,i) = k1 / dt;
+                    K1(i,i) = k1 / (dt*mcs_step);
                 }
             }
 
@@ -1269,9 +1269,9 @@ public:
                     std::cerr << dF * x << std::endl;
 
                     std::cerr << "nextP" << std::endl;
-                    std::cerr << CM_J * dqa * x / dt << std::endl;
+                    std::cerr << CM_J * dqa * x / (dt*mcs_step) << std::endl;
                     std::cerr << "nextL" << std::endl;
-                    std::cerr << MO_J * dqa * x / dt << std::endl;
+                    std::cerr << MO_J * dqa * x / (dt*mcs_step) << std::endl;
 
                     std::cerr << "supportvel" << std::endl;
                     std::cerr << supportJ * dqa * x << std::endl;
@@ -1308,28 +1308,28 @@ public:
                 hrp::dvector delta_interact_eef = hrp::dvector::Zero(6*interact_eef.size());
                 for (size_t i = 0; i < interact_eef.size(); i++){
                     delta_interact_eef.block<3,1>(i*6,0) =
-                        (interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef_raw-interact_eef[i]->ref_force_eef) * dt * dt
-                         + interact_eef[i]->act_R_origin.transpose() * (interact_eef[i]->ref_p_origin - interact_eef[i]->act_p_origin) * interact_eef[i]->K_p * dt * dt
-                         + interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - interact_eef[i]->prev_ref_p) * interact_eef[i]->D_p * dt
+                        (interact_eef[i]->force_gain * (interact_eef[i]->act_force_eef_raw-interact_eef[i]->ref_force_eef) * (dt*mcs_step) * (dt*mcs_step)
+                         + interact_eef[i]->act_R_origin.transpose() * (interact_eef[i]->ref_p_origin - interact_eef[i]->act_p_origin) * interact_eef[i]->K_p * (dt*mcs_step) * (dt*mcs_step)
+                         + interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - interact_eef[i]->prev_ref_p) * interact_eef[i]->D_p * (dt*mcs_step)
                          + (interact_eef[i]->act_R_origin.transpose() * ref_footorigin_R.transpose() * (interact_eef[i]->ref_p - 2 * interact_eef[i]->prev_ref_p + interact_eef[i]->prev_prev_ref_p) + interact_eef[i]->prev_pos_vel) * interact_eef[i]->M_p
-                         ) / (interact_eef[i]->M_p + interact_eef[i]->D_p * dt + interact_eef[i]->K_p * dt * dt);
+                         ) / (interact_eef[i]->M_p + interact_eef[i]->D_p * (dt*mcs_step) + interact_eef[i]->K_p * (dt*mcs_step) * (dt*mcs_step));
 
                     delta_interact_eef.block<3,1>(i*6+3,0) =
-                        (interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef_raw-interact_eef[i]->ref_moment_eef) * dt * dt
-                         + matrix_logEx(interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin) * interact_eef[i]->K_r * dt * dt
-                         + interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_w_eef * interact_eef[i]->D_r * dt
+                        (interact_eef[i]->moment_gain * (interact_eef[i]->act_moment_eef_raw-interact_eef[i]->ref_moment_eef) * (dt*mcs_step) * (dt*mcs_step)
+                         + matrix_logEx(interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin) * interact_eef[i]->K_r * (dt*mcs_step) * (dt*mcs_step)
+                         + interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_w_eef * interact_eef[i]->D_r * (dt*mcs_step)
                          + (interact_eef[i]->act_R_origin.transpose() * interact_eef[i]->ref_R_origin * interact_eef[i]->ref_dw_eef + interact_eef[i]->prev_rot_vel) * interact_eef[i]->M_r
-                         ) / (interact_eef[i]->M_r + interact_eef[i]->D_r * dt + interact_eef[i]->K_r * dt * dt);
+                         ) / (interact_eef[i]->M_r + interact_eef[i]->D_r * (dt*mcs_step) + interact_eef[i]->K_r * (dt*mcs_step) * (dt*mcs_step));
 
                     for(size_t j=0;j<3;j++){
-                        if(delta_interact_eef[i*6+j]>interact_eef[i]->pos_compensation_limit*dt)delta_interact_eef[i*6+j]=interact_eef[i]->pos_compensation_limit*dt;
-                        if(delta_interact_eef[i*6+j]<-interact_eef[i]->pos_compensation_limit*dt)delta_interact_eef[i*6+j]=-interact_eef[i]->pos_compensation_limit*dt;
-                        if(delta_interact_eef[i*6+3+j]>interact_eef[i]->rot_compensation_limit*dt)delta_interact_eef[i*6+3+j]=interact_eef[i]->rot_compensation_limit*dt;
-                        if(delta_interact_eef[i*6+3+j]<-interact_eef[i]->rot_compensation_limit*dt)delta_interact_eef[i*6+3+j]=-interact_eef[i]->rot_compensation_limit*dt;
+                        if(delta_interact_eef[i*6+j]>interact_eef[i]->pos_compensation_limit*(dt*mcs_step))delta_interact_eef[i*6+j]=interact_eef[i]->pos_compensation_limit*(dt*mcs_step);
+                        if(delta_interact_eef[i*6+j]<-interact_eef[i]->pos_compensation_limit*(dt*mcs_step))delta_interact_eef[i*6+j]=-interact_eef[i]->pos_compensation_limit*(dt*mcs_step);
+                        if(delta_interact_eef[i*6+3+j]>interact_eef[i]->rot_compensation_limit*(dt*mcs_step))delta_interact_eef[i*6+3+j]=interact_eef[i]->rot_compensation_limit*(dt*mcs_step);
+                        if(delta_interact_eef[i*6+3+j]<-interact_eef[i]->rot_compensation_limit*(dt*mcs_step))delta_interact_eef[i*6+3+j]=-interact_eef[i]->rot_compensation_limit*(dt*mcs_step);
                     }
 
                     if(interact_eef[i]->ref_contact_state){
-                        delta_interact_eef[i*6+2] = - interact_eef[i]->z_contact_vel*dt;
+                        delta_interact_eef[i*6+2] = - interact_eef[i]->z_contact_vel*(dt*mcs_step);
                     }
                 }
 
@@ -1443,9 +1443,9 @@ public:
                     std::cerr << dF * x << std::endl;
 
                     std::cerr << "nextP" << std::endl;
-                    std::cerr << CM_J * dqa * x / dt << std::endl;
+                    std::cerr << CM_J * dqa * x / (dt*mcs_step) << std::endl;
                     std::cerr << "nextL" << std::endl;
-                    std::cerr << MO_J * dqa * x / dt << std::endl;
+                    std::cerr << MO_J * dqa * x / (dt*mcs_step) << std::endl;
 
                     std::cerr << "supportvel" << std::endl;
                     std::cerr << supportJ * dqa * x << std::endl;
@@ -1479,7 +1479,7 @@ public:
                 if(is_reference[i]){
                     K3(i,i) = 1.0;
                 }else{
-                    K3(i,i) = k3 / dt;
+                    K3(i,i) = k3 / (dt*mcs_step);
                 }
             }
 
@@ -1654,9 +1654,9 @@ public:
                     std::cerr << dF * optimal_x << std::endl;
 
                     std::cerr << "nextP" << std::endl;
-                    std::cerr << CM_J * dqa * optimal_x / dt << std::endl;
+                    std::cerr << CM_J * dqa * optimal_x / (dt*mcs_step) << std::endl;
                     std::cerr << "nextL" << std::endl;
-                    std::cerr << MO_J * dqa * optimal_x / dt << std::endl;
+                    std::cerr << MO_J * dqa * optimal_x / (dt*mcs_step) << std::endl;
 
                     std::cerr << "supportvel" << std::endl;
                     std::cerr << supportJ * dqa * optimal_x << std::endl;
@@ -1702,9 +1702,9 @@ public:
             std::cerr << actwrenchv + dF * command_dq << std::endl;
 
             std::cerr << "nextP" << std::endl;
-            std::cerr << CM_J * dqa * command_dq / dt << std::endl;
+            std::cerr << CM_J * dqa * command_dq / (dt*mcs_step) << std::endl;
             std::cerr << "nextL" << std::endl;
-            std::cerr << MO_J * dqa * command_dq / dt << std::endl;
+            std::cerr << MO_J * dqa * command_dq / (dt*mcs_step) << std::endl;
 
             std::cerr << "supportvel" << std::endl;
             std::cerr << supportJ * dqa * command_dq << std::endl;

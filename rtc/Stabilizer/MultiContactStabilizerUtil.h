@@ -277,6 +277,7 @@ public:
                     int val;
                     sem_getvalue(&done_sem,&val);
                     if(val>0){
+                        //rcv_dataが用意されるのを待つ
                         sem_wait(&done_sem);
 
                         current_qcurv = target_qcurv;
@@ -295,6 +296,8 @@ public:
                         snd_data_copied = snd_data;
                         sem_post(&call_sem);
                     }else{
+                        std::cerr << "call time over " << current_step << std::endl;
+                        current_step--;
                         current_qcurv = target_qcurv;
                     }
                 }else{
@@ -343,6 +346,7 @@ public:
                 int val;
                 sem_getvalue(&done_sem,&val);
                 if(val>0){
+                    //rcv_dataが用意されるのを待つ
                     sem_wait(&done_sem);
 
                     current_qcurv = target_qcurv;
@@ -650,6 +654,9 @@ public:
     }
 
     void callRemoteStabilizer(const OpenHRP::StabilizerService::RSParamIn& i_param, OpenHRP::StabilizerService::RSParamOut& o_param){
+        //struct timeval s, e;
+        //gettimeofday(&s, NULL);
+
         {
             hrp::dvector qcurv = hrp::dvector(m_Rrobot->numJoints());
             for ( int i = 0; i < m_Rrobot->numJoints(); i++ ){
@@ -849,15 +856,22 @@ public:
             o_param.cur_root_rpy[1] = cur_root_rpy[1];
             o_param.cur_root_rpy[2] = cur_root_rpy[2];
         }
+
+        //gettimeofday(&e, NULL);
+        //std::cerr << "calc time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
     }
 
     static void *remotethreadfunc(void* arg){
         MultiContactStabilizerUtil* mcsu = (MultiContactStabilizerUtil*)arg;
 
         while(!mcsu->terminate_remotethread){
-            //snd_data_copiedが用意されるのを待つ
             sem_post(&mcsu->done_sem);
+
+            //snd_data_copiedが用意されるのを待つ
             sem_wait(&mcsu->call_sem);
+
+            //struct timeval s, e;
+            //gettimeofday(&s, NULL);
 
             try
                 {
@@ -884,6 +898,9 @@ public:
                     // その他の例外
                     std::cerr << "unexpected error" << std::endl;
                 }
+
+            //gettimeofday(&e, NULL);
+            //std::cerr << "call step: " << mcsu->multicontactstabilizer.mcs_step - mcsu->current_step << "/" << mcsu->multicontactstabilizer.mcs_step << " time: " << (e.tv_sec - s.tv_sec) + (e.tv_usec - s.tv_usec)*1.0E-6 << std::endl;
 
         }
         return NULL;
@@ -957,6 +974,7 @@ public:
     bool terminate_remotethread;
     RTC::CorbaConsumer<OpenHRP::StabilizerService>& m_serviceclient0;
     MultiContactStabilizer multicontactstabilizer;
+    short current_step;
 private:
     bool use_remote;
     bool mode_st;
@@ -964,7 +982,6 @@ private:
     OpenHRP::StabilizerService::RSParamIn snd_data;
     pthread_t remotethread;
 
-    short current_step;
     hrp::dvector current_qcurv;
     hrp::dvector target_qcurv;
     hrp::Vector3 current_cur_root_pos;
