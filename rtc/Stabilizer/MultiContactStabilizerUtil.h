@@ -274,7 +274,7 @@ public:
             if(!mode_st){
                 snd_data.mode_st = false;
 
-                if(current_step==0){
+                if(current_step<=0){
                     int val;
                     sem_getvalue(&done_sem,&val);
                     if(val>0){
