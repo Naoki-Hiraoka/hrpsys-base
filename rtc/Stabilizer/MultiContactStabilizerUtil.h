@@ -46,6 +46,7 @@ public:
         }
 
         current_qcurv=hrp::dvector::Zero(m_robot->numJoints());
+        current_dqcurv=hrp::dvector::Zero(m_robot->numJoints());
         target_qcurv=hrp::dvector::Zero(m_robot->numJoints());
         current_cur_root_pos = hrp::Vector3::Zero();
         current_cur_root_rpy = hrp::Vector3::Zero();
@@ -280,6 +281,7 @@ public:
                         //rcv_dataが用意されるのを待つ
                         sem_wait(&done_sem);
 
+                        current_dqcurv = -current_qcurv + target_qcurv;
                         current_qcurv = target_qcurv;
 
                         current_step = multicontactstabilizer.mcs_step;
@@ -297,10 +299,13 @@ public:
                         sem_post(&call_sem);
                     }else{
                         std::cerr << "call time over " << current_step << std::endl;
+                        if(current_step==0)current_dqcurv = -current_qcurv + target_qcurv;
                         current_step--;
-                        current_qcurv = target_qcurv;
+                        current_qcurv += current_dqcurv;
+                        current_dqcurv *= multicontactstabilizer.mcs_step / (multicontactstabilizer.mcs_step+1.0);
                     }
                 }else{
+                    current_dqcurv = (-current_qcurv + target_qcurv) / (current_step+1);
                     current_qcurv = (current_step * current_qcurv + target_qcurv) / (current_step+1);
                     current_step--;
                 }
@@ -349,6 +354,7 @@ public:
                     //rcv_dataが用意されるのを待つ
                     sem_wait(&done_sem);
 
+                    current_dqcurv = -current_qcurv + target_qcurv;
                     current_qcurv = target_qcurv;
 
                     current_step = multicontactstabilizer.mcs_step;
@@ -366,10 +372,13 @@ public:
                     sem_post(&call_sem);
                 }else{
                     std::cerr << "call time over " << current_step << std::endl;
+                    if(current_step==0)current_dqcurv = -current_qcurv + target_qcurv;
                     current_step--;
-                    current_qcurv = target_qcurv;
+                    current_qcurv += current_dqcurv;
+                    current_dqcurv *= multicontactstabilizer.mcs_step / (multicontactstabilizer.mcs_step+1.0);
                 }
             }else{
+                current_dqcurv = (-current_qcurv + target_qcurv) / (current_step+1);
                 current_qcurv = (current_step * current_qcurv + target_qcurv) / (current_step+1);
                 current_step--;
             }
@@ -983,6 +992,7 @@ private:
     pthread_t remotethread;
 
     hrp::dvector current_qcurv;
+    hrp::dvector current_dqcurv;
     hrp::dvector target_qcurv;
     hrp::Vector3 current_cur_root_pos;
     hrp::Vector3 current_cur_root_rpy;
