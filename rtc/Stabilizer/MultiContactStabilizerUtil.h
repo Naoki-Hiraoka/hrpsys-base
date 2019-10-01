@@ -59,7 +59,11 @@ public:
 
         sem_init(&call_sem, 0, 0);
         sem_init(&done_sem, 0, 0);
-        pthread_create(&remotethread, NULL, &MultiContactStabilizerUtil::remotethreadfunc, this);
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setinheritsched(&attr,PTHREAD_INHERIT_SCHED);//スレッドの スケジューリングポリシーとスケジューリングパラメータを親スレッドから継承する
+        pthread_create(&remotethread, &attr, &MultiContactStabilizerUtil::remotethreadfunc, this);
+        pthread_attr_destroy(&attr);
     }
 
     void getCurrentParameters(const hrp::BodyPtr& m_robot, const hrp::dvector& _qcurv, bool _mode_st) {
