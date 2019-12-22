@@ -158,8 +158,8 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
     p->off_sensor_force_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(10, m_dt, hrp::Vector3::Zero())); // [Hz]
     p->off_sensor_moment_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(10, m_dt, hrp::Vector3::Zero())); // [Hz]
     m_sensors[name] = p;
-    if ( m_sensors[name]->path->numJoints() == 0 ) {
-      std::cerr << "[" << m_profile.instance_name << "] ERROR : Unknown link path " << m_sensors[name]->target_name  << std::endl;
+    if ( !m_robot->link(p->target_name) ) {
+      std::cerr << "[" << m_profile.instance_name << "] ERROR : Unknown link " << m_sensors[name]->target_name  << std::endl;
       return RTC::RTC_ERROR;
     }
   }
