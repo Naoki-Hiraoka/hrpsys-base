@@ -273,6 +273,7 @@ public:
         vel_weight1 = 1e-3;
         vel_weight2 = 1e-3;
         vel_weight3 = 1e-3;
+        vel_limit = 0.1;
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
 
@@ -889,6 +890,8 @@ public:
         hrp::dvector l_bar;
         hrp::dvector u_bar;
         hrp::dvector referencev = hrp::dvector::Zero(m_robot->numJoints());
+        hrp::dvector minv = hrp::dvector::Zero(m_robot->numJoints());
+        hrp::dvector maxv = hrp::dvector::Zero(m_robot->numJoints());
 #ifdef USE_OSQP
         hrp::dmatrix C0_bar_sparse = hrp::dmatrix::Zero(C0_bar.rows(), C0_bar.cols());
         hrp::dmatrix C1_bar_sparse = hrp::dmatrix::Zero(C1_bar.rows(), C1_bar.cols());
@@ -957,18 +960,19 @@ public:
                             if(m_robot->joint(i)->q < llimit[i]) min = std::max(min,0.0);
                         }
                         if(sync2activecnt[i]>0.0){
-                            max = std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * (dt*mcs_step));
-                            min = std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * (dt*mcs_step));
+                            max = std::min(std::min(max,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->uvlimit * vel_limit * (dt*mcs_step)), m_robot->joint(i)->uvlimit * (dt*mcs_step) - 0.000175);
+                            min = std::max(std::max(min,1/(1+exp(-9.19*((1.0 - sync2activecnt[i]/sync2activetime - 0.5)))) * m_robot->joint(i)->lvlimit * vel_limit * (dt*mcs_step)), m_robot->joint(i)->lvlimit * (dt*mcs_step) + 0.000175);
                         }else{
-                            max = std::min(max,m_robot->joint(i)->uvlimit * (dt*mcs_step) - 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
-                            min = std::max(min,m_robot->joint(i)->lvlimit * (dt*mcs_step) + 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
+                            max = std::min(std::min(max,m_robot->joint(i)->uvlimit * vel_limit * (dt*mcs_step)), m_robot->joint(i)->uvlimit * (dt*mcs_step) - 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
+                            min = std::max(std::max(min,m_robot->joint(i)->lvlimit * vel_limit * (dt*mcs_step)), m_robot->joint(i)->lvlimit * (dt*mcs_step) + 0.000175);// 0.01 deg / sec (same as SoftErrorLimiter)
                         }
                     }
 
                     u[i] = max;
                     l[i] = min;
                 }
-
+                maxv = u;
+                minv = l;
             }
 
             {
@@ -1675,6 +1679,8 @@ public:
             if(is_reference[i]){
                 command_dq[i] = referencev[i];
             }
+            if(command_dq[i] > maxv[i]) command_dq[i] = maxv[i];
+            if(command_dq[i] < minv[i]) command_dq[i] = minv[i];
         }
 
         if(debugloop){
@@ -2132,6 +2138,9 @@ public:
         vel_weight3 = i_stp.vel_weight3;
         std::cerr << "[" << instance_name << "]  vel_weight3 = " << vel_weight3 << std::endl;
 
+        vel_limit = i_stp.vel_limit;
+        std::cerr << "[" << instance_name << "]  vel_limit = " << vel_limit << std::endl;
+
     }
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
@@ -2182,6 +2191,7 @@ public:
         i_stp.vel_weight1 = vel_weight1;
         i_stp.vel_weight2 = vel_weight2;
         i_stp.vel_weight3 = vel_weight3;
+        i_stp.vel_limit = vel_limit;
     }
 
     void setPassiveJoint(const char *i_jname){
@@ -2492,6 +2502,7 @@ private:
 
     double k0, k1, k3;
     double vel_weight1, vel_weight2, vel_weight3;
+    double vel_limit;
     };
 
 

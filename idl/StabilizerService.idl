@@ -113,6 +113,7 @@ module OpenHRP
         double z_leave_weight;
         double other_leave_weight;
         sequence<double, 6> wrench_weight;
+        sequence<double, 6> contact_weight;
         /// interact weight. o(1 / pos_compensation_limit^2)
         double pos_interact_weight;
         /// interact weight. o(1 / rot_compensation_limit^2)
@@ -319,6 +320,7 @@ module OpenHRP
       double vel_weight1;
       double vel_weight2;
       double vel_weight3;
+      double vel_limit;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;

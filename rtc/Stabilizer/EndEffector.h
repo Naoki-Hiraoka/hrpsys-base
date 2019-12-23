@@ -13,7 +13,7 @@ public:
                              contact_decision_threshold(10.0),
                              contact_type(SURFACE),
                              friction_coefficient(0.5),
-                             rotation_friction_coefficient(0.5),
+                             rotation_friction_coefficient(0.05),
                              upper_cop_x_margin(0.1),
                              lower_cop_x_margin(-0.1),
                              upper_cop_y_margin(0.05),
@@ -69,6 +69,7 @@ public:
                              ref_dw_eef(hrp::Vector3::Zero())
     {
         wrench_weight << 1.0, 1e2, 1e2, 1e3, 1e3, 1e4;
+        contact_weight << 1.0, 1e1, 1e1, 1e2, 1e2, 1e2;
         return;
     }
 
@@ -121,20 +122,22 @@ public:
 
                 //垂直抗力
                 C(constraint_idx,2)=1;
+                weights[constraint_idx] = contact_weight[0];
                 if(ref_contact_state){
                     lb[constraint_idx] = min_fz;
                 }else{
                     lb[constraint_idx] = 0.0;
-                    weights[constraint_idx] = other_leave_weight;
+                    weights[constraint_idx] *= other_leave_weight;
                 }
                 constraint_idx++;
 
                 C(constraint_idx,2)=-1;
+                weights[constraint_idx] = contact_weight[0];
                 if(ref_contact_state){
                     lb[constraint_idx] = -max_fz;
                 }else{
                     lb[constraint_idx] = -0.0;
-                    weights[constraint_idx] = z_leave_weight;
+                    weights[constraint_idx] *= z_leave_weight;
                 }
                 constraint_idx++;
 
@@ -142,51 +145,59 @@ public:
                 C(constraint_idx,0)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[1];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,0)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[1];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 //y摩擦
                 C(constraint_idx,1)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[2];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
                 C(constraint_idx,1)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[2];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 //xCOP
                 C(constraint_idx,4)= 1;
                 C(constraint_idx,2)= upper_cop_x_margin;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[4];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,4)= -1;
                 C(constraint_idx,2)= -lower_cop_x_margin;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[4];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 //yCOP
                 C(constraint_idx,3)= -1;
                 C(constraint_idx,2)= upper_cop_y_margin;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[3];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,3)= 1;
                 C(constraint_idx,2)= -lower_cop_y_margin;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[3];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 //回転摩擦
@@ -194,12 +205,14 @@ public:
                     C(constraint_idx,5)=-1;
                     C(constraint_idx,2)= rotation_friction_coefficient;
                     lb[constraint_idx] = 0;
-                    if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                    weights[constraint_idx] = contact_weight[5];
+                    if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                     constraint_idx++;
                     C(constraint_idx,5)= 1;
                     C(constraint_idx,2)= rotation_friction_coefficient;
                     lb[constraint_idx] = 0;
-                    if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                    weights[constraint_idx] = contact_weight[5];
+                    if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                     constraint_idx++;
                 }
 
@@ -375,20 +388,22 @@ public:
 
                 //垂直抗力
                 C(constraint_idx,2)=1;
+                weights[constraint_idx] = contact_weight[0];
                 if(ref_contact_state){
                     lb[constraint_idx] = min_fz;
                 }else{
                     lb[constraint_idx] = 0.0;
-                    weights[constraint_idx] = other_leave_weight;
+                    weights[constraint_idx] *= other_leave_weight;
                 }
                 constraint_idx++;
 
                 C(constraint_idx,2)=-1;
+                weights[constraint_idx] = contact_weight[0];
                 if(ref_contact_state){
                     lb[constraint_idx] = -max_fz;
                 }else{
                     lb[constraint_idx] = 0.0;
-                    weights[constraint_idx] = z_leave_weight;
+                    weights[constraint_idx] *= z_leave_weight;
                 }
                 constraint_idx++;
 
@@ -396,25 +411,29 @@ public:
                 C(constraint_idx,0)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[1];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 C(constraint_idx,0)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[1];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
 
                 //y摩擦
                 C(constraint_idx,1)=-1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[2];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
                 C(constraint_idx,1)= 1;
                 C(constraint_idx,2)= friction_coefficient;
                 lb[constraint_idx] = 0;
-                if(!ref_contact_state) weights[constraint_idx] = other_leave_weight;
+                weights[constraint_idx] = contact_weight[2];
+                if(!ref_contact_state) weights[constraint_idx] *= other_leave_weight;
                 constraint_idx++;
             }
             break;
@@ -536,6 +555,13 @@ public:
         }
         std::cerr << "[" << instance_name << "]  " << name <<  " wrench_weight = " << wrench_weight << std::endl;
 
+        if(i_ccp.contact_weight.length() == 6){
+            for(size_t i=0;i<6;i++){
+                contact_weight[i] = i_ccp.contact_weight[i];
+            }
+        }
+        std::cerr << "[" << instance_name << "]  " << name <<  " contact_weight = " << contact_weight << std::endl;
+
         pos_interact_weight = i_ccp.pos_interact_weight;
         std::cerr << "[" << instance_name << "]  pos_interact_weight = " << pos_interact_weight << std::endl;
 
@@ -600,6 +626,10 @@ public:
         for(size_t j = 0; j < 6; j++){
             i_ccp.wrench_weight[j] = wrench_weight[j];
         }
+        i_ccp.contact_weight.length(6);
+        for(size_t j = 0; j < 6; j++){
+            i_ccp.contact_weight[j] = contact_weight[j];
+        }
         i_ccp.pos_interact_weight = pos_interact_weight;
         i_ccp.rot_interact_weight = rot_interact_weight;
         i_ccp.M_p = M_p;
@@ -640,6 +670,7 @@ public:
     double z_leave_weight;
     double other_leave_weight;
     hrp::dvector6 wrench_weight;
+    hrp::dvector6 contact_weight;
     //遊脚インピーダンス
     bool is_ik_enable;//遊脚(!ref_contact)時に位置を制御するか,遊脚時に反力を考慮するか
     double pos_interact_weight;
