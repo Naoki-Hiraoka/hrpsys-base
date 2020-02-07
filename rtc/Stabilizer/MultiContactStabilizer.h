@@ -274,6 +274,8 @@ public:
         vel_weight2 = 1e-3;
         vel_weight3 = 1e-3;
         vel_limit = 0.1;
+        we1 = 0;
+        we2 = 0;
         // load joint limit table
         hrp::readJointLimitTableFromProperties (joint_limit_tables, m_robot, prop["joint_limit_table"], instance_name);
 
@@ -1173,6 +1175,13 @@ public:
 
             }
 
+            hrp::dvector tmpvec = d1;
+            for(size_t i=0; i < tmpvec.rows() ; i++){
+                if(tmpvec[i]>0)tmpvec[i]=0;
+            }
+            double We = tmpvec.transpose() * WC1 * tmpvec;
+            We *= we1;
+
             //solve QP
             if(debugloop){
                 std::cerr << "QP1" << std::endl;
@@ -1225,7 +1234,7 @@ public:
                                     C1_bar_sparse,
                                     C1_sparse,
 #endif
-                                    vel_weight1,
+                                    vel_weight1 + We,
                                     status);
 
             if(!solved){
@@ -1350,6 +1359,9 @@ public:
 
             }
 
+            double We = b2.transpose() * WA2 * b2;
+            We *= we2;
+
             //solve QP
             if(debugloop){
                 std::cerr << "QP2" << std::endl;
@@ -1400,7 +1412,7 @@ public:
 //                                     C2_bar_sparse,
 //                                     C2_sparse,
 // #endif
-                                    vel_weight2,
+                                    vel_weight2 + We,
                                     status);
 
             if(!solved){
@@ -2141,6 +2153,12 @@ public:
         vel_limit = i_stp.vel_limit;
         std::cerr << "[" << instance_name << "]  vel_limit = " << vel_limit << std::endl;
 
+        we1 = i_stp.we1;
+        std::cerr << "[" << instance_name << "]  we1 = " << we1 << std::endl;
+
+        we2 = i_stp.we2;
+        std::cerr << "[" << instance_name << "]  we2 = " << we2 << std::endl;
+
     }
 
     void getParameter(OpenHRP::StabilizerService::stParam& i_stp,const hrp::BodyPtr& m_robot){
@@ -2192,6 +2210,8 @@ public:
         i_stp.vel_weight2 = vel_weight2;
         i_stp.vel_weight3 = vel_weight3;
         i_stp.vel_limit = vel_limit;
+        i_stp.we1 = we1;
+        i_stp.we2 = we2;
     }
 
     void setPassiveJoint(const char *i_jname){
@@ -2503,6 +2523,7 @@ private:
     double k0, k1, k3;
     double vel_weight1, vel_weight2, vel_weight3;
     double vel_limit;
+    double we1, we2;
     };
 
 

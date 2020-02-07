@@ -321,6 +321,8 @@ module OpenHRP
       double vel_weight2;
       double vel_weight3;
       double vel_limit;
+      double we1;
+      double we2;
       // common
       /// Current Stabilizer algorithm
       STAlgorithm st_algorithm;
