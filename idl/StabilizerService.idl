@@ -413,6 +413,8 @@ module OpenHRP
         DblArray3 cur_root_rpy;
         sequence<boolean> act_contact_states;
         boolean on_ground;
+        sequence<double, 3> odom_root_p;
+        sequence<double, 9> odom_root_R;
     };
 
     /**

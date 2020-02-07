@@ -90,6 +90,7 @@ Stabilizer::Stabilizer(RTC::Manager* manager)
     m_actContactStatesOut("actContactStates", m_actContactStates),
     m_COPInfoOut("COPInfo", m_COPInfo),
     m_emergencySignalOut("emergencySignal", m_emergencySignal),
+    m_baseTformOut("baseTformOut", m_baseTform),
     // for debug output
     m_originRefZmpOut("originRefZmp", m_originRefZmp),
     m_originRefCogOut("originRefCog", m_originRefCog),
@@ -165,6 +166,7 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   addOutPort("actContactStates", m_actContactStatesOut);
   addOutPort("COPInfo", m_COPInfoOut);
   addOutPort("emergencySignal", m_emergencySignalOut);
+  addOutPort("baseTformOut", m_baseTformOut);
   // for debug output
   addOutPort("originRefZmp", m_originRefZmpOut);
   addOutPort("originRefCog", m_originRefCogOut);
@@ -550,6 +552,9 @@ RTC::ReturnCode_t Stabilizer::onInitialize()
   //
   act_cogvel_filter = boost::shared_ptr<FirstOrderLowPassFilter<hrp::Vector3> >(new FirstOrderLowPassFilter<hrp::Vector3>(4.0, dt, hrp::Vector3::Zero())); // [Hz]
 
+  // allocate memory for outPorts
+  m_baseTform.data.length(12);
+
   // for debug output
   m_originRefZmp.data.x = m_originRefZmp.data.y = m_originRefZmp.data.z = 0.0;
   m_originRefCog.data.x = m_originRefCog.data.y = m_originRefCog.data.z = 0.0;
@@ -795,6 +800,14 @@ RTC::ReturnCode_t Stabilizer::onExecute(RTC::UniqueId ec_id)
       m_actContactStatesOut.write();
       m_COPInfo.tm = m_qRef.tm;
       m_COPInfoOut.write();
+      // baseTform
+      double *tform_arr = m_baseTform.data.get_buffer();
+      tform_arr[0] = target_root_p(0);
+      tform_arr[1] = target_root_p(1);
+      tform_arr[2] = target_root_p(2);
+      hrp::setMatrix33ToRowMajorArray(target_root_R, tform_arr, 3);
+      m_baseTform.tm = m_qRef.tm;
+      m_baseTformOut.write();
       //m_tauOut.write();
       // for debug output
       m_originRefZmp.data.x = ref_zmp(0); m_originRefZmp.data.y = ref_zmp(1); m_originRefZmp.data.z = ref_zmp(2);
@@ -994,7 +1007,9 @@ void Stabilizer::getActualParameters ()
                                                              act_base_rpy/*refworld系*/,
                                                              acttauv,
                                                              m_pgain,
-                                                             m_collisioninfo);
+                                                             m_collisioninfo,
+                                                             target_root_p,
+                                                             target_root_R);
 
       if (control_mode == MODE_IDLE || control_mode == MODE_AIR) {
           for ( int i = 0; i < m_robot->numJoints(); i++ ){

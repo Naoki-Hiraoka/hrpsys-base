@@ -439,7 +439,9 @@ public:
                              hrp::Vector3& log_act_base_rpy/*world系*/,
                              const hrp::dvector& _acttauv,
                              const RTC::TimedDoubleSeq& _pgain,
-                             const RTC::TimedDoubleSeq& _collisioninfo
+                             const RTC::TimedDoubleSeq& _collisioninfo,
+                             hrp::Vector3& odom_root_p,//refworld系におけるact_root_p.odomになる
+                             hrp::Matrix33& odom_root_R//refworld系におけるact_root_R.odomになる
                              ) {
         if(debugloop){
             std::cerr << "getActualParameters start" << std::endl;
@@ -578,6 +580,9 @@ public:
         //     log_act_moment_eef[i] = endeffector[i]->act_moment_eef/*eef系*/;
         // }
         // log_act_base_rpy/*act_footorigin系*/ = hrp::rpyFromRot(act_footorigin_R/*actworld系*/.transpose() * act_root_R/*actworld系*/);
+
+        odom_root_p/*refworld系*/ = ref_footorigin_p/*refworld系*/ + ref_footorigin_R/*refworld系*/ * act_footorigin_R.transpose()/*actworld系*/ * (act_root_p/*actworld系*/ - act_footorigin_p/*actworld系*/);
+        odom_root_R/*refworld系*/ = ref_footorigin_R/*refworld系*/ * act_footorigin_R.transpose()/*actworld系*/ * act_root_R/*actworld系*/;
 
         if(debugloop){
             for(size_t i = 0; i < eefnum ; i++){

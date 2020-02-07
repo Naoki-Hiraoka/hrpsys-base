@@ -177,7 +177,9 @@ public:
                              hrp::Vector3& log_act_base_rpy/*world系*/,
                              const hrp::dvector& _acttauv,
                              const RTC::TimedDoubleSeq& pgain,
-                             const RTC::TimedDoubleSeq& collisioninfo
+                             const RTC::TimedDoubleSeq& collisioninfo,
+                             hrp::Vector3& target_root_p,//refworld系におけるact_root_p.odomになる
+                             hrp::Matrix33& target_root_R//refworld系におけるact_root_R.odomになる
                              ) {
         multicontactstabilizer.getActualParametersFilter(m_robot,
                                                          _qactv,
@@ -206,7 +208,9 @@ public:
                                                                   log_act_base_rpy,
                                                                   multicontactstabilizer.acttauv_filtered,
                                                                   pgain,
-                                                                  collisioninfo
+                                                                  collisioninfo,
+                                                                  target_root_p,
+                                                                  target_root_R
                                                                   );
             multicontactstabilizer.revert_to_prev(m_robot);
             return ret;
@@ -294,6 +298,8 @@ public:
                         target_qcurv = rcv_qcurv;
                         current_cur_root_pos = rcv_cur_root_pos;
                         current_cur_root_rpy = rcv_cur_root_rpy;
+                        current_odom_root_p = rcv_odom_root_p;
+                        current_odom_root_R = rcv_odom_root_R;
                         current_on_ground = rcv_on_ground;
                         for(size_t i=0; i < current_act_contact_states.size() ;i++){
                             current_act_contact_states[i] = rcv_act_contact_states[i];
@@ -318,6 +324,8 @@ public:
             for(size_t i=0; i < act_contact_states.size() ;i++){
                 act_contact_states[i] = current_act_contact_states[i];
             }
+            target_root_p = current_odom_root_p;
+            target_root_R = current_odom_root_R;
             multicontactstabilizer.revert_to_prev(m_robot);
             return current_on_ground;
 
@@ -367,6 +375,8 @@ public:
                     target_qcurv = rcv_qcurv;
                     current_cur_root_pos = rcv_cur_root_pos;
                     current_cur_root_rpy = rcv_cur_root_rpy;
+                    current_odom_root_p = rcv_odom_root_p;
+                    current_odom_root_R = rcv_odom_root_R;
                     current_on_ground = rcv_on_ground;
                     for(size_t i=0; i < current_act_contact_states.size() ;i++){
                         current_act_contact_states[i] = rcv_act_contact_states[i];
@@ -780,6 +790,8 @@ public:
             std::vector<hrp::Vector3> log_act_force_eef/*eef系,eefまわり*/;
             std::vector<hrp::Vector3> log_act_moment_eef/*eef系,eefまわり*/;
             hrp::Vector3 log_act_base_rpy/*world系*/;
+            hrp::Vector3 odom_root_p;
+            hrp::Matrix33 odom_root_R;
 
             o_param.on_ground = multicontactstabilizer.getActualParameters(m_Rrobot,
                                                                            qactv,
@@ -800,11 +812,23 @@ public:
                                                                            log_act_base_rpy,
                                                                            acttauv,
                                                                            pgain,
-                                                                           collisioninfo
+                                                                           collisioninfo,
+                                                                           odom_root_p,
+                                                                           odom_root_R
                                                                            );
             o_param.act_contact_states.length(act_contact_states.size());
             for(size_t i=0; i < act_contact_states.size() ;i++){
                 o_param.act_contact_states[i] = act_contact_states[i];
+            }
+            o_param.odom_root_p.length(3);
+            for(size_t i=0; i<3;i++){
+                o_param.odom_root_p[i] = odom_root_p(i);
+            }
+            o_param.odom_root_R.length(9);
+            for(size_t i=0; i<3;i++){
+                for(size_t j=0; j<3; j++){
+                    o_param.odom_root_R[i*3+j] = odom_root_R(i,j);
+                }
             }
         }
 
@@ -895,6 +919,12 @@ public:
                     }
                     mcsu->rcv_cur_root_pos = hrp::Vector3(rcv_data->cur_root_pos[0],rcv_data->cur_root_pos[1],rcv_data->cur_root_pos[2]);
                     mcsu->rcv_cur_root_rpy = hrp::Vector3(rcv_data->cur_root_rpy[0],rcv_data->cur_root_rpy[1],rcv_data->cur_root_rpy[2]);
+                    mcsu->rcv_odom_root_p = hrp::Vector3(rcv_data->odom_root_p[0],rcv_data->odom_root_p[1],rcv_data->odom_root_p[2]);
+                    for(size_t i=0; i<3;i++){
+                        for(size_t j=0; j<3; j++){
+                            mcsu->rcv_odom_root_R(i,j) = rcv_data->odom_root_R[i*3+j];
+                        }
+                    }
                     mcsu->rcv_on_ground = rcv_data->on_ground;
                     for(size_t i=0; i<mcsu->rcv_act_contact_states.size();i++){
                         mcsu->rcv_act_contact_states[i] = rcv_data->act_contact_states[i];
@@ -979,6 +1009,8 @@ public:
     hrp::dvector rcv_qcurv;
     hrp::Vector3 rcv_cur_root_pos;
     hrp::Vector3 rcv_cur_root_rpy;
+    hrp::Vector3 rcv_odom_root_p;
+    hrp::Matrix33 rcv_odom_root_R;
     bool rcv_on_ground;
     std::vector<bool> rcv_act_contact_states;
     OpenHRP::StabilizerService::RSParamIn snd_data_copied;
@@ -1000,6 +1032,8 @@ private:
     hrp::dvector target_qcurv;
     hrp::Vector3 current_cur_root_pos;
     hrp::Vector3 current_cur_root_rpy;
+    hrp::Vector3 current_odom_root_p;
+    hrp::Matrix33 current_odom_root_R;
     bool current_on_ground;
     std::vector<bool> current_act_contact_states;
 

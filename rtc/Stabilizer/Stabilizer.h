@@ -184,6 +184,7 @@ class Stabilizer
   RTC::TimedPoint3D m_diffFootOriginExtMoment;
   RTC::TimedPoint3D m_basePos;
   RTC::TimedOrientation3D m_baseRpy;
+  RTC::TimedDoubleSeq m_baseTform;
   RTC::TimedBooleanSeq m_contactStates;
   RTC::TimedDoubleSeq m_toeheelRatio;
   RTC::TimedDoubleSeq m_controlSwingSupportTime;
@@ -249,6 +250,7 @@ class Stabilizer
   RTC::OutPort<RTC::TimedBooleanSeq> m_actContactStatesOut;
   RTC::OutPort<RTC::TimedDoubleSeq> m_COPInfoOut;
   RTC::OutPort<RTC::TimedLong> m_emergencySignalOut;
+  RTC::OutPort<RTC::TimedDoubleSeq> m_baseTformOut;
   // for debug output
   RTC::OutPort<RTC::TimedPoint3D> m_originRefZmpOut, m_originRefCogOut, m_originRefCogVelOut, m_originNewZmpOut;
   RTC::OutPort<RTC::TimedPoint3D> m_originActZmpOut, m_originActCogOut, m_originActCogVelOut;
