@@ -390,7 +390,8 @@ class HrpsysConfigurator(object):
             connectPorts(self.abc.port("zmpOut"), self.st.port("zmpRef"))
             connectPorts(self.abc.port("baseRpyOut"), self.st.port("baseRpyIn"))
             connectPorts(self.abc.port("basePosOut"), self.st.port("basePosIn"))
-            connectPorts(self.abc.port("accRef"), self.kf.port("accRef"))
+            # TODO
+            # connectPorts(self.abc.port("accRef"), self.kf.port("accRef"))
             connectPorts(self.abc.port("contactStates"), self.st.port("contactStates"))
             connectPorts(self.abc.port("controlSwingSupportTime"), self.st.port("controlSwingSupportTime"))
             connectPorts(self.rh.port("q"), self.st.port("qCurrent"))

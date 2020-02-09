@@ -23,6 +23,7 @@
 
 #include "RPYKalmanFilter.h"
 #include "EKFilter.h"
+#include "MadgwickAHRS.h"
 
 // Service implementation headers
 // <rtc-template block="service_impl_h">
@@ -160,6 +161,7 @@ private:
   double m_dt;
   RPYKalmanFilter rpy_kf;
   EKFilter ekf_filter;
+  MKFilter mkf_filter;
   hrp::BodyPtr m_robot;
   hrp::Matrix33 m_sensorR, sensorR_offset;
   hrp::Vector3 acc_offset;

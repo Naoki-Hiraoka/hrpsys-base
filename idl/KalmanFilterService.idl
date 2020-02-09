@@ -12,7 +12,8 @@ module OpenHRP
      */
     enum KFAlgorithm {
         RPYKalmanFilter,
-        QuaternionExtendedKalmanFilter
+        QuaternionExtendedKalmanFilter,
+        MadgwickKalmanFilter
     };
 
     typedef double DblArray3[3];
@@ -34,6 +35,8 @@ module OpenHRP
       double EKF_R_k1;
       double EKF_R_k2;
       double EKF_drift_T;
+      // MadgwickKalmanFilter
+      double MKF_beta;
       // Common
       KFAlgorithm kf_algorithm;
       DblArray3 acc_offset;
