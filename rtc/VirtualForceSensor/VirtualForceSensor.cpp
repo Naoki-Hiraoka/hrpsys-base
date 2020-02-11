@@ -199,6 +199,8 @@ RTC::ReturnCode_t VirtualForceSensor::onInitialize()
       jpe_v.push_back(hrp::JointPathExPtr(new hrp::JointPathEx(m_robot, m_robot->rootLink(), m_robot->sensor(hrp::Sensor::FORCE, i)->link, m_dt, false, std::string(m_profile.instance_name))));
   }
 
+  m_baseRpy.data.r = m_baseRpy.data.p = m_baseRpy.data.y = 0.0;
+
   root_force_weight = 100.0;
   root_moment_weight = 100.0;
   joint_torque_weight = 1.0;
@@ -292,7 +294,14 @@ RTC::ReturnCode_t VirtualForceSensor::onExecute(RTC::UniqueId ec_id)
     for ( unsigned int i = 0; i < m_robot->numJoints(); i++ ){
       m_robot->joint(i)->ddq = ddqCurrent[i];
     }
-    hrp::Matrix33 baseR = hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y);
+
+    m_robot->rootLink()->R = hrp::Matrix33::Identity();
+    m_robot->calcForwardKinematics();
+    hrp::Sensor* sen = m_robot->sensor<hrp::RateGyroSensor>("gyrometer");
+    hrp::Matrix33 senR = sen->link->R * sen->localR;
+    hrp::Matrix33 act_Rs(hrp::rotFromRpy(m_baseRpy.data.r, m_baseRpy.data.p, m_baseRpy.data.y));
+    hrp::Matrix33 baseR = act_Rs * (senR.transpose() * m_robot->rootLink()->R);
+
     //hrp::Vector3 basew = rats::matrix_log( baseR * baseRprev.transpose() ) / m_dt; TODO
     hrp::Vector3 basew = hrp::Vector3::Zero();
     basew = basewFilter->passFilter(basew);
