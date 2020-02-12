@@ -2215,6 +2215,7 @@ void Stabilizer::stopStabilizer(void)
 void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
 {
   std::cerr << "[" << m_profile.instance_name << "] getParameter" << std::endl;
+  multicontactstabilizer.getParameter(i_stp,m_robot);
   for (size_t i = 0; i < 2; i++) {
     // i_stp.k_run_b[i] = k_run_b[i];
     // i_stp.d_run_b[i] = d_run_b[i];
@@ -2410,7 +2411,6 @@ void Stabilizer::getParameter(OpenHRP::StabilizerService::stParam& i_stp)
       ilp.manipulability_limit = jpe_v[i]->getManipulabilityLimit();
       ilp.ik_loop_count = stikp[i].ik_loop_count; // size_t -> unsigned short, value may change, but ik_loop_count is small value and value not change
   }
-  multicontactstabilizer.getParameter(i_stp,m_robot);
 };
 
 void Stabilizer::setParameter(const OpenHRP::StabilizerService::stParam& i_stp)
