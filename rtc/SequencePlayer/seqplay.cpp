@@ -8,6 +8,9 @@
 
 seqplay::seqplay(unsigned int i_dof, double i_dt, unsigned int i_fnum, unsigned int optional_data_dim) : m_dof(i_dof)
 {
+	for (size_t i = 0; i < i_dof; i++) {
+		qInterpolators.push_back(new interpolator(1, i_dt));
+	}
     interpolators[Q] = new interpolator(i_dof, i_dt);
     interpolators[ZMP] = new interpolator(3, i_dt);
     interpolators[ACC] = new interpolator(3, i_dt);
@@ -17,7 +20,9 @@ seqplay::seqplay(unsigned int i_dof, double i_dt, unsigned int i_fnum, unsigned 
     interpolators[WRENCHES] = new interpolator(6 * i_fnum, i_dt, interpolator::HOFFARBIB, 100); // wrenches = 6 * [number of force sensors]
 	interpolators[OPTIONAL_DATA] = new interpolator(optional_data_dim, i_dt);
     // Set interpolator name
-    interpolators[Q]->setName("Q");
+	for (size_t i = 0; i < i_dof; i++) {
+		qInterpolators[i]->setName("Q");
+	}
     interpolators[ZMP]->setName("ZMP");
     interpolators[ACC]->setName("ACC");
     interpolators[P]->setName("P");
@@ -49,6 +54,9 @@ seqplay::~seqplay()
 {
 	for (unsigned int i=0; i<NINTERPOLATOR; i++){
 		delete interpolators[i];
+	}
+	for (unsigned int i=0; i<m_dof; i++){
+		delete qInterpolators[i];
 	}
 }
 
@@ -105,10 +113,8 @@ bool seqplay::isEmpty() const
 	for (unsigned int i=0; i<NINTERPOLATOR; i++){
 		if (!interpolators[i]->isEmpty()) return false;
 	}
-	std::map<std::string, groupInterpolator *>::const_iterator it;
-	for (it=groupInterpolators.begin(); it!=groupInterpolators.end(); it++){
-		groupInterpolator *gi = it->second;
-		if (gi && !gi->isEmpty()) return false;
+	for (unsigned int i=0; i<m_dof; i++){
+		if (!qInterpolators[i]->isEmpty()) return false;
 	}
 
 	return true;
@@ -117,9 +123,12 @@ bool seqplay::isEmpty() const
 bool seqplay::isEmpty(const char *gname)
 {
 	char *s = (char *)gname; while(*s) {*s=toupper(*s);s++;}
-	groupInterpolator *i = groupInterpolators[gname];
-	if (!i) return true;
-	return i->isEmpty();
+	if (groupIndices.find(gname) == groupIndices.end()) return true;
+	const std::vector<int>& indices = groupIndices[gname];
+	for (size_t i = 0; i < indices.size(); i++) {
+		if (!qInterpolators[indices[i]]->isEmpty()) return false;
+	}
+	return true;
 }
 
 #if 0
@@ -153,15 +162,21 @@ void seqplay::getReferenceState(::CharacterState_out ref)
 void seqplay::setJointAngles(const double *jvs, double tm)
 {
 	if (tm == 0){
-		interpolators[Q]->set(jvs);
+		for (size_t i = 0; i < m_dof; i++) {
+			qInterpolators[i]->set(jvs + i);
+		}
 	}else{
-		interpolators[Q]->setGoal(jvs, tm);
+		for (size_t i = 0; i < m_dof; i++) {
+			qInterpolators[i]->setGoal(jvs + i, tm);
+		}
 	}
 }
 
 void seqplay::getJointAngles(double *jvs)
 {
-    interpolators[Q]->get(jvs, false);
+	for (size_t i = 0; i < m_dof; i++) {
+		qInterpolators[i]->get(jvs + i, false);
+	}
 }
 
 
@@ -212,10 +227,7 @@ void seqplay::setWrenches(const double *i_wrenches, double i_tm)
 
 void seqplay::setJointAngle(unsigned int i_rank, double jv, double tm)
 {
-    double pos[m_dof];
-	getJointAngles(pos);
-    pos[i_rank] = jv;
-    interpolators[Q]->setGoal(pos, tm);
+	qInterpolators[i_rank]->setGoal(&jv, tm);
 }
 
 void seqplay::playPattern(std::vector<const double*> pos, std::vector<const double*> zmp, std::vector<const double*> rpy, std::vector<double> tm, const double *qInit, unsigned int len)
@@ -278,7 +290,7 @@ void seqplay::loadPattern(const char *basename, double tm)
     string pos = basename; pos.append(".pos");
     if (access(pos.c_str(),0)==0){
         found = true;
-        interpolators[Q]->load(pos, tm, scale, false);
+		loadAndDistribute(qInterpolators, pos, tm, scale, false);
         if (debug_level > 0) cout << pos;
     }
     if (debug_level > 0) cout << endl << "zmp   = ";
@@ -342,6 +354,9 @@ void seqplay::sync()
 	for (unsigned int i=0; i<NINTERPOLATOR; i++){
 		interpolators[i]->sync();
 	}
+	for (unsigned int i=0; i<m_dof; i++){
+		qInterpolators[i]->sync();
+	}
 }
 
 void seqplay::pop_back()
@@ -349,25 +364,17 @@ void seqplay::pop_back()
 	for (unsigned int i=0; i<NINTERPOLATOR; i++){
 		interpolators[i]->pop_back();
 	}
+	for (unsigned int i=0; i<m_dof; i++){
+		qInterpolators[i]->pop_back();
+	}
 }
 
 void seqplay::get(double *o_q, double *o_zmp, double *o_accel,
 				  double *o_basePos, double *o_baseRpy, double *o_tq, double *o_wrenches, double *o_optional_data)
 {
 	double v[m_dof];
-	interpolators[Q]->get(o_q, v);
-	std::map<std::string, groupInterpolator *>::iterator it;
-	for (it=groupInterpolators.begin(); it!=groupInterpolators.end();){
-		groupInterpolator *gi = it->second;
-		if (gi){
-			gi->get(o_q, v);
-			if (gi->state == groupInterpolator::removed){
-				groupInterpolators.erase(it++);
-				delete gi;
-				continue;
-			}
-		}
-		++it;
+	for (unsigned int i=0; i<m_dof; i++){
+		qInterpolators[i]->get(o_q+i, v+i);
 	}
 	interpolators[ZMP]->get(o_zmp);
 	interpolators[ACC]->get(o_accel);
@@ -393,7 +400,11 @@ void seqplay::go(const double *i_q, const double *i_zmp, const double *i_acc,
 				 const double *ii_p, const double *ii_rpy, const double *ii_tq, const double *ii_wrenches, const double *ii_optional_data,
 				 double i_time,	 bool immediate)
 {
-	if (i_q) interpolators[Q]->go(i_q, ii_q, i_time, false);
+	if (i_q) {
+		for (unsigned int i=0; i<m_dof; i++){
+			qInterpolators[i]->go(i_q+i, ii_q+i, i_time, false);
+		}
+	}
 	if (i_zmp) interpolators[ZMP]->go(i_zmp, ii_zmp, i_time, false);
 	if (i_acc) interpolators[ACC]->go(i_acc, ii_acc, i_time, false);
 	if (i_p) interpolators[P]->go(i_p, ii_p, i_time, false);
@@ -413,10 +424,8 @@ bool seqplay::setInterpolationMode (interpolator::interpolation_mode i_mode_)
 	for (unsigned int i=0; i<NINTERPOLATOR; i++){
 		ret &= interpolators[i]->setInterpolationMode(i_mode_);
 	}
-	std::map<std::string, groupInterpolator *>::const_iterator it;
-	for (it=groupInterpolators.begin(); it!=groupInterpolators.end(); it++){
-		groupInterpolator *gi = it->second;
-		ret &= gi->inter->setInterpolationMode(i_mode_);
+	for (unsigned int i=0; i<m_dof; i++){
+		ret &= qInterpolators[i]->setInterpolationMode(i_mode_);
 	}
 	return ret;
 }
@@ -424,13 +433,11 @@ bool seqplay::setInterpolationMode (interpolator::interpolation_mode i_mode_)
 bool seqplay::addJointGroup(const char *gname, const std::vector<int>& indices)
 {
 	char *s = (char *)gname; while(*s) {*s=toupper(*s);s++;}
-	groupInterpolator *i = groupInterpolators[gname];
-	if (i) {
+	if (groupIndices.find(gname) != groupIndices.end()) {
 		std::cerr << "[addJointGroup] group name " << gname << " is already installed" << std::endl;
 		return false;
 	}
-	i = new groupInterpolator(indices, interpolators[Q]->deltaT());
-	groupInterpolators[gname] = i;
+	groupIndices[gname] = indices;
 	return true;
 }
 
@@ -438,9 +445,10 @@ bool seqplay::getJointGroup(const char *gname, std::vector<int>& indices)
 {
 	char *s = (char *)gname; while(*s) {*s=toupper(*s);s++;}
 	groupInterpolator *i = groupInterpolators[gname];
-	if (i) {
-		for(unsigned j = 0; j < i->indices.size(); j++) {
-			indices.push_back(i->indices[j]);
+	if (groupIndices.find(gname) != groupIndices.end()) {
+		const std::vector<int>& indices = groupIndices[gname];
+		for(unsigned j = 0; j < indices.size(); j++) {
+			indices.push_back(indices[j]);
 		}
 		return true;
 	}else{
@@ -453,8 +461,8 @@ bool seqplay::removeJointGroup(const char *gname, double time)
 {
 	char *s = (char *)gname; while(*s) {*s=toupper(*s);s++;}
 	groupInterpolator *i = groupInterpolators[gname];
-	if (i){
-		i->remove(time);
+	if (groupIndices.find(gname) != groupIndices.end()) {
+		groupIndices.erase(gname);
 		return true;
 	}else{
 		std::cerr << "[removeJointGroup] group name " << gname << " is not installed" << std::endl;
@@ -465,26 +473,15 @@ bool seqplay::removeJointGroup(const char *gname, double time)
 bool seqplay::resetJointGroup(const char *gname, const double *full)
 {
 	char *s = (char *)gname; while(*s) {*s=toupper(*s);s++;}
-	groupInterpolator *i = groupInterpolators[gname];
-	if (i){
-		i->set(full);
-		std::map<std::string, groupInterpolator *>::iterator it;
-        for (it=groupInterpolators.begin(); it!=groupInterpolators.end(); it++){
-			if ( it->first != std::string(gname) ) { // other 
-				groupInterpolator *gi = it->second;
-				if (gi && (gi->state == groupInterpolator::created || gi->state == groupInterpolator::working) && gi->inter->isEmpty()) {
-					gi->set(full);
-				}
-			}
-		}
-        // update for non working interpolators
-		
+	if (groupIndices.find(gname) != groupIndices.end()) {
 		return true;
 	}else{
 		std::cerr << "[resetJointGroup] group name " << gname << " is not installed" << std::endl;
 		return false;
 	}
 }
+
+// TODO ここから
 
 bool seqplay::setJointAnglesOfGroup(const char *gname, const double* i_qRef, const size_t i_qsize, double i_tm)
 {
@@ -873,4 +870,45 @@ bool seqplay::clearJointAnglesOfGroup(const char *gname)
 	i->inter->sync();
 
 	return true;
+}
+
+void seqplay::loadAndDistribute(std::vector<interpolator *>& dist_interpolators,
+								const char *fname, double time_to_start, double scale,
+								bool immediate, size_t offset1, size_t offset2) {
+	ifstream strm(fname);
+	if (!strm.is_open()) {
+		cerr << "[seqplay] file not found(" << fname << ")" << endl;
+		return;
+	}
+	double *vs, ptime=-1,time, tmp, dim=0;
+	for (size_t i=0; i<dist_interpolators.size(); i++) dim += dist_interpolators[i]->dimension();
+	vs = new double[dim];
+	strm >> time;
+	while(strm.eof()==0){
+		for (size_t i=0; i<offset1; i++){
+			strm >> tmp;
+		}
+		for (int i=0; i<dim; i++){
+			strm >> vs[i];
+		}
+		for (size_t i=0; i<offset2; i++){
+			strm >> tmp;
+		}
+		double d=0;
+		for (size_t i=0; i<dist_interpolators.size(); i++) {
+			if (ptime <0){
+				go(vs+d, time_to_start, false);
+			}else{
+				go(vs+d, scale*(time-ptime), false);
+			}
+			d += dist_interpolators[i]->dimension();
+		}
+		ptime = time;
+		strm >> time;
+	}
+	strm.close();
+	delete [] vs;
+	if (immediate) {
+		for (size_t i=0; i<dist_interpolators.size(); i++) dist_interpolators[i]->sync();
+	}
 }

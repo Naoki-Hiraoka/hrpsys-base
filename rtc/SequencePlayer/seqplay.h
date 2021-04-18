@@ -142,9 +142,13 @@ private:
         double time2remove;
     };
     void pop_back();
-    enum {Q, ZMP, ACC, P, RPY, TQ, WRENCHES, OPTIONAL_DATA, NINTERPOLATOR};
+    void loadAndDistribute(std::vector<interpolator *>& dist_interpolators,
+                           const char *fname, double time_to_start, double scale,
+                           bool immediate, size_t offset1, size_t offset2);
+    enum {ZMP, ACC, P, RPY, TQ, WRENCHES, OPTIONAL_DATA, NINTERPOLATOR};
     interpolator *interpolators[NINTERPOLATOR];
-    std::map<std::string, groupInterpolator *> groupInterpolators; 
+    std::vector<interpolator *> qInterpolators;
+    std::map<std::string, std::vector<int> > groupIndices;
     int debug_level, m_dof;
 };
 
