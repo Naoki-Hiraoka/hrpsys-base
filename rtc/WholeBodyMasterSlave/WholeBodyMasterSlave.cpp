@@ -55,8 +55,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
     addInPort("basePosIn", m_basePosIn);
     addInPort("baseRpyIn", m_baseRpyIn);
     addInPort("optionalData", m_optionalDataIn);
-    addOutPort("q", m_qOut);// to abc
-    addOutPort("zmpOut", m_zmpOut);
+    addOutPort("q", m_qOut);// to abc    addOutPort("zmpOut", m_zmpOut);
     addOutPort("basePosOut", m_basePosOut);
     addOutPort("baseRpyOut", m_baseRpyOut);
     addOutPort("optionalDataOut", m_optionalDataOut);
@@ -83,6 +82,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
     nameServer = nameServer.substr(0, comPos);
     RTC::CorbaNaming naming(rtcManager.getORB(), nameServer.c_str());
 
+    // モデルファイルをロードし，3つにコピーしてm_robot_act, m_robot_vsafe, fik->m_robotに設定
     hrp::BodyPtr robot_for_ik = hrp::BodyPtr(new hrp::Body());
     if (!loadBodyFromModelLoader(robot_for_ik, prop["model"].c_str(), CosNaming::NamingContext::_duplicate(naming.getRootContext()) )){
         RTC_WARN_STREAM("failed to load model[" << prop["model"] << "]");
@@ -93,10 +93,14 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
     RTC_INFO_STREAM("setup robot model finished");
 
     fik = fikPtr(new FullbodyInverseKinematicsSolver(robot_for_ik, std::string(m_profile.instance_name), m_dt));
+
+    // ee_names, contact_states_index_map, ee_ikc_map, robot_for_ikを.confファイルのend_effectorsパラメータから設定．
     setupEEIKConstraintFromConf(ee_ikc_map, robot_for_ik, prop);
     RTC_INFO_STREAM("setup fullbody ik finished");
 
     wbms = boost::shared_ptr<WBMSCore>(new WBMSCore(m_dt));
+
+    // 使用する関節を設定．RHP4B以外のロボットは全関節
     if(fik->m_robot->name() == "RHP4B"){
         for(int i=0; i<fik->m_robot->numJoints(); i++){
             if(fik->m_robot->joint(i)->name.find("-linear-joint") == std::string::npos){
@@ -107,6 +111,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
         wbms->wp.use_joints = getJointNameAll(fik->m_robot);
     }
 
+    // 使用する身体部位を設定. rleg, lleg, rarm, larm, com, head
     if(fik->m_robot->name().find("JAXON") != std::string::npos){ // for demo
         wbms->wp.use_targets.push_back("rleg");
         wbms->wp.use_targets.push_back("lleg");
@@ -122,6 +127,8 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
         wbms->wp.use_targets.push_back("com");
         wbms->wp.use_targets.push_back("head");
     }
+
+    // rleg, llegという名のエンドエフェクタが存在したら脚ありロボットとみなす
     wbms->legged = ( has(ee_names,"lleg") || has(ee_names,"rleg") );
     RTC_INFO_STREAM("setup mode as legged robot ? = " << wbms->legged);
 

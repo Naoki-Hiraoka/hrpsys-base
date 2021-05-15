@@ -150,7 +150,7 @@ class WholeBodyMasterSlave : public RTC::DataFlowComponentBase{
         typedef boost::shared_ptr<FullbodyInverseKinematicsSolver> fikPtr;
         fikPtr fik;
         std::map<std::string, IKConstraint> ee_ikc_map; // e.g. feet hands head com
-        std::map<std::string, size_t> contact_states_index_map;
+        std::map<std::string, size_t> contact_states_index_map; // エンドエフェクタ名と，contactStateの配列中のindexとの対応関係を表す
 
         double output_ratio;
         interpolator *t_ip,*q_ip;
@@ -175,9 +175,10 @@ class WholeBodyMasterSlave : public RTC::DataFlowComponentBase{
 
         hrp::Vector3 static_balancing_com_offset;
 
-        std::vector<std::string> ee_names;
+        std::vector<std::string> ee_names; // end_effector名のリスト．.confファイルで設定．
         std::vector<std::string> tgt_names;
 
+        // ee_names, contact_states_index_map, _ee_ikc_mapを.confファイルのend_effectorsパラメータから設定．_robotは.confに書かれた名前のリンクが存在するかどうかのチェックのみに用いる
         RTC::ReturnCode_t setupEEIKConstraintFromConf(std::map<std::string, IKConstraint>& _ee_ikc_map, hrp::BodyPtr _robot, RTC::Properties& _prop);
         void solveFullbodyIK(HumanPose& ref);
         void processTransition();

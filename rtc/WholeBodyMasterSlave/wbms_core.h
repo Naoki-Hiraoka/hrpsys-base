@@ -55,6 +55,9 @@ class LIP_model{
 //        hrp::Vector3 ZMP(){ return (hrp::Vector3() << com[0].head(XY) - acc().head(XY) * ( com_height / G ), com[0](Z) - com_height).finished; }
 };
 
+/*
+  個々の身体部位の情報を保管するクラス
+ */
 class PoseTGT{
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -71,6 +74,9 @@ class PoseTGT{
         }
 };
 
+/*
+  各身体部位(com, head, rleg, lleg, rarm, larm)の情報を保管するクラス
+ */
 class HumanPose{
     public:
         std::vector<PoseTGT> tgt;
@@ -339,22 +345,22 @@ class CapsuleCollisionChecker {
 
 class WBMSCore{
     private:
-        double HZ, DT;
-        hrp::Vector3 com_old, com_oldold, comacc, com_CP_ref_old;
-        HumanPose rp_ref_out_old;
-        unsigned int loop;
-        bool is_initial_loop;
-        int zmp_force_go_contact_count[LR];
-        BiquadIIRFilterVec acc4zmp_v_filters, com_filter;
-        double com_filter_cutoff_hz_old;
+        double DT, HZ; // 制御周期[s],周波数[/s]
+        hrp::Vector3 com_old, com_oldold, comacc, com_CP_ref_old; // 前回の重心位置, 前々回の重心位置, 重心加速度, 
+        HumanPose rp_ref_out_old; // なんだろ
+        unsigned int loop; // 起動 or initializeRequest から何ループ目か. 何ループかに一回デバッグメッセージを表示する用途で用いる
+        bool is_initial_loop; // 起動 or initializeRequest から最初のループであるならtrue.
+        int zmp_force_go_contact_count[LR]; // 使われていない
+        BiquadIIRFilterVec acc4zmp_v_filters, com_filter; // ローパスフィルタ. acc4zmp_v_filtersは重心の加速度用でZMPの計算に用いる.
+        double com_filter_cutoff_hz_old; // 現在のcom_filterのカットオフ周波数.
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        bool legged;
+        bool legged; // 脚のあるロボットかどうか
         double H_cur;
-        HumanPose hp_wld_raw, rp_ref_out;
+        HumanPose hp_wld_raw, rp_ref_out; // rp_ref_out:なんだろ
         hrp::Pose3 baselinkpose;
-        hrp::Vector3 cp_dec, cp_acc;
-        hrp::Vector4 act_foot_vert_fblr[LR], safe_foot_vert_fblr[LR];
+        hrp::Vector3 cp_dec, cp_acc; // なんだろ
+        hrp::Vector4 act_foot_vert_fblr[LR], safe_foot_vert_fblr[LR]; // 足裏の形状. X軸は前方が正,Y軸は内側が正. act_foot_vert_fblrは実際の足の大きさ．safe_foot_vert_fblrはマージンをとった大きさ
         hrp::Vector2 com_forcp_ref,com_vel_forcp_ref;
         class WBMSParams {
             public:
@@ -380,7 +386,7 @@ class WBMSCore{
                 hrp::Vector3 com_offset;
                 hrp::Vector4 actual_foot_vert_fbio;
                 hrp::Vector4 safety_foot_vert_fbio;
-                std::vector<std::string> use_joints;
+                std::vector<std::string> use_joints; // 使用する関節のリスト
                 std::vector<std::string> use_targets;
             WBMSParams(){
                 auto_com_mode                       = true;

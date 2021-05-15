@@ -15,9 +15,9 @@
 class IKConstraint {
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        std::string     target_link_name;
-        hrp::Vector3    targetPos;
-        hrp::Vector3    targetRpy;
+        std::string     target_link_name; // エンドエフェクタの親リンク(の親関節)の名前
+        hrp::Vector3    targetPos; // エンドエフェクタの親リンクからの相対位置
+        hrp::Vector3    targetRpy; // エンドエフェクタの親リンクからの相対姿勢
         hrp::Vector3    localPos;
         hrp::Matrix33   localR;
         hrp::dvector6   constraint_weight;
