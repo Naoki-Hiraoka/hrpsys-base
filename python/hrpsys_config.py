@@ -391,7 +391,7 @@ class HrpsysConfigurator(object):
 
         # connection for wbms
         if self.wbms:
-            connectPorts(self.sh.port("qOut"), self.wbms.port("qRef"))
+            connectPorts(self.sh.port("qOut"), self.wbms.port("qRef")) # duplicate!! sh.qOut->wbms.qRef es.qOut->wbms.qRef TODO
             connectPorts(self.rh.port("q"), self.wbms.port("qAct"))
             connectPorts(self.sh.port("zmpOut"), self.wbms.port("zmpIn"))
             connectPorts(self.sh.port("basePosOut"), self.wbms.port("basePosIn"))

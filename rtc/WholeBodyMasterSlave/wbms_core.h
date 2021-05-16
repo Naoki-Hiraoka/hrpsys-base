@@ -61,21 +61,22 @@ class LIP_model{
 class PoseTGT{
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-        hrp::Pose3 abs, offs, cnt;
-        hrp::dvector6 w;
-        bool go_contact;
+        hrp::Pose3 abs, offs, cnt; // absは/odom系の位置姿勢. offsはinitializeRequest時の値. cntは地面に接触する位置を表し,着地ロック時以外はabsのX,Y,yawが反映され,roll,pitchは0, Zはauto_floor_h_mode時のみ更新される.
+        hrp::dvector6 w; // 6軸力.
+        bool go_contact; // WBMSStatesによる地面に接触するロックが作動しているか
         PoseTGT(){ reset(); }
         ~PoseTGT(){}
         void reset(){ abs.reset(); offs.reset(); cnt.reset(); w.fill(0); go_contact = false;}
-        bool is_contact(){
+        bool is_contact(){ // FullbodyIKの重みと、optionaldata出力に用いられる
             const double contact_threshold = 0.005;
             // return ((abs.p(Z) - offs.p(Z)) < contact_threshold);
-            return ((abs.p(Z) - cnt.p(Z)) < contact_threshold);
+            return ((abs.p(Z) - cnt.p(Z)) < contact_threshold); // cnt.zが更新されなければ、段差は無理 TODO
         }
 };
 
 /*
-  各身体部位(com, head, rleg, lleg, rarm, larm)の情報を保管するクラス
+  各身体部位(com, head, rleg, lleg, rarm, larm, zmp)の情報を保管するクラス
+  zmpのみ、masterとslaveの連動目的では使用されない
  */
 class HumanPose{
     public:
@@ -189,6 +190,9 @@ inline double SegSegDist2(const Point& u0, const Point& u, const Point& v0, cons
     return dP.Magnitude();   // return the closest distance
 }
 
+/*
+  p0, p1をそれぞれ中心とした半径rの球とそれらを結ぶ円柱からなるカプセル形状を表す
+ */
 class Capsule{
     public:
         hrp::Vector3 p0, p1;
@@ -198,6 +202,9 @@ class Capsule{
         }
 };
 
+/*
+
+ */
 class CollisionInfo{
     public:
         int id0, id1;
@@ -216,14 +223,16 @@ typedef std::vector<Capsule> CapsuleArray;
 class CapsuleCollisionChecker {
     private:
         const hrp::BodyPtr m_robot;
-        std::vector<CapsuleArray> capsule_array_list_local, capsule_array_list_wld;
+        std::vector<CapsuleArray> capsule_array_list_local, capsule_array_list_wld; // i番目の関節の小リンクを近似したカプセル. localは相対座標. wldはワールド座標でupdate()で現在のm_robotの状態に更新
     public:
         std::vector<CollisionInfo> collision_info_list;
-        Eigen::MatrixXi check_pair_mat;
-        hrp::ivector avoid_priority;
+        Eigen::MatrixXi check_pair_mat; // 全身の関節数x関節数の行列.要素(me,you)が1ならme番目の関節の小リンクとyou番目の関節の小リンクの干渉を考慮し、0ならしない. // rootLinkが含まれていない気がする...
+        hrp::ivector avoid_priority; // i番目の関節の小リンクの干渉回避の優先度を表す. 0,1,2,3. 優先度の数字が小さいほうがよける
         bool hasStr(const std::string& str, const std::string key){ return str.find(key) != std::string::npos; }
         CapsuleCollisionChecker(hrp::BodyPtr robot):
             m_robot(robot){
+
+            // capsule_array_list_localにi番目の関節の小リンクを近似したカプセルをセットする。JAXON specific.
             capsule_array_list_local.resize(m_robot->numJoints());
             for(int i=0; i<m_robot->numJoints(); i++){
                 if(hasStr(m_robot->joint(i)->name,"LEG_JOINT0")){
@@ -237,7 +246,7 @@ class CapsuleCollisionChecker {
                     capsule_array_list_local[i].push_back(Capsule(hrp::Vector3(0,0,0), m_robot->joint(i)->child->b, 0.095));
                     capsule_array_list_local[i].push_back(Capsule(hrp::Vector3(0,-0.05,0), m_robot->joint(i)->child->b, 0.095));
                 }
-                if(hasStr(m_robot->joint(i)->name,"LEEIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Matrix2d)G_JOINT3")){
+                if(hasStr(m_robot->joint(i)->name,"LEEIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Matrix2d)G_JOINT3")){ // タイポか??? LEG_JOINT3にすべきと思われる bug
                     capsule_array_list_local[i].push_back(Capsule(hrp::Vector3(0.05,0,0), m_robot->joint(i)->child->b, 0.095));
                 }
                 if(hasStr(m_robot->joint(i)->name,"ARM_JOINT2") || hasStr(m_robot->joint(i)->name,"ARM_JOINT3") || hasStr(m_robot->joint(i)->name,"ARM_JOINT4") || hasStr(m_robot->joint(i)->name,"ARM_JOINT5") || hasStr(m_robot->joint(i)->name,"ARM_JOINT6")){
@@ -259,17 +268,23 @@ class CapsuleCollisionChecker {
                 }
             }
             capsule_array_list_wld = capsule_array_list_local;
+
+            // check_pair_matに干渉を考慮するリンクペアを記述. JAXON specific. CollisionDetectorと同様にしてcollision_avoidance_link_pairパラメータを読み込むべきだと思われる
             check_pair_mat = Eigen::MatrixXi::Ones(capsule_array_list_wld.size(),capsule_array_list_wld.size());
             for(int me=0;me<m_robot->numJoints();me++){
                 for(int you=me; you<m_robot->numJoints();you++){
+                    // 同一リンク同士は干渉考慮しない
                     if(me == you) check_pair_mat(me, you) = 0;
+                    // 同一limb同士は干渉考慮しない
                     if(m_robot->joint(me)->name.find("RLEG_JOINT") != std::string::npos && m_robot->joint(you)->name.find("RLEG_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
                     if(m_robot->joint(me)->name.find("LLEG_JOINT") != std::string::npos && m_robot->joint(you)->name.find("LLEG_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
                     if(m_robot->joint(me)->name.find("RARM_JOINT") != std::string::npos && m_robot->joint(you)->name.find("RARM_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
                     if(m_robot->joint(me)->name.find("LARM_JOINT") != std::string::npos && m_robot->joint(you)->name.find("LARM_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
-//                    if(m_robot->link(me)->parent == m_robot->link(you) || m_robot->link(you)->parent == m_robot->link(me)) check_pair_mat(me, you) = 0;//実機とシミュで挙動違う？
+                    // 隣接するリンク同士は干渉考慮しない
+//                    if(m_robot->link(me)->parent == m_robot->link(you) || m_robot->link(you)->parent == m_robot->link(me)) check_pair_mat(me, you) = 0;//実機とシミュで挙動違う？ // link()はjointidがふられていないリンクも含んでいるからです. rootLinkやシミュレーション時のBushが相当します
                     if(m_robot->joint(me)->parent == m_robot->joint(you) || m_robot->joint(you)->parent == m_robot->joint(me)) check_pair_mat(me, you) = 0;
 
+                    // 胴のリンクと、四肢の付け根付近のリンクの干渉考慮しない. // meとyouを入れ替えたものも0にすべきでは?
                     if(m_robot->joint(me)->name.find("LEG_JOINT0") != std::string::npos && m_robot->joint(you)->name.find("CHEST_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
                     if(m_robot->joint(me)->name.find("LEG_JOINT1") != std::string::npos && m_robot->joint(you)->name.find("CHEST_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
                     if(m_robot->joint(me)->name.find("LEG_JOINT2") != std::string::npos && m_robot->joint(you)->name.find("CHEST_JOINT") != std::string::npos) check_pair_mat(me, you) = 0;
@@ -278,9 +293,10 @@ class CapsuleCollisionChecker {
                     if(m_robot->joint(me)->name.find("CHEST_JOINT") != std::string::npos && m_robot->joint(you)->name.find("ARM_JOINT2") != std::string::npos) check_pair_mat(me, you) = 0;
                 }
             }
-            dbgn(check_pair_mat);
-            avoid_priority = hrp::ivector::Zero(m_robot->numJoints());
+            dbgn(check_pair_mat); // for debug print
 
+            // avoid_priorityに各関節の小リンクの干渉回避タスクの優先度を設定
+            avoid_priority = hrp::ivector::Zero(m_robot->numJoints());
             for(int i=0;i<m_robot->numJoints();i++){
                 if(m_robot->joint(i)->name.find("ARM_JOINT") != std::string::npos) avoid_priority(i) = 1;
                 if(m_robot->joint(i)->name.find("CHEST_JOINT") != std::string::npos) avoid_priority(i) = 2;
@@ -289,6 +305,7 @@ class CapsuleCollisionChecker {
 
         }
         ~CapsuleCollisionChecker(){cerr<<"CapsuleCollisionChecker destructed"<<endl;}
+        // capsule_array_list_wld を現在のm_robotの座標に更新
         void update(){
             for(int i=0;i<m_robot->numJoints();i++){
                 for(int j=0;j<capsule_array_list_wld[i].size();j++){
@@ -343,51 +360,56 @@ class CapsuleCollisionChecker {
 //        }
 };
 
+/*
+  initializeRequestが呼ばれた時のmasterのposeを基準として、以降のmasterが/odom座標系で相対的に変位した量を見る.この値を、initializeRequestが呼ばれた時のmasterのposeを基準として,/odom座標系での相対変位としてslaveに反映させる.
+  wrenchはそのままslaveとmasterは連動
+  comは、auto_com_modeのときはXY座標はrleg or lleg or 中間になる
+ */
 class WBMSCore{
     private:
         double DT, HZ; // 制御周期[s],周波数[/s]
-        hrp::Vector3 com_old, com_oldold, comacc, com_CP_ref_old; // 前回の重心位置, 前々回の重心位置, 重心加速度, 
-        HumanPose rp_ref_out_old; // なんだろ
+        hrp::Vector3 com_old, com_oldold, comacc, com_CP_ref_old; // 前回の重心位置, 前々回の重心位置, 重心加速度, 前回のloopのrp_ref_outの重心位置
+        HumanPose rp_ref_out_old; //前回のloopのrp_ref_out
         unsigned int loop; // 起動 or initializeRequest から何ループ目か. 何ループかに一回デバッグメッセージを表示する用途で用いる
-        bool is_initial_loop; // 起動 or initializeRequest から最初のループであるならtrue.
+        bool is_initial_loop; // 起動 or initializeRequest 後最初のループであるならtrue.
         int zmp_force_go_contact_count[LR]; // 使われていない
-        BiquadIIRFilterVec acc4zmp_v_filters, com_filter; // ローパスフィルタ. acc4zmp_v_filtersは重心の加速度用でZMPの計算に用いる.
+        BiquadIIRFilterVec acc4zmp_v_filters, com_filter; // ローパスフィルタ. acc4zmp_v_filtersは重心の加速度用でZMPの計算に用い、cutoff = 5Hz. com_filterは各種修正後のmasterからの指令重心位置に施し、cutoff = com_filter_cutoff_hz (default 1 hz)
         double com_filter_cutoff_hz_old; // 現在のcom_filterのカットオフ周波数.
     public:
         EIGEN_MAKE_ALIGNED_OPERATOR_NEW
         bool legged; // 脚のあるロボットかどうか
-        double H_cur;
-        HumanPose hp_wld_raw, rp_ref_out; // rp_ref_out:なんだろ
-        hrp::Pose3 baselinkpose;
-        hrp::Vector3 cp_dec, cp_acc; // なんだろ
-        hrp::Vector4 act_foot_vert_fblr[LR], safe_foot_vert_fblr[LR]; // 足裏の形状. X軸は前方が正,Y軸は内側が正. act_foot_vert_fblrは実際の足の大きさ．safe_foot_vert_fblrはマージンをとった大きさ
-        hrp::Vector2 com_forcp_ref,com_vel_forcp_ref;
+        double H_cur; // 重心Z座標の、両足の低い方のZ座標からの高さ.initializeRequest時にStateHolderからの指令値から計算しセット.以後は各種修正後のslave座標系のpose指令値から計算しセット
+        HumanPose hp_wld_raw, rp_ref_out; // hp_wld_rawはmasterの位置や力. rp_ref_outはそれをslaveの座標系に変換したもの //hp_wld_rawはabsにWholeBodyMasterSlaveが常にmaster_**_pose/wrenchの値をセットする.ただしMODE_PAUSEの場合は更新しない. offsはinitializeRequest時にabsの値にセットされる. rp_ref_outはinitializeRequest時に上流RTCからの指令値をabs,offs,cntにセット(comのRはrootLinkのR.zmpのXYはcom,Zは両足の中間)し、以後はhp_wld_rawに連動して動く
+        hrp::Pose3 baselinkpose; //initializeRequest時に上流RTCからの指令値をセット. 以後はfik->m_robotのrootLinkの値をWholeBodyMasterSlaveがonExecute時にセット
+        hrp::Vector3 cp_dec, cp_acc; // slave座標系のpose指令値のDCMとCCM
+        hrp::Vector4 act_foot_vert_fblr[LR], safe_foot_vert_fblr[LR]; // 足裏の形状. 上下限を表す.[front,back,left,right] act_foot_vert_fblrは実際の足の大きさで、地面との干渉回避に利用する．safe_foot_vert_fblrはマージンをとった大きさで、支持領域判定に利用する
+        hrp::Vector2 com_forcp_ref,com_vel_forcp_ref; // 各種修正後の目標重心位置と速度
         class WBMSParams {
             public:
-                bool auto_com_mode;
-                bool auto_floor_h_mode;
-                bool auto_foot_landing_by_act_cp;
-                bool auto_foot_landing_by_act_zmp;
-                double additional_double_support_time;
-                double auto_com_foot_move_detect_height;
-                double auto_floor_h_detect_fz;
-                double auto_floor_h_reset_fz;
-                double base_to_hand_min_distance;
-                double capture_point_extend_ratio;
-                double com_filter_cutoff_hz;
-                double foot_collision_avoidance_distance;
-                double foot_landing_vel;
-                double force_double_support_com_h;
-                double human_to_robot_ratio;
-                double max_double_support_width;
-                double upper_body_rmc_ratio;
-                double single_foot_zmp_safety_distance;
-                double swing_foot_height_offset;
-                hrp::Vector3 com_offset;
-                hrp::Vector4 actual_foot_vert_fbio;
-                hrp::Vector4 safety_foot_vert_fbio;
-                std::vector<std::string> use_joints; // 使用する関節のリスト
-                std::vector<std::string> use_targets;
+                bool auto_com_mode; // XY座標について、masterの重心位置を使うか、自動で決定するか。後者の場合、/odom系のZ座標がmasterの片方の足がもう片方の足より高くなると、重心の位置を片足の上に動かし、そうでないと両足の中間.
+                bool auto_floor_h_mode; // 力センサを用いてslaveの地面の高さを自動的に検出するか
+                bool auto_foot_landing_by_act_cp; // 使われていない
+                bool auto_foot_landing_by_act_zmp; // 現在の実機のZMP(act_rs.st_zmp)が片足から反対足の方向にsingle_foot_zmp_safety_distance以上離れている場合、additional_double_support_timeの間だけ反対足をロックする
+                double additional_double_support_time; // auto_foot_landing_by_act_zmp参照
+                double auto_com_foot_move_detect_height; // auto_com_mode時に、/odom系のZ座標が、masterの片方の足がもう片方の足よりどれだけ高くなると、重心の位置を動かすか
+                double auto_floor_h_detect_fz; // auto_floor_h_modeのとき、足のZ方向の力がこの値を上回ると地面に接触したとみなす
+                double auto_floor_h_reset_fz; // 使われていない
+                double base_to_hand_min_distance; // 現在の逆運動学後のangle指令値のrootLinkからの距離がこの値以上になるように、slave座標系でのpose指令値の手先位置を修正
+                double capture_point_extend_ratio; // DCMやCCMの計算時、重心速度をこの値倍する
+                double com_filter_cutoff_hz; // 各種修正後のslave座標系のpose指令値の重心位置へのローパスフィルタのカットオフ周波数
+                double foot_collision_avoidance_distance; // 現在の逆運動学後のangle指令値(fik->m_robot)のrootLinkのYaw方向をX軸としたときのY軸方向の距離で考えて、slaveの右足と左足の距離がこの値以下にならないようslave座標系のpose指令値を修正する
+                double foot_landing_vel; // 足の/odom系Z方向下向きの速度の上限
+                double force_double_support_com_h; // auto_com_mode時に、現在のフィルター後のangle指令値の重心位置のZ座標が地面の位置よりこの高さ以下であるなら、足を浮かせることはしない
+                double human_to_robot_ratio; // masterの変位の大きさをslaveでは何倍にするか
+                double max_double_support_width; // 強制着地ロック時に、反対の足からの距離がこの値以下になるようにslave座標系のpose指令値のその脚のXY位置を修正
+                double upper_body_rmc_ratio; // 使われていない
+                double single_foot_zmp_safety_distance; // 現在のZMPが片足から反対足の方向にsingle_foot_zmp_safety_distance以上離れている場合、反対足をロックする
+                double swing_foot_height_offset; // 強制着地ロックの無い足のslave座標系のpose指令値のZ座標が,地面の高さ+この値より上になるように修正
+                hrp::Vector3 com_offset; // auto_com_modeでないとき、masterのcomをslaveの座標に変換した後、/odom座標系でcom_offsetだけずらす // 横を向いたらバグる TODO
+                hrp::Vector4 actual_foot_vert_fbio; // 足裏の実際形状. 上下限を表す.右足の場合の[front,back,inside(left),outside(right)]. 地面との干渉回避に利用する.
+                hrp::Vector4 safety_foot_vert_fbio; // 足裏のマージンをとった形状. 上下限を表す.右足の場合の[front,back,inside(left),outside(right)] マージンをとった大きさ. 支持領域判定に利用する.
+                std::vector<std::string> use_joints; // 使用する関節のリスト. 含まれない関節はStateHolderからのangle指令値をそのまま出力
+                std::vector<std::string> use_targets; // 使われていない
             WBMSParams(){
                 auto_com_mode                       = true;
                 auto_floor_h_mode                   = false;
@@ -432,19 +454,19 @@ class WBMSCore{
             }
         } wp;
         struct ActualRobotState {
-            hrp::Vector3 ref_com, ref_zmp, st_zmp;
-            hrp::dvector6 act_foot_wrench[LR];
-            hrp::Pose3 act_foot_pose[LR];
+            hrp::Vector3 ref_com, ref_zmp, st_zmp; // フィルター後のangle指令値の重心位置、ZMP位置と、実機の計測値のZMP位置.すべて/odom系. initializeRequest時に上流RTCからの指令値の重心位置をセット
+            hrp::dvector6 act_foot_wrench[LR]; // slave実機のwrench計測値. センサ座標系,センサまわり. leggedの場合、WholeBodyMasterSlaveがlocal_[rleg/lleg]_wrenchの値を常にセットする
+            hrp::Pose3 act_foot_pose[LR]; // フィルター後のangle指令値のrleg, llegの位置姿勢. /odom座標系. leggedの場合、WholeBodyMasterSlaveが常にセットする
         } act_rs;
         class WBMSStates {
             public:
-                bool lock_foot_by_ref_zmp[LR];
-                bool lock_foot_by_act_zmp[LR];
-                bool lock_foot_by_ref_cp[LR];
-                bool lock_foot_by_act_cp[LR];
+                bool lock_foot_by_ref_zmp[LR]; // 現在のフィルター後のangle指令値のZMP(act_rs.ref_zmp)が片足から反対足の方向にsingle_foot_zmp_safety_distance以上離れている場合、反対足を強制着地ロック
+                bool lock_foot_by_act_zmp[LR]; // 現在の実機の計測値のZMP(act_rs.st_zmp)が片足から反対足の方向にsingle_foot_zmp_safety_distance以上離れている場合、一定期間(additional_double_support_time)反対足を強制着地ロック
+                bool lock_foot_by_ref_cp[LR]; // slave座標系のpose指令値のDCMが片方の足の支持領域内に無い場合、もう一方の足を強制着地ロック
+                bool lock_foot_by_act_cp[LR]; // 使われていない
                 bool lock_both_feet_by_com_h;
-                int lock_foot_by_act_zmp_count[LR];
-                string auto_com_pos_tgt;
+               int lock_foot_by_act_zmp_count[LR]; // lock_foot_by_act_zmpのためのカウンタ
+                string auto_com_pos_tgt; // MID, LF, RF
             WBMSStates(){
                 for(int lr=0; lr<LR; lr++){
                     lock_foot_by_ref_zmp[lr] = false;
@@ -530,6 +552,7 @@ class WBMSCore{
             baselinkpose.R = robot_in->rootLink()->R;
             H_cur = rp_ref_out.tgt[com].offs.p(Z) - std::min((double)rp_ref_out.tgt[rf].offs.p(Z), (double)rp_ref_out.tgt[rf].offs.p(Z));
         }
+        // 初期化する
         void initializeRequest(hrp::BodyPtr robot_in, std::map<std::string, IKConstraint>& _ee_ikc_map){
             loop = 0;
             is_initial_loop = true;
@@ -538,24 +561,33 @@ class WBMSCore{
             rp_ref_out_old = rp_ref_out;
         }
         void update(){//////////  メインループ  ////////////
+            // hp_wld_raw(masterの位置姿勢力)を、rp_ref_out(slaveの座標系)へ変換
             convertHumanToRobot                 (hp_wld_raw, rp_ref_out);
             if(legged){
+                // auto_com_modeの場合、rp_ref_outのcom位置を、masterの足の高さに応じて、両足の上/右足の上/左足の上 に位置させる
                 setAutoCOMMode                      (hp_wld_raw, rp_ref_out_old, rp_ref_out);
-
-                lockSwingFootIfZMPOutOfSupportFoot  (rp_ref_out_old, rp_ref_out);//
+                // ZMP(フィルター後のangle指令値から計算or実機計測値)による足のロックの判定と、rp_ref_outのgo_contactのセット
+                lockSwingFootIfZMPOutOfSupportFoot  (rp_ref_out_old, rp_ref_out);
+                // rleg,lleg間の左右方向(現在の指令値(fik->m_robot)のrootLinkのYaw方向をX軸としたときのY軸方向)の距離と、rarm.larmとrootLinkの距離が閾値以上になるように修正
                 limitEEWorkspace                    (rp_ref_out_old, rp_ref_out);
+                // go_contactの脚のrp_ref_outを着地位置に設定
                 setFootContactPoseByGoContact       (rp_ref_out_old, rp_ref_out);
+                // rp_ref_outの地面近くでのZ方向の速度の制限, Z方向下向きの速度の制限
                 limitFootVelNearGround              (rp_ref_out_old, rp_ref_out);
+                // 足裏ポリゴンの一部が地面にめり込まないように、rp_ref_outの足のZ高さを修正
                 avoidFootSinkIntoFloor              (rp_ref_out);
 
+                // 両足のHull内にrp_ref_outの重心を修正
                 applyCOMToSupportRegionLimit        (rp_ref_out.tgt[rf].abs, rp_ref_out.tgt[lf].abs, rp_ref_out.tgt[com].abs.p);
                 applyCOMToSupportRegionLimit        (rp_ref_out.tgt[rf].abs, rp_ref_out.tgt[lf].abs, com_CP_ref_old);//これやらないと支持領域の移動によって1ステップ前のCOM位置はもうはみ出てるかもしれないから
                 com_forcp_ref = rp_ref_out.tgt[com].abs.p.head(XY);
                 static hrp::Vector2 com_forcp_ref_old;
                 com_vel_forcp_ref = (com_forcp_ref - com_forcp_ref_old)/DT;
                 com_forcp_ref_old = com_forcp_ref;
+                // DCM,CCMが両足の支持領域内になるようにrp_ref_outの重心速度を修正
                 applyCOMStateLimitByCapturePoint    (rp_ref_out.tgt[com].abs.p, rp_ref_out.tgt[rf].abs, rp_ref_out.tgt[lf].abs, com_CP_ref_old, rp_ref_out.tgt[com].abs.p);
-                applyCOMToSupportRegionLimit        (rp_ref_out.tgt[rf].abs, rp_ref_out.tgt[lf].abs, rp_ref_out.tgt[com].abs.p);
+                applyCOMToSupportRegionLimit        (rp_ref_out.tgt[rf].abs, rp_ref_out.tgt[lf].abs, rp_ref_out.tgt[com].abs.p); // 再度両足のHull内にrp_ref_outの重心を修正
+                // rp_ref_outの重心からZMPを計算
                 applyZMPCalcFromCOM                 (rp_ref_out.tgt[com].abs.p, rp_ref_out.tgt[zmp].abs.p);//結局STに送るZMPは最終段で計算するからこれ意味ない
                 H_cur = rp_ref_out.tgt[com].abs.p(Z) - std::min((double)rp_ref_out.tgt[rf].abs.p(Z), (double)rp_ref_out.tgt[lf].abs.p(Z));
                 rp_ref_out_old = rp_ref_out;
@@ -583,13 +615,13 @@ class WBMSCore{
                 out.tgt[l].w = in.tgt[l].w;
                 out.tgt[l].go_contact = in.tgt[l].go_contact;
             }
-            out.tgt[com].abs.p += wp.com_offset;
+            out.tgt[com].abs.p += wp.com_offset; // /odom座標系でoffsetしているのはやばい.が、auto_com_mode時には使わないのでいいか? TODO
             out.tgt[zmp].abs = in.tgt[zmp].abs;//最近使わない
         }
         void setAutoCOMMode(const HumanPose& human, const HumanPose& old, HumanPose& out){
             if(wp.auto_com_mode){
-                const double rf_h_from_floor = human.tgt[rf].abs.p(Z) - old.tgt[rf].cnt.p(Z);
-                const double lf_h_from_floor = human.tgt[lf].abs.p(Z) - old.tgt[lf].cnt.p(Z);
+                const double rf_h_from_floor = human.tgt[rf].abs.p(Z) - old.tgt[rf].cnt.p(Z); // human_to_robot_ratio 倍しなくていいのか?他では相対変位を見ているはずが、ここだけ絶対座標を見ていて怪しい TODO
+                const double lf_h_from_floor = human.tgt[lf].abs.p(Z) - old.tgt[lf].cnt.p(Z); // human_to_robot_ratio 倍しなくていいのか?他では相対変位を見ているはずが、ここだけ絶対座標を見ていて怪しい TODO
                 if      ( rf_h_from_floor - lf_h_from_floor >  wp.auto_com_foot_move_detect_height) { ws.auto_com_pos_tgt = "LF";  }
                 else if ( rf_h_from_floor - lf_h_from_floor < -wp.auto_com_foot_move_detect_height) { ws.auto_com_pos_tgt = "RF";  }
                 else                                                                                { ws.auto_com_pos_tgt = "MID"; }
@@ -608,9 +640,11 @@ class WBMSCore{
                 to_opposite_foot[lr] = old.foot(OPPOSITE(lr)).abs.p.head(XY) - old.foot(lr).abs.p.head(XY);
                 if(to_opposite_foot[lr].norm() < 1e-3){ std::cerr << "to_opposite_foot[lr].norm() < 1e-3 :" << to_opposite_foot[lr].transpose()<<std::endl; }
                 ///// lock by ref_zmp
+                // 現在のフィルター後のangle指令値から計算されたZMP(act_rs.ref_zmp)が片足から反対足の方向にsingle_foot_zmp_safety_distance以上離れている場合、反対足をロックする
                 ref_zmp_from_foot[lr] = act_rs.ref_zmp.head(XY) - old.foot(lr).abs.p.head(XY);
                 ws.lock_foot_by_ref_zmp[OPPOSITE(lr)] = ( ref_zmp_from_foot[lr].dot(to_opposite_foot[lr].normalized()) > wp.single_foot_zmp_safety_distance);
                 ///// lock by act_zmp
+                // 現在の実機の計測値のZMP(act_rs.st_zmp)が片足から反対足の方向にsingle_foot_zmp_safety_distance以上離れている場合、一定期間(additional_double_support_time)反対足をロックする
                 if(wp.auto_foot_landing_by_act_zmp){
                     act_zmp_from_foot[lr] = act_rs.st_zmp.head(XY) - old.foot(lr).abs.p.head(XY);
                     if(act_zmp_from_foot[lr].dot(to_opposite_foot[lr].normalized()) > wp.single_foot_zmp_safety_distance){
@@ -631,7 +665,7 @@ class WBMSCore{
             }
         }
         void limitEEWorkspace(const HumanPose& old, HumanPose& out){
-            for(int lr=0; lr<LR; lr++){
+            for(int lr=0; lr<LR; lr++){ // かならず左足だけを修正することにならないか? TODO
                 const PoseTGT&  support_leg = old.foot(lr);
                 PoseTGT&        swing_leg   = out.foot(OPPOSITE(lr));
                 hrp::Vector2 inside_vec_baserel = ( lr==R ? hrp::Vector2(0,+1) : hrp::Vector2(0,-1) );
@@ -665,7 +699,7 @@ class WBMSCore{
                         if(cnt_for_clear[lr] < HZ * 1.0){ // keep current detected floor height until reach count limit
                             cnt_for_clear[lr]++;
                         }else{ // clear detected floor height to zero after finish count up
-                            out.foot(lr).cnt.p(Z) = out.foot(lr).offs.p(Z);
+                            out.foot(lr).cnt.p(Z) = out.foot(lr).offs.p(Z); // 0にするということは、階段は想定されていないということ?下り坂は? TODO
                         }
                     }
                 }
@@ -673,7 +707,7 @@ class WBMSCore{
                     out.foot(lr).abs.p.head(XY) = old.foot(lr).abs.p.head(XY);
                     // out.foot(lr).abs.p(Z) = out.foot(lr).offs.p(Z);
                     out.foot(lr).abs.p(Z) = out.foot(lr).cnt.p(Z);
-                    out.foot(lr).abs.setRpy(0, 0, old.foot(lr).abs.rpy()(y));
+                    out.foot(lr).abs.setRpy(0, 0, old.foot(lr).abs.rpy()(y)); // 平らな地面しか想定されていないということ. 両足支持期には現在支持脚になっている足がgo_contactになることもあるので、指令が突然変化するということ
                     /////着地時に足を広げすぎないよう制限
                     const hrp::Vector2 support_to_swing = out.foot(lr).abs.p.head(XY) - old.foot(OPPOSITE(lr)).abs.p.head(XY);
                     if(support_to_swing.norm() > wp.max_double_support_width){
@@ -682,7 +716,7 @@ class WBMSCore{
                 }else{
                     out.foot(lr).cnt.p.head(XY) = out.foot(lr).abs.p.head(XY);  
                     out.foot(lr).cnt.R = hrp::rotFromRpy(0, 0, hrp::rpyFromRot(out.foot(lr).abs.R)(y));  
-                    LIMIT_MIN( out.foot(lr).abs.p(Z), out.foot(lr).cnt.p(Z)+wp.swing_foot_height_offset);
+                    LIMIT_MIN( out.foot(lr).abs.p(Z), out.foot(lr).cnt.p(Z)+wp.swing_foot_height_offset); // 段差を降りことはできるのか TODO
                 }
                 // if(loop%500==0){
                 //     dbg(lr);
@@ -695,7 +729,7 @@ class WBMSCore{
         void limitFootVelNearGround(const HumanPose& old, HumanPose& out){
             for(int lr=0; lr<LR; lr++){
                 const double fheight = old.foot(lr).abs.p(Z) - old.foot(lr).cnt.p(Z);
-                const double horizontal_max_vel = 0 + fheight * 20;
+                const double horizontal_max_vel = 0 + fheight * 20; // 時定数0.05[s]
                 for(int j=0; j<XY; j++){
                     LIMIT_MINMAX( out.foot(lr).abs.p(j), old.foot(lr).abs.p(j) - horizontal_max_vel * DT, old.foot(lr).abs.p(j) + horizontal_max_vel * DT);
                 }
@@ -736,6 +770,7 @@ class WBMSCore{
             hrp::Vector2 com_vel_decel_ok, com_vel_accel_ok;
             com_vel_decel_ok = com_vel_accel_ok = com_vel;
 
+            // slave座標系のpose指令値のDCMが両足の支持領域内になるように重心速度を修正
             double lf_landing_delay = MIN_LIMITED((rp_ref_out.tgt[lf].abs.p[Z] - rp_ref_out.tgt[lf].cnt.p[Z]) / wp.foot_landing_vel, 0);
             double rf_landing_delay = MIN_LIMITED((rp_ref_out.tgt[rf].abs.p[Z] - rp_ref_out.tgt[rf].cnt.p[Z]) / wp.foot_landing_vel, 0);
             // if(com_vel(Y)>0 ){ rf_landing_delay = 0; }//怪しい
@@ -745,9 +780,10 @@ class WBMSCore{
             hrp::Vector2  dcm_ragulated = (com_pos + com_vel * ( sqrt( H_cur / G ) + foot_landing_delay) * wp.capture_point_extend_ratio );
             if(!isPointInHull2D(dcm_ragulated, hull_d)){
                 calcCrossPointOnHull(com_pos, dcm_ragulated, hull_d, dcm_ragulated);
-                com_vel_decel_ok = (dcm_ragulated - com_pos) / ( sqrt( H_cur / G ) + foot_landing_delay);
+                com_vel_decel_ok = (dcm_ragulated - com_pos) / ( sqrt( H_cur / G ) + foot_landing_delay); // capture_point_extend_ratioで割らなくていいの? TODO
             }
             ///// ついでに減速CPによる強制遊脚着地も判定
+            // slave座標系のpose指令値のDCMが片方の足の支持領域内に無い場合、もう一方の足を強制着地ロック
             hrp::dmatrix foot_vert3d_check_wld[LR], one_foot_hull2d[LR], one_foot_vert_3d_for_check[LR];
             for(int lr=0; lr<LR; lr++){
                 one_foot_vert_3d_for_check[lr]  = make_rect_3d(offset_fblr(safe_foot_vert_fblr[lr], 0.002));// 数値誤差で内外判定ずれるので少し大きい凸包で判定
@@ -756,6 +792,7 @@ class WBMSCore{
                 ws.lock_foot_by_ref_cp[OPPOSITE(lr)] = !isPointInHull2D(dcm_ragulated, one_foot_hull2d[lr]); // if CapturePoint go out of R sole region, L foot must be go contact
             }
             ///// 加速CP条件(CCM使用)
+            // slave座標系のpose指令値のCCMが両足の支持領域内になるように重心速度を修正
             hrp::Vector2 ccm_ragulated = (com_pos - com_vel * sqrt( H_cur / G ) * wp.capture_point_extend_ratio );
             if(!isPointInHull2D(ccm_ragulated, hull_ccm)){
                 calcCrossPointOnHull(com_pos, ccm_ragulated, hull_ccm, ccm_ragulated);

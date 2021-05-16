@@ -139,8 +139,10 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
             robot_for_ik->sensor(st,s)->putInformation(std::cerr);
         }
     }
-    
+
+    // fik->m_robotの干渉計算に用いる.
     sccp = boost::shared_ptr<CapsuleCollisionChecker>(new CapsuleCollisionChecker(fik->m_robot));
+
     RTC_INFO_STREAM("setup main function class finished");
 
     // allocate memory for outPorts
@@ -151,12 +153,14 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
     }
     coil::stringTo(optionalDataLength, prop["seq_optional_data_dim"].c_str());
 
+    // 補間器のセットアップ
     output_ratio = 0.0;
     t_ip = new interpolator(1, m_dt, interpolator::HOFFARBIB, 1);
     t_ip->clear();
     t_ip->set(&output_ratio);
     q_ip = new interpolator(fik->numStates(), m_dt, interpolator::CUBICSPLINE, 1); // or HOFFARBIB, QUINTICSPLINE
     q_ip->clear();
+    // smoothingJointAngles関数中で用いる、各関節の平均速度と加速度を設定
     if(fik->m_robot->name().find("JAXON") != std::string::npos){
         avg_q_vel = hrp::dvector::Constant(fik->numStates(), 1.0);
         avg_q_vel.head(12).fill(4.0); // leg
@@ -172,6 +176,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
     ref_zmp_filter.resize(XYZ);
     ref_zmp_filter.setParameter(100, 1/m_dt, Q_BUTTERWORTH);
 
+    // tgt_names
     tgt_names = ee_names;
     tgt_names.push_back("com");
     tgt_names.push_back("head");
@@ -180,6 +185,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
     tgt_names.push_back("rfloor");
     tgt_names.push_back("lfloor");
 
+    // Portの追加. wrenchはee_namesから
     for (auto ee : ee_names) {
         const std::string n = "slave_"+ee+"_wrench";
         m_slaveEEWrenchesOut[ee] = OTDS_Ptr(new RTC::OutPort<RTC::TimedDoubleSeq>(n.c_str(), m_slaveEEWrenches[ee]));
@@ -193,6 +199,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
         RTC_INFO_STREAM(" registerInPort " << n);
     }
     ///////////////////
+    // Portの追加. poseはtgt_namesから(ee_namesに加えて,com,head,rhand,lhand,rfloor,lfloor)
     for (auto tgt : tgt_names) {
         const std::string n = "master_"+tgt+"_pose";
         m_masterTgtPosesIn[tgt] = ITP3_Ptr(new RTC::InPort<RTC::TimedPose3D>(n.c_str(), m_masterTgtPoses[tgt]));
@@ -206,6 +213,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
         RTC_INFO_STREAM(" registerOutPort " << n);
     }
     //////////////
+    // Portの追加. wrenchはee_namesから
     for (auto ee : ee_names) {
         const std::string n = "local_"+ee+"_wrench";
         m_localEEWrenchesIn[ee] = ITDS_Ptr(new RTC::InPort<RTC::TimedDoubleSeq>(n.c_str(), m_localEEWrenches[ee]));
@@ -213,6 +221,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onInitialize(){
         RTC_INFO_STREAM(" registerInPort " << n);
     }
 
+    // ee_namesの各名をキーとして、そのエンドエフェクタのslave wrenchの鉛直方向の力のローパスフィルタを用意
     for(auto ee : ee_names){
         ee_f_filter[ee].resize(XYZ);
         ee_f_filter[ee].setParameter(1, 1/m_dt, Q_BUTTERWORTH);
@@ -284,13 +293,13 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onExecute(RTC::UniqueId ec_id){
     m_robot_act->calcForwardKinematics();
     for(auto ee : ee_names){
         hrp::ForceSensor* sensor = m_robot_act->sensor<hrp::ForceSensor>(to_sname[ee]);
-        hrp::dvector6 w_ee_wld = hrp::dvector6::Zero();
+        hrp::dvector6 w_ee_wld = hrp::dvector6::Zero(); // m_robot_act->rootLink()座標系,各エンドエフェクタまわりで表現されたmasterのレンチ
         if(sensor){
             hrp::Matrix33 sensorR_wld = sensor->link->R * sensor->localR;
             hrp::Matrix33 sensorR_from_base = m_robot_act->rootLink()->R.transpose() * sensorR_wld;
             const hrp::Vector3 f_sensor_wld = sensorR_from_base * hrp::to_dvector(m_localEEWrenches[ee].data).head(3);
             const hrp::Vector3 t_sensor_wld = sensorR_from_base * hrp::to_dvector(m_localEEWrenches[ee].data).tail(3);
-            const hrp::Vector3 sensor_to_ee_vec_wld = ee_ikc_map[ee].getCurrentTargetPos(m_robot_act) - sensor->link->p;
+            const hrp::Vector3 sensor_to_ee_vec_wld = ee_ikc_map[ee].getCurrentTargetPos(m_robot_act) - sensor->link->p; // 間違えていないか??? m_robot_act->rootLink()->R.transpose()を左からかける必要が有ると思う bug TODO
             w_ee_wld << f_sensor_wld, t_sensor_wld - sensor_to_ee_vec_wld.cross(f_sensor_wld);
         }
         m_slaveEEWrenches[ee].data = hrp::to_DoubleSeq( w_ee_wld );
@@ -304,14 +313,15 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onExecute(RTC::UniqueId ec_id){
     m_slaveTgtPoses["com"].tm = m_qRef.tm;
     m_slaveTgtPosesOut["com"]->write();
 
+    // slaveのrarm, larmが受けている鉛直方向の外力と釣り合うために必要な重心位置のオフセットを求めてstatic_balancing_com_offsetにセットする
     static_balancing_com_offset.fill(0);
     for(auto ee : {"larm","rarm"}){
-        const hrp::Vector3 use_f = hrp::Vector3::UnitZ() * m_slaveEEWrenches[ee].data[Z];
+        const hrp::Vector3 use_f = hrp::Vector3::UnitZ() * m_slaveEEWrenches[ee].data[Z]; // m_slaveEEWrenchesはrootlink座標系だが大丈夫か???/odom座標系に直すべき TODO
         hrp::Vector3 use_f_filtered = ee_f_filter[ee].passFilter(use_f);
-        const hrp::Vector3 ee_pos_from_com = ee_ikc_map[ee].getCurrentTargetPos(m_robot_vsafe) - wbms->rp_ref_out.tgt[com].abs.p;
+        const hrp::Vector3 ee_pos_from_com = ee_ikc_map[ee].getCurrentTargetPos(m_robot_vsafe) - wbms->rp_ref_out.tgt[com].abs.p; //tgt[com]ではなくstgt["com"]にしたい TODO // rp_ref_out.tgt[com]のXYが足裏支持点と同一であるとみなしている
         static_balancing_com_offset.head(XY) += - ee_pos_from_com.head(XY) * use_f_filtered(Z) / (-m_robot_vsafe->totalMass() * G);
     }
-    if(loop%500==0)dbgv(static_balancing_com_offset);
+    if(loop%500==0)dbgv(static_balancing_com_offset); // for debug print
 
     // button func
     hrp::dvector ex_data;
@@ -382,7 +392,7 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onExecute(RTC::UniqueId ec_id){
     mode.update();
 
     if (mode.isRunning()) {
-        if(mode.isInitialize()){
+        if(mode.isInitialize()){ // startWholeBodyMasterSlaveが呼ばれた直後に1回
             preProcessForWholeBodyMasterSlave();
             idsb.setInitState(fik->m_robot, m_dt);//逆動力学初期化
         }
@@ -409,13 +419,14 @@ RTC::ReturnCode_t WholeBodyMasterSlave::onExecute(RTC::UniqueId ec_id){
             }
         }
 
+        // fik->m_robotの関節角度・root 6dofを平滑化してm_robot_vsafeにセット
         smoothingJointAngles(fik->m_robot, m_robot_vsafe);
 
         hrp::Vector3 com = m_robot_vsafe->calcCM();
         static hrp::Vector3 com_old = com;
         static hrp::Vector3 com_old_old = com_old;
         hrp::Vector3 com_acc = (com - 2*com_old + com_old_old)/(m_dt*m_dt);
-        hrp::Vector3 ref_zmp; ref_zmp << com.head(XY)-(com(Z)/G)*com_acc.head(XY), 0;
+        hrp::Vector3 ref_zmp; ref_zmp << com.head(XY)-(com(Z)/G)*com_acc.head(XY), 0;//地面の高さが0であるという仮定がある TODO
         ref_zmp.head(XY) -= static_balancing_com_offset.head(XY);
 //        if(mode.isInitialize()){ ref_zmp_filter.reset(ref_zmp); }
 //        ref_zmp = ref_zmp_filter.passFilter(ref_zmp);
@@ -505,9 +516,12 @@ void WholeBodyMasterSlave::processTransition(){
 
 
 void WholeBodyMasterSlave::preProcessForWholeBodyMasterSlave(){
+    // fik->m_robotを現在の上流rtcからの指令値と一致させる
     fik->m_robot->rootLink()->p = hrp::to_Vector3(m_basePos.data);
     hrp::setQAll(fik->m_robot, hrp::to_dvector(m_qRef.data));
     fik->m_robot->calcForwardKinematics();
+    // fik->m_robotとm_robot_vsafeを現在の上流rtcからの指令値と一致させる
+    // leggedの場合、rleg,llegのZ座標の小さいほうが0になるようにZ座標を修正
     double current_foot_height_from_world = wbms->legged ? ::min(ee_ikc_map["rleg"].getCurrentTargetPos(fik->m_robot)(Z), ee_ikc_map["lleg"].getCurrentTargetPos(fik->m_robot)(Z)) : 0;
     RTC_INFO_STREAM("current_foot_height_from_world = "<<current_foot_height_from_world<<" will be modified to 0");
     for(auto b : {fik->m_robot, m_robot_vsafe}){//初期姿勢でBodyをFK
@@ -599,7 +613,7 @@ void WholeBodyMasterSlave::solveFullbodyIK(HumanPose& ref){
     }
     // common head setting
     if(has(wbms->wp.use_targets, "head")){
-        if(fik->m_robot->link("HEAD_JOINT1") != NULL){
+        if(fik->m_robot->link("HEAD_JOINT1") != NULL){ // リンク名ベタ書き注意! TODO
             IKConstraint tmp;
             tmp.target_link_name = "HEAD_JOINT1";
             tmp.targetRpy = ref.stgt("head").abs.rpy();
@@ -629,6 +643,7 @@ void WholeBodyMasterSlave::solveFullbodyIK(HumanPose& ref){
 
 //    sccp->checkCollision();
 
+    // 同じリンクペアを2回処理していないか??? TODO
     for(int i=0;i<sccp->collision_info_list.size();i++){
         IKConstraint tmp;
         double val_w = (sccp->collision_info_list[i].dist_safe - sccp->collision_info_list[i].dist_cur)*1e2;
@@ -669,6 +684,7 @@ void WholeBodyMasterSlave::solveFullbodyIK(HumanPose& ref){
         }
     }
 
+    // TODO リンク名ベタ書き JAXON specific
     if( fik->m_robot->link("CHEST_JOINT0") != NULL) fik->dq_weight_all(fik->m_robot->link("CHEST_JOINT0")->jointId) = 1e3;//JAXON
     if( fik->m_robot->link("CHEST_JOINT1") != NULL) fik->dq_weight_all(fik->m_robot->link("CHEST_JOINT1")->jointId) = 1e3;
 //    if( fik->m_robot->link("CHEST_JOINT2") != NULL) fik->dq_weight_all(fik->m_robot->link("CHEST_JOINT2")->jointId) = 10;
@@ -731,7 +747,7 @@ void WholeBodyMasterSlave::solveFullbodyIK(HumanPose& ref){
         LIMIT_MINMAX(fik->m_robot->joint(i)->q, fik->m_robot->joint(i)->llimit, fik->m_robot->joint(i)->ulimit);
     }
 
-    fik->q_ref.head(m_qRef.data.length()) = hrp::to_dvector(m_qRef.data);//あえてseqからのbaselink poseは信用しない
+    fik->q_ref.head(m_qRef.data.length()) = hrp::to_dvector(m_qRef.data);//あえてseqからのbaselink poseは信用しない // 歩いたらbaselink poseはseqの値は全く関係ない値になってしまうから
 
     for(int i=0; i<fik->m_robot->numJoints(); i++){
         if(!has(wbms->wp.use_joints, fik->m_robot->joint(i)->name)){
