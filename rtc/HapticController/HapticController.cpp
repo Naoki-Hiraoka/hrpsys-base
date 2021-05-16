@@ -67,9 +67,11 @@ RTC::ReturnCode_t HapticController::onInitialize(){
     }
     m_robot_odom = hrp::BodyPtr(new hrp::Body(*m_robot)); //copy
 
+    // confファイルのend_effectorsから、ee_names, ee_ikc_map, jpath_eeを設定
     setupEEIKConstraintFromConf(ee_ikc_map, m_robot, prop);
     RTC_INFO_STREAM("setupEEIKConstraintFromConf finished");
 
+    // 補間器の設定
     const double tmp_init = 0;
     t_ip = new interpolator(1, m_dt, interpolator::LINEAR, 1);
     t_ip->clear();
@@ -80,7 +82,7 @@ RTC::ReturnCode_t HapticController::onInitialize(){
     q_ref_ip->set(&tmp_init);
     q_ref_ip->get(&q_ref_output_ratio, false);
     default_baselink_h_from_floor = 1.5;
-    hcp.baselink_height_from_floor = default_baselink_h_from_floor;
+    hcp.baselink_height_from_floor = default_baselink_h_from_floor; // hcpからdefault_baselink_h_from_floorを取得すべきなので逆なのでは? TODO
     baselink_h_ip = new interpolator(1, m_dt, interpolator::LINEAR, 1);
     baselink_h_ip->clear();
     baselink_h_ip->set(&default_baselink_h_from_floor);
@@ -245,6 +247,7 @@ void HapticController::calcCurrentState(){
     dqAct_filtered = dqAct_filter.passFilter(hrp::to_dvector(m_dqAct.data));
 
     ///// calc inverse dynamics (forward kinematics included)
+    // 重力補償に要する関節トルクを求める
     if(!idsb.is_initialized){ idsb.setInitState(m_robot, m_dt); }
     for(int i=0;i<m_robot->numJoints();i++)idsb.q(i) = m_robot->joint(i)->q;
     idsb.dq.fill(0);
@@ -365,6 +368,7 @@ void HapticController::calcTorque(){
         const std::vector<std::string> legs = {"lleg", "rleg"};
 
         ///// fix ee rot horizontal
+        // 足の姿勢をmaster座標系(VRMLのrootLink位置姿勢で固定)で正面・水平を向かせる
         for (auto leg : legs){
             hrp::Vector3 diff_rot;
             rats::difference_rotation(diff_rot, master_ee_pose[leg].R, hrp::Matrix33::Identity());
@@ -378,6 +382,7 @@ void HapticController::calcTorque(){
         }
 
         ///// virtual floor
+        // 足のZ座標がslaveの地面を下回らないようにする
         for (auto leg : legs){
             if(foot_h_from_floor[leg] < 0){
                 hrp::dvector6 wrench = hrp::dvector6::Unit(fz) * (-foot_h_from_floor[leg]*hcp.floor_pd_gain(0) + (0-master_ee_vel_filtered[leg](fz))*hcp.floor_pd_gain(1));
@@ -391,6 +396,7 @@ void HapticController::calcTorque(){
         }
 
         ///// virtual back wall
+        // 足のmaster座標系(VRMLのrootLink位置姿勢で固定)のX座標がrootLinkより-0.1以上後方に行かないようにする. Pゲイン=1000, Dゲイン=0固定
         for (auto leg : legs){
             const double wall_x_rel_base = -0.1;
             const double current_x = master_ee_pose[leg].p(X) - m_robot->rootLink()->p(X);
@@ -404,6 +410,7 @@ void HapticController::calcTorque(){
         }
 
         ///// keep apart each other
+        // master座標系(VRMLのrootLink位置姿勢で固定)のY軸方向の両足間の距離がfoot_min_distanceを下回らないようにする. Pゲイン=1000, Dゲイン=0固定
         const double current_dist = master_ee_pose["lleg"].p(Y) - master_ee_pose["rleg"].p(Y);
         if(current_dist < hcp.foot_min_distance){
             for (auto leg : legs){
@@ -416,6 +423,7 @@ void HapticController::calcTorque(){
         }
 
         ///// virtual floor, leg constraint
+        // 両足が同じ高さにあるときは, 相対位置を固定する. Pゲイン=1000(位置)or100(姿勢), Dゲイン=0固定
         static hrp::Pose3 locked_l2r_pose = hrp::calcRelPose3(master_ee_pose["lleg"], master_ee_pose["rleg"]);
         if(is_contact_to_floor["lleg"] && is_contact_to_floor["rleg"]){
             hrp::Pose3 cur_l2r_pose = hrp::calcRelPose3(master_ee_pose["lleg"], master_ee_pose["rleg"]);
@@ -459,7 +467,7 @@ void HapticController::calcTorque(){
         hrp::dvector6 coeff_v;
         coeff_v.head(XYZ).fill(hcp.ee_pos_rot_friction_coeff(0));
         coeff_v.tail(XYZ).fill(hcp.ee_pos_rot_friction_coeff(1));
-        hrp::dvector6 master_w_ans = slave_w_shaped + slave_ee_vel[ee].cwiseProduct(coeff_v) - master_ee_vel[ee].cwiseProduct(coeff_v);
+        hrp::dvector6 master_w_ans = slave_w_shaped + slave_ee_vel[ee].cwiseProduct(coeff_v) - master_ee_vel[ee].cwiseProduct(coeff_v); // slave_ee_velはslaveの/odom座標系だが、masterの座標系に変換しなくていいのか? TODO bug
         LIMIT_NORM_V(master_w_ans.head(3), hcp.force_feedback_limit_ft(0));
         LIMIT_NORM_V(master_w_ans.tail(3), hcp.force_feedback_limit_ft(1));
 
@@ -474,7 +482,8 @@ void HapticController::calcTorque(){
 
     {
         // soft joint limit
-        m_robot->link("RARM_JOINT1")->ulimit = deg2rad(0);// hotfix
+        // 関節角度上下限から15degree以下に近づくと、離れる方向へトルクを発揮. Pゲイン=100,Dゲイン=0固定
+        m_robot->link("RARM_JOINT1")->ulimit = deg2rad(0);// hotfix // TABLIS specific! TODO
         m_robot->link("LARM_JOINT1")->llimit = deg2rad(0);
         for(int i=0;i<m_robot->numJoints();i++){
             const double soft_ulimit = m_robot->joint(i)->ulimit - deg2rad(15);
@@ -487,6 +496,7 @@ void HapticController::calcTorque(){
     }
 
     { // real robot joint friction damper
+        // 関節角速度による摩擦の補償
         hrp::dvector friction_tq = - hcp.q_friction_coeff * dqAct_filtered;
         for (int i=0; i<m_robot->numJoints(); i++){
          LIMIT_MINMAX(friction_tq(i), -10, 10);
@@ -495,7 +505,7 @@ void HapticController::calcTorque(){
     }
 
 
-    const hrp::dvector max_torque = (hrp::dvector(m_robot->numJoints()) << 20,40,60,60,20,20, 20,40,60,60,20,20, 40, 15,15,10,10,6,4,4, 15,15,10,10,6,4,4).finished();
+    const hrp::dvector max_torque = (hrp::dvector(m_robot->numJoints()) << 20,40,60,60,20,20, 20,40,60,60,20,20, 40, 15,15,10,10,6,4,4, 15,15,10,10,6,4,4).finished(); // TABLIS specific! TODO
     hrp::dvector j_power_coeff = max_torque/max_torque.maxCoeff(); // reduce gain of light inertia joint
 
     {// calc qref pd control torque
@@ -527,9 +537,12 @@ void HapticController::calcTorque(){
 
 
 void HapticController::calcOdometry(){
-    // m_robotの軸足-ベースリンク間の相対姿勢を使って, m_robot_odomの世界座標でのベースリンク絶対姿勢を更新
+    // m_robotの軸足-ベースリンク間の相対姿勢を使って, m_robot_odomの世界座標(slaveの/odom座標系)でのベースリンク絶対姿勢を更新
+    // Z: m_robot_odomの左右の足の低い方が、slaveの地面と同じ高さになる
+    // Roll, Pitch: m_robot_odomのrootLinkは常に水平
+    // X,Y,Yaw: m_robot_odomの左右の足の低い方が動かないと仮定して積算
     // しゃがんでる時の運足はなかったことにしてもいいかなと思っている
-    static std::map<std::string, hrp::Pose3> leg_pose_from_floor_origin;
+    static std::map<std::string, hrp::Pose3> leg_pose_from_floor_origin; // slaveの/odom座標系での各足の位置姿勢. 水平. Z座標は無意味
     if(mode.now() != MODE_HC || resetOdom_request){ // reset odom
         for (auto leg : {"rleg", "lleg"}){ leg_pose_from_floor_origin[leg] = hrp::to_2DPlanePose3(master_ee_pose[leg]); }
         if(resetOdom_request){ resetOdom_request = false; }
@@ -549,7 +562,7 @@ void HapticController::calcOdometry(){
     hrp::setQAll        (m_robot_odom,              hrp::getQAll(m_robot));
     m_robot_odom->calcForwardKinematics();
 
-    m_teleopOdom.data   = hrp::to_Pose3D(hrp::getLinkPose3(m_robot_odom->rootLink()));
+     m_teleopOdom.data   = hrp::to_Pose3D(hrp::getLinkPose3(m_robot_odom->rootLink()));
     m_teleopOdom.tm     = m_qRef.tm;
     m_teleopOdomOut.write();
     m_masterTgtPoses["com"].data = hrp::to_Pose3D(hrp::Pose3(m_robot_odom->calcCM(), m_robot_odom->rootLink()->R));
@@ -613,7 +626,7 @@ bool HapticController::stopHapticController(){
         RTC_INFO_STREAM("stopHapticController");
         mode.setNextMode(MODE_SYNC_TO_IDLE);
         const double next_goal = 0.0; t_ip->setGoal(&next_goal, 5.0, true);
-        baselink_h_ip->setGoal(&default_baselink_h_from_floor, 5.0, true);
+        baselink_h_ip->setGoal(&default_baselink_h_from_floor, 5.0, true); // 再びsetParamsを呼ばないとbaselink_height_from_floorが反映されないのでは? TODO
         return true;
     }else{
         RTC_WARN_STREAM("Invalid context to stopHapticController");
