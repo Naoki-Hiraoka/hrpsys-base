@@ -586,6 +586,7 @@ void WholeBodyMasterSlave::solveFullbodyIK(HumanPose& ref){
         }
     }else{ // fixed baselink, larm, rarm setting
         {
+            // basekinkが動いてしまうがいいのか? TODO
             IKConstraint tmp;
             tmp.target_link_name    = fik->m_robot->rootLink()->name;
             tmp.localPos            = hrp::Vector3::Zero();
@@ -630,6 +631,8 @@ void WholeBodyMasterSlave::solveFullbodyIK(HumanPose& ref){
             ikc_list.push_back(tmp);
         }
     }
+
+    // 着地位置ロックがかかっていない方が干渉を避ける
     if(wbms->rp_ref_out.tgt[rf].is_contact()){
         sccp->avoid_priority.head(12).head(6).fill(4);
     }else{

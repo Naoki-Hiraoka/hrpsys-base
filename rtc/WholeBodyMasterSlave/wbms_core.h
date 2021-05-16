@@ -409,7 +409,7 @@ class WBMSCore{
                 hrp::Vector4 actual_foot_vert_fbio; // 足裏の実際形状. 上下限を表す.右足の場合の[front,back,inside(left),outside(right)]. 地面との干渉回避に利用する.
                 hrp::Vector4 safety_foot_vert_fbio; // 足裏のマージンをとった形状. 上下限を表す.右足の場合の[front,back,inside(left),outside(right)] マージンをとった大きさ. 支持領域判定に利用する.
                 std::vector<std::string> use_joints; // 使用する関節のリスト. 含まれない関節はStateHolderからのangle指令値をそのまま出力
-                std::vector<std::string> use_targets; // 使われていない
+                std::vector<std::string> use_targets; // 逆運動学時に考慮するエンドエフェクタ(rleg,lleg,rarm,larm,com,head)
             WBMSParams(){
                 auto_com_mode                       = true;
                 auto_floor_h_mode                   = false;

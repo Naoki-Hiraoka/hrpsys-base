@@ -25,6 +25,7 @@
 /*
   MODE_IDLE <- startWholeBodyMasterSlave/stopWholeBodyMasterSlave -> (MODE_WBMS <- pauseWholeBodyMasterSlave/resumeWholeBodyMasterSlave -> MODE_PAUSE)
   MODE_IDLE: デフォルト. slaveの情報は出力し、masterの情報も受け取るが、上流のrtcから届いた指令をそのまま下流のrtcに流す
+  MODE_WBMS: 活動中
   MODE_PAUSE: masterの情報を受け取らない.actCP,actZMPを受け取らない
  */
 enum mode_enum{ MODE_IDLE, MODE_SYNC_TO_WBMS, MODE_WBMS, MODE_PAUSE, MODE_SYNC_TO_IDLE};
