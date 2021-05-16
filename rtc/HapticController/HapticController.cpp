@@ -382,7 +382,7 @@ void HapticController::calcTorque(){
         }
 
         ///// virtual floor
-        // 足のZ座標がslaveの地面を下回らないようにする
+        // 足のZ座標がbaselink_h_from_floorから求まる面を下回らないようにする
         for (auto leg : legs){
             if(foot_h_from_floor[leg] < 0){
                 hrp::dvector6 wrench = hrp::dvector6::Unit(fz) * (-foot_h_from_floor[leg]*hcp.floor_pd_gain(0) + (0-master_ee_vel_filtered[leg](fz))*hcp.floor_pd_gain(1));
@@ -423,7 +423,7 @@ void HapticController::calcTorque(){
         }
 
         ///// virtual floor, leg constraint
-        // 両足が同じ高さにあるときは, 相対位置を固定する. Pゲイン=1000(位置)or100(姿勢), Dゲイン=0固定
+        // 両足がbaselink_h_from_floorから求まる面から3cm以下の高さにあるときは, 相対位置を固定する. Pゲイン=1000(位置)or100(姿勢), Dゲイン=0固定
         static hrp::Pose3 locked_l2r_pose = hrp::calcRelPose3(master_ee_pose["lleg"], master_ee_pose["rleg"]);
         if(is_contact_to_floor["lleg"] && is_contact_to_floor["rleg"]){
             hrp::Pose3 cur_l2r_pose = hrp::calcRelPose3(master_ee_pose["lleg"], master_ee_pose["rleg"]);
@@ -454,6 +454,7 @@ void HapticController::calcTorque(){
     }
 
     // calc real robot feedback force
+    // slave_**_wrench(legはZ,rpyは無視)のフィードバックと、エンドエフェクタの速度に対するダンピング
     for (auto ee : ee_names){
         hrp::dvector6 slave_w_raw = hrp::to_dvector(m_slaveEEWrenches[ee].data);
         if(ee == "lleg" || ee == "rleg" ){ slave_w_raw.tail(4).fill(0); }// disable Fz Tx Ty Tz

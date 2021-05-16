@@ -177,7 +177,7 @@ class HapticController : public RTC::DataFlowComponentBase{
                 double wrench_hpf_gain;// slaveのwrenchにハイパスフィルタを作用させたものにこの値をかけたものをフィードバックする
                 double wrench_lpf_gain;// slaveのwrenchにローパスフィルタを作用させたものにこの値をかけたものをフィードバックする
                 hrp::Vector2 ee_pos_rot_friction_coeff; //[pos,rot] エンドエフェクタの速度に対するダンピングゲイン. slave,masterの速度の差を見る
-                hrp::Vector2 floor_pd_gain; // 足のZ座標がslaveの地面を下回らないようにするタスクのゲイン
+                hrp::Vector2 floor_pd_gain; // 足のZ座標がbaselink_h_from_floorから求まる面を下回らないようにするタスクのゲイン
                 hrp::Vector2 foot_horizontal_pd_gain; // 足の姿勢をmaster座標系(VRMLのrootLink位置姿勢で固定)で正面・水平を向かせるタスクのゲイン
                 hrp::Vector2 force_feedback_limit_ft; //[pos,rot] エンドエフェクタのslaveからのwrenchフィードバックと速度ダンピングの和の上限
                 hrp::Vector2 q_ref_pd_gain; // StateHolderの関節角度に追従するゲイン. ただし全身の関節の中で最も大きいmax_torqueに対する各関節のmax_torqueの割合倍される
