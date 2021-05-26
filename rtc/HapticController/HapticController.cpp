@@ -430,7 +430,7 @@ void HapticController::calcTorque(){
             hrp::Vector3 diff_pos, diff_rot;
             diff_pos = locked_l2r_pose.p - cur_l2r_pose.p;
             rats::difference_rotation(diff_rot, cur_l2r_pose.R, locked_l2r_pose.R);
-            hrp::dvector6 rleg_wrench = (hrp::dvector6()<< diff_pos * 1000, diff_rot * 100).finished();
+            hrp::dvector6 rleg_wrench = (hrp::dvector6()<< diff_pos * 1000, diff_rot * 100).finished(); // diff_posはrlegローカル座標系だが、masterのworld座標系に変換しなくていいのか? TODO bug
             rleg_wrench(fz) = 0;
             LIMIT_NORM_V(rleg_wrench, 200);
             for (auto leg : legs){
