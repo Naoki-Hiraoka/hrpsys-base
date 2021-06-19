@@ -149,42 +149,39 @@ case $TEST_TYPE in
 
         travis_time_end
         ;;
-            *)
-                travis_time_start  install_libs
+    compile_only)
+        travis_time_start  install_libs
 
-                # COMPILE_ONLY
-                sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen graphviz libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libopencv-contrib-dev
-                if [[ "$ROS_DISTRO" ==  "hydro" || "$ROS_DISTRO" ==  "indigo" || "$ROS_DISTRO" ==  "kinetic" ]]; then
-                    sudo apt-get install -qq -y libcv-dev libhighgui-dev 
-                else
-                    sudo apt-get install -qq -y libopencv-dev
-                fi
+        sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen graphviz libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libopencv-contrib-dev
+        if [[ "$ROS_DISTRO" ==  "hydro" || "$ROS_DISTRO" ==  "indigo" || "$ROS_DISTRO" ==  "kinetic" ]]; then
+            sudo apt-get install -qq -y libcv-dev libhighgui-dev 
+        else
+            sudo apt-get install -qq -y libopencv-dev
+        fi
 
-                travis_time_end
-                travis_time_start  install_openhrp3
+        travis_time_end
+        travis_time_start  install_openhrp3
 
-                sudo apt-get install -qq -y ros-${ROS_DISTRO}-openhrp3
-                source /opt/ros/${ROS_DISTRO}/setup.bash
-                if [ "$USE_SRC_OPENHRP3" == true ] ; then
-                    sudo dpkg -r --force-depends ros-${ROS_DISTRO}-openhrp3
-                    mkdir -p ~/build_openhrp3
-                    cd ~/build_openhrp3
-                    git clone http://github.com/fkanehiro/openhrp3
-                    sed -i 's/COLLADA_DOM_FOUND/0/' openhrp3/sample/CMakeLists.txt
-                    cd openhrp3 && cmake . ${COMPILE_OPTION} && make && sudo make install
-                fi
-                mkdir -p ~/build
+        sudo apt-get install -qq -y ros-${ROS_DISTRO}-openhrp3
+        source /opt/ros/${ROS_DISTRO}/setup.bash
+        if [ "$USE_SRC_OPENHRP3" == true ] ; then
+            sudo dpkg -r --force-depends ros-${ROS_DISTRO}-openhrp3
+            mkdir -p ~/build_openhrp3
+            cd ~/build_openhrp3
+            git clone http://github.com/fkanehiro/openhrp3
+            sed -i 's/COLLADA_DOM_FOUND/0/' openhrp3/sample/CMakeLists.txt
+            cd openhrp3 && cmake . ${COMPILE_OPTION} && make && sudo make install
+        fi
+        mkdir -p ~/build
 
-                travis_time_end
-                travis_time_start  compile_hrpsys
+        travis_time_end
+        travis_time_start  compile_hrpsys
 
-                cd ~/build && cmake ${CI_SOURCE_PATH} ${COMPILE_OPTION} && make
-                # Check make test by passing PATH to bin directory
-                PATH=$PATH:~/build/bin make test
+        cd ~/build && cmake ${CI_SOURCE_PATH} ${COMPILE_OPTION} && make
+        # Check make test by passing PATH to bin directory
+        PATH=$PATH:~/build/bin make test
 
-                travis_time_end
-                ;;
-        esac
+        travis_time_end
         ;;
     *) # work_with_downstream, work_with_315_1_10
         travis_time_start  install_libs
