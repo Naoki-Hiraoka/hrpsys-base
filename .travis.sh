@@ -15,10 +15,8 @@ trap error ERR
 function travis_time_start {
     set +x
     TRAVIS_START_TIME=$(date +%s%N)
-    TRAVIS_TIME_ID=$(printf "%x" $TRAVIS_START_TIME)
     TRAVIS_FOLD_NAME=$1
-    echo -e "\e[0Ktraivs_fold:start:$TRAVIS_FOLD_NAME"
-    echo -e "\e[0Ktraivs_time:start:$TRAVIS_TIME_ID"
+    echo "::group::$TRAVIS_FOLD_NAME"
     set -x
 }
 function travis_time_end {
@@ -26,8 +24,7 @@ function travis_time_end {
     _COLOR=${1:-32}
     TRAVIS_END_TIME=$(date +%s%N)
     TIME_ELAPSED_SECONDS=$(( ($TRAVIS_END_TIME - $TRAVIS_START_TIME)/1000000000 ))
-    echo -e "traivs_time:end:$TRAVIS_TIME_ID:start=$TRAVIS_START_TIME,finish=$TRAVIS_END_TIME,duration=$(($TRAVIS_END_TIME - $TRAVIS_START_TIME))\n\e[0K"
-    echo -e "traivs_fold:end:$TRAVIS_FOLD_NAME"
+    echo "::endgroup::"
     echo -e "\e[0K\e[${_COLOR}mFunction $TRAVIS_FOLD_NAME takes $(( $TIME_ELAPSED_SECONDS / 60 )) min $(( $TIME_ELAPSED_SECONDS % 60 )) sec\e[0m"
     set -x
 }
@@ -63,8 +60,13 @@ travis_time_start setup_ros
 export CI_SOURCE_PATH=$(pwd)
 export REPOSITORY_NAME=${PWD##*/}
 echo "Testing branch $TRAVIS_BRANCH of $REPOSITORY_NAME"
-sudo -E sh -c 'echo "deb http://packages.ros.org/ros-shadow-fixed/ubuntu ${DISTRO} main" > /etc/apt/sources.list.d/ros-latest.list'
+sudo -E sh -c 'echo "deb http://packages.ros.org/ros-testing/ubuntu ${DISTRO} main" > /etc/apt/sources.list.d/ros-latest.list'
 wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
+# Setup EoL repository
+if [[ "$ROS_DISTRO" ==  "hydro" ]]; then
+    sudo -E sh -c 'echo "deb http://snapshots.ros.org/$ROS_DISTRO/final/ubuntu `lsb_release -sc` main" >> /etc/apt/sources.list.d/ros-latest.list'
+    sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key 0xCBF125EA
+fi
 sudo apt-get update -qq
 
 travis_time_end
