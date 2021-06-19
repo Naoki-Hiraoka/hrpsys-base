@@ -1,7 +1,7 @@
 cache: apt
 language: generic
 sudo: required
-dist: trusty
+dist: bionic
 notifications:
   slack: jsk-robotics:Av7tc8wj3IWkLYvlTzHE7x2g
   # TEST_TYPE:
@@ -72,14 +72,25 @@ env:
     - ROS_DISTRO=kinetic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hrpsys-ros-bridge
     - ROS_DISTRO=kinetic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hironx-ros-bridge
     - ROS_DISTRO=kinetic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hironx-ros-bridge
+    - ROS_DISTRO=melodic TEST_PACKAGE=hrpsys
+    - ROS_DISTRO=melodic TEST_TYPE=iob         TEST_PACKAGE=hrpsys
+    - ROS_DISTRO=melodic TEST_TYPE=stable_rtc  TEST_PACKAGE=hrpsys
+    - ROS_DISTRO=melodic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hrpsys-ros-bridge
+    - ROS_DISTRO=melodic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hrpsys-ros-bridge
+    - ROS_DISTRO=melodic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hironx-ros-bridge
+    - ROS_DISTRO=melodic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hironx-ros-bridge
 matrix:
   allow_failures:
   - env: ROS_DISTRO=kinetic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hrpsys-ros-bridge
   - env: ROS_DISTRO=kinetic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hrpsys-ros-bridge
   - env: ROS_DISTRO=kinetic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hironx-ros-bridge
   - env: ROS_DISTRO=kinetic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hironx-ros-bridge
+  - env: ROS_DISTRO=melodic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hrpsys-ros-bridge
+  - env: ROS_DISTRO=melodic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hrpsys-ros-bridge
+  - env: ROS_DISTRO=melodic TEST_TYPE=work_with_downstream  TEST_PACKAGE=hironx-ros-bridge
+  - env: ROS_DISTRO=melodic TEST_TYPE=work_with_315_1_10    TEST_PACKAGE=hironx-ros-bridge
 script:
-  - case $ROS_DISTRO in "hydro") export DISTRO=precise;; "indigo") export DISTRO=trusty;; "kinetic") export DISTRO=xenial;; esac;
+  - case $ROS_DISTRO in "hydro") export DISTRO=precise;; "indigo") export DISTRO=trusty;; "kinetic") export DISTRO=xenial;; "melodic") export DISTRO=bionic;; esac;
   - export DOCKER_IMAGE=ubuntu:$DISTRO
   - export CI_SOURCE_PATH=$(pwd)
   - docker images
