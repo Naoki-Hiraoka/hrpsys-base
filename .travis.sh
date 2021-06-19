@@ -17,7 +17,7 @@ trap error ERR
 function travis_time_start {
     set +x
     TRAVIS_START_TIME=$(date +%s%N)
-    TRAVIS_TIME_ID=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)
+    TRAVIS_TIME_ID=$(printf "%x" $TRAVIS_START_TIME)
     TRAVIS_FOLD_NAME=$1
     echo -e "\e[0Ktraivs_fold:start:$TRAVIS_FOLD_NAME"
     echo -e "\e[0Ktraivs_time:start:$TRAVIS_TIME_ID"
