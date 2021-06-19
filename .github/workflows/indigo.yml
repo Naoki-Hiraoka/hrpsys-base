@@ -4,6 +4,7 @@ jobs:
   indigo:
     runs-on: ubuntu-latest
     name: ${{ matrix.name }}
+    continue-on-error: true
 
     container: ubuntu:14.04
 

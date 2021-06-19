@@ -7,8 +7,7 @@ function error {
     mkdir -p ${HOME}/.ros/test_results || echo "OK"
     find ${HOME}/.ros/test_results -type f -exec echo "=== {} ===" \; -exec\
  cat {} \;
-    for file in ${HOME}/.ros/log/rostest-*; do echo "=== $file ==="; cat \$\
-file; done
+    for file in ${HOME}/.ros/log/rostest-*; do echo "=== $file ==="; cat $file; done
     exit 1
 }
 
@@ -148,7 +147,12 @@ case $TEST_PACKAGE in
                 travis_time_start  install_libs
 
                 # COMPILE_ONLY
-                sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen graphviz libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libcv-dev libhighgui-dev libopencv-contrib-dev
+                sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen graphviz libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libopencv-contrib-dev
+                if [[ "$ROS_DISTRO" ==  "hydro" || "$ROS_DISTRO" ==  "indigo" || "$ROS_DISTRO" ==  "kinetic" ]]; then
+                    sudo apt-get install -qq -y libcv-dev libhighgui-dev 
+                else
+                    sudo apt-get install -qq -y libopencv-dev
+                fi
 
                 travis_time_end
                 travis_time_start  install_openhrp3
@@ -180,7 +184,13 @@ case $TEST_PACKAGE in
         travis_time_start  install_libs
 
         # COMPILE
-        sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libcv-dev libhighgui-dev libopencv-contrib-dev
+        sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libopencv-contrib-dev
+        if [[ "$ROS_DISTRO" ==  "hydro" || "$ROS_DISTRO" ==  "indigo" || "$ROS_DISTRO" ==  "kinetic" ]]; then
+            sudo apt-get install -qq -y libcv-dev libhighgui-dev 
+        else
+            sudo apt-get install -qq -y libopencv-dev
+        fi
+
         # check rtmros_common
 
         if [ "$TEST_PACKAGE" == "hrpsys-base" ]; then

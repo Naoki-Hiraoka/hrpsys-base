@@ -4,6 +4,7 @@ jobs:
   kinetic:
     runs-on: ubuntu-latest
     name: ${{ matrix.name }}
+    continue-on-error: true
 
     container: ubuntu:16.04
 
