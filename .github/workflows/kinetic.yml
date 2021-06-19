@@ -13,26 +13,15 @@ jobs:
         include:
           # test for normal hrpsys users, this will not depends on any ROS-related tools
           - name: kinetic-hrpsys
-            TEST_PACKAGE: hrpsys
             TEST_TYPE: ''
           - name: kinetic-hrpsys-iob
-            TEST_PACKAGE: hrpsys
             TEST_TYPE: iob
           - name: kinetic-hrpsys-stable_rtc
-            TEST_PACKAGE: hrpsys
             TEST_TYPE: stable_rtc
           # compile source code with ros-related tools, they are compiled with catkin and test with rostest
-          - name: kinetic-hrpsys-ros-bridge-work_with_downstream
-            TEST_PACKAGE: hrpsys-ros-bridge
+          - name: kinetic-work_with_downstream
             TEST_TYPE: work_with_downstream
-          - name: kinetic-hrpsys-ros-bridge-work_with_315_1_10
-            TEST_PACKAGE: hrpsys-ros-bridge
-            TEST_TYPE: work_with_315_1_10
-          - name: kinetic-hironx-ros-bridge-work_with_downstream
-            TEST_PACKAGE: hironx-ros-bridge
-            TEST_TYPE: work_with_downstream
-          - name: kinetic-hironx-ros-bridge-work_with_315_1_10
-            TEST_PACKAGE: hironx-ros-bridge
+          - name: kinetic-work_with_315_1_10
             TEST_TYPE: work_with_315_1_10
 
     steps:
@@ -44,5 +33,4 @@ jobs:
         env:
           ROS_DISTRO : kinetic
           DISTRO : xenial
-          TEST_PACKAGE : ${{ matrix.TEST_PACKAGE }}
           TEST_TYPE : ${{ matrix.TEST_TYPE }}

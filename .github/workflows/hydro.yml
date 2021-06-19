@@ -13,26 +13,15 @@ jobs:
         include:
           # test for normal hrpsys users, this will not depends on any ROS-related tools
           - name: hydro-hrpsys
-            TEST_PACKAGE: hrpsys
             TEST_TYPE: ''
           - name: hydro-hrpsys-iob
-            TEST_PACKAGE: hrpsys
             TEST_TYPE: iob
           - name: hydro-hrpsys-stable_rtc
-            TEST_PACKAGE: hrpsys
             TEST_TYPE: stable_rtc
           # compile source code with ros-related tools, they are compiled with catkin and test with rostest
-          - name: hydro-hrpsys-ros-bridge-work_with_downstream
-            TEST_PACKAGE: hrpsys-ros-bridge
+          - name: hydro-work_with_downstream
             TEST_TYPE: work_with_downstream
-          - name: hydro-hrpsys-ros-bridge-work_with_315_1_10
-            TEST_PACKAGE: hrpsys-ros-bridge
-            TEST_TYPE: work_with_315_1_10
-          - name: hydro-hironx-ros-bridge-work_with_downstream
-            TEST_PACKAGE: hironx-ros-bridge
-            TEST_TYPE: work_with_downstream
-          - name: hydro-hironx-ros-bridge-work_with_315_1_10
-            TEST_PACKAGE: hironx-ros-bridge
+          - name: hydro-work_with_315_1_10
             TEST_TYPE: work_with_315_1_10
 
     steps:
@@ -44,5 +33,4 @@ jobs:
         env:
           ROS_DISTRO : hydro
           DISTRO : precise
-          TEST_PACKAGE : ${{ matrix.TEST_PACKAGE }}
           TEST_TYPE : ${{ matrix.TEST_TYPE }}

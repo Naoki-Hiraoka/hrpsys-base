@@ -77,80 +77,78 @@ git config --global http.sslVerify false
 
 travis_time_end
 
-case $TEST_PACKAGE in
-    hrpsys)
-        case $TEST_TYPE in
-            python)
-                travis_time_start  install_python
+case $TEST_TYPE in
+    python)
+        travis_time_start  install_python
 
-                #http://askubuntu.com/questions/204510/how-to-install-python-2-5-4
-                sudo apt-add-repository -y ppa:deadsnakes
-                sudo apt-get update -qq
-                sudo apt-get install -qq -y --force-yes python2.5 python2.7 python3.4
+        #http://askubuntu.com/questions/204510/how-to-install-python-2-5-4
+        sudo apt-add-repository -y ppa:deadsnakes
+        sudo apt-get update -qq
+        sudo apt-get install -qq -y --force-yes python2.5 python2.7 python3.4
 
-                travis_time_end
-                travis_time_start  check_python
+        travis_time_end
+        travis_time_start  check_python
 
-                for code in python/*.py; do
-                    python2.5 -m py_compile $code
-                    python2.7 -m py_compile $code
-                    python3.4 -m py_compile $code
-                done
+        for code in python/*.py; do
+            python2.5 -m py_compile $code
+            python2.7 -m py_compile $code
+            python3.4 -m py_compile $code
+        done
 
 
-                travis_time_end
-                ;;
-            iob)
-                travis_time_start  install_wget
+        travis_time_end
+        ;;
+    iob)
+        travis_time_start  install_wget
 
-                sudo apt-get install -qq -y cproto wget diffstat
+        sudo apt-get install -qq -y cproto wget diffstat
 
-                travis_time_end
-                travis_time_start  iob_test
+        travis_time_end
+        travis_time_start  iob_test
 
-                wget https://github.com/fkanehiro/hrpsys-base/raw/315.1.9/lib/io/iob.h -O iob.h.315.1.9
-                echo -e "#define pid_t int\n#define size_t int\n#include \"lib/io/iob.h\""  | cproto -x - | sort > iob.h.current
-                echo -e "#define pid_t int\n#define size_t int\n#include \"iob.h.315.1.9\"" | cproto -x - | sort > iob.h.stable
-                cat iob.h.current
-                cat iob.h.stable
-                diff iob.h.stable iob.h.current || exit 1
+        wget https://github.com/fkanehiro/hrpsys-base/raw/315.1.9/lib/io/iob.h -O iob.h.315.1.9
+        echo -e "#define pid_t int\n#define size_t int\n#include \"lib/io/iob.h\""  | cproto -x - | sort > iob.h.current
+        echo -e "#define pid_t int\n#define size_t int\n#include \"iob.h.315.1.9\"" | cproto -x - | sort > iob.h.stable
+        cat iob.h.current
+        cat iob.h.stable
+        diff iob.h.stable iob.h.current || exit 1
 
-                travis_time_end
-                ;;
-            stable_rtc)
-                travis_time_start  install_openrtm
+        travis_time_end
+        ;;
+    stable_rtc)
+        travis_time_start  install_openrtm
 
-                sudo apt-get install -qq -y omniidl diffstat wget ros-${ROS_DISTRO}-openrtm-aist
-                source /opt/ros/${ROS_DISTRO}/setup.bash
-                ## check stableRTCList
-                sed -i 's@^from@#from@g' python/hrpsys_config.py
-                sed -i 's@^import@#import@' python/hrpsys_config.py
-                sed -i 's@^_EPS@#_EPS@' python/hrpsys_config.py
-                sed -i 's@=nshost@=None@' python/hrpsys_config.py
-                sed -i 's@initCORBA@#initCORBA@' python/hrpsys_config.py
-                if [ "`python -c "import python.hrpsys_config; hcf=python.hrpsys_config.HrpsysConfigurator(); print [ x[1] for x in hcf.getRTCList()]" | tail -1`" != "['SequencePlayer', 'StateHolder', 'ForwardKinematics', 'CollisionDetector', 'SoftErrorLimiter', 'DataLogger']" ]; then
-                    exit 1
-                fi
+        sudo apt-get install -qq -y omniidl diffstat wget ros-${ROS_DISTRO}-openrtm-aist
+        source /opt/ros/${ROS_DISTRO}/setup.bash
+        ## check stableRTCList
+        sed -i 's@^from@#from@g' python/hrpsys_config.py
+        sed -i 's@^import@#import@' python/hrpsys_config.py
+        sed -i 's@^_EPS@#_EPS@' python/hrpsys_config.py
+        sed -i 's@=nshost@=None@' python/hrpsys_config.py
+        sed -i 's@initCORBA@#initCORBA@' python/hrpsys_config.py
+        if [ "`python -c "import python.hrpsys_config; hcf=python.hrpsys_config.HrpsysConfigurator(); print [ x[1] for x in hcf.getRTCList()]" | tail -1`" != "['SequencePlayer', 'StateHolder', 'ForwardKinematics', 'CollisionDetector', 'SoftErrorLimiter', 'DataLogger']" ]; then
+            exit 1
+        fi
 
-                travis_time_end
-                travis_time_start  check_idl
+        travis_time_end
+        travis_time_start  check_idl
 
-                ## check idl
-                mkdir stable_idl
-                for idl_file in SequencePlayerService.idl StateHolderService.idl ForwardKinematicsService.idl CollisionDetectorService.idl SoftErrorLimiterService.idl DataLoggerService.idl   ExecutionProfileService.idl HRPDataTypes.idl RobotHardwareService.idl ; do
-                    wget https://github.com/fkanehiro/hrpsys-base/raw/315.1.9/idl/${idl_file} -O stable_idl/${idl_file}
-                    omniidl -bcxx -I/opt/ros/${ROS_DISTRO}/include/openrtm-1.1/rtm/idl/                      idl/${idl_file}
-                    omniidl -bcxx -I/opt/ros/${ROS_DISTRO}/include/openrtm-1.1/rtm/idl/ -C stable_idl stable_idl/${idl_file}
-                    sk_file=$(basename ${idl_file} .idl)SK.cc
-                    cat ${sk_file}
-                    cat stable_idl/${sk_file}
+        ## check idl
+        mkdir stable_idl
+        for idl_file in SequencePlayerService.idl StateHolderService.idl ForwardKinematicsService.idl CollisionDetectorService.idl SoftErrorLimiterService.idl DataLoggerService.idl   ExecutionProfileService.idl HRPDataTypes.idl RobotHardwareService.idl ; do
+            wget https://github.com/fkanehiro/hrpsys-base/raw/315.1.9/idl/${idl_file} -O stable_idl/${idl_file}
+            omniidl -bcxx -I/opt/ros/${ROS_DISTRO}/include/openrtm-1.1/rtm/idl/                      idl/${idl_file}
+            omniidl -bcxx -I/opt/ros/${ROS_DISTRO}/include/openrtm-1.1/rtm/idl/ -C stable_idl stable_idl/${idl_file}
+            sk_file=$(basename ${idl_file} .idl)SK.cc
+            cat ${sk_file}
+            cat stable_idl/${sk_file}
 
-                    diff stable_idl/${sk_file} ${sk_file} | tee >(cat - 1>&2)  | diffstat | grep -c deletion && exit 1
-                done
-                echo "ok"
+            diff stable_idl/${sk_file} ${sk_file} | tee >(cat - 1>&2)  | diffstat | grep -c deletion && exit 1
+        done
+        echo "ok"
 
-                travis_time_end
-                ;;
+        travis_time_end
+        ;;
             *)
                 travis_time_start  install_libs
 
@@ -188,8 +186,10 @@ case $TEST_PACKAGE in
                 ;;
         esac
         ;;
-    *)
+    *) # work_with_downstream, work_with_315_1_10
         travis_time_start  install_libs
+
+        test_pkgs="hrpsys hrpsys_ros_bridge hrpsys_tools hironx_ros_bridge"
 
         # COMPILE
         sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libopencv-contrib-dev
@@ -201,18 +201,14 @@ case $TEST_PACKAGE in
 
         # check rtmros_common
 
-        if [ "$TEST_PACKAGE" == "hrpsys-base" ]; then
-            TEST_PACKAGE="hrpsys"
-        fi
         travis_time_end
-        travis_time_start  install_$TEST_PACKAGE
+        travis_time_start  install_downstream
 
-        pkg=$TEST_PACKAGE
         sudo apt-get install -qq -y python-wstool ros-${ROS_DISTRO}-catkin ros-${ROS_DISTRO}-mk ros-${ROS_DISTRO}-rostest ros-${ROS_DISTRO}-rtmbuild ros-${ROS_DISTRO}-roslint > /dev/null
 
         sudo apt-get install -qq -y ros-${ROS_DISTRO}-pcl-ros ros-${ROS_DISTRO}-moveit-commander ros-${ROS_DISTRO}-rqt-robot-dashboard > /dev/null
 
-        sudo apt-get install -qq -y ros-${ROS_DISTRO}-$pkg
+        sudo apt-get install -qq -y ros-${ROS_DISTRO}-hrpsys ros-${ROS_DISTRO}-hrpsys-ros-bridge ros-${ROS_DISTRO}-hrpsys-tools ros-${ROS_DISTRO}-hironx-ros-bridge
 
         source /opt/ros/${ROS_DISTRO}/setup.bash
 
@@ -290,7 +286,7 @@ case $TEST_PACKAGE in
             travis_time_end
             travis_time_start  compile_new_version
 
-            catkin_make_isolated --install --only-pkg-with-deps `echo $pkg | sed s/-/_/g` | grep -v '^-- \(Up-to-date\|Installing\):' | grep -v 'Generating \(Python\|C++\) code from' | grep -v '^Compiling .*.py ...$' | uniq
+            catkin_make_isolated --install --only-pkg-with-deps $test_pkgs | grep -v '^-- \(Up-to-date\|Installing\):' | grep -v 'Generating \(Python\|C++\) code from' | grep -v '^Compiling .*.py ...$' | uniq
             rm -fr ./install_isolated/hrpsys/share/hrpsys ./install_isolated/hrpsys/lib/pkgconfig/hrpsys.pc
             source install_isolated/setup.bash
 
@@ -414,32 +410,36 @@ case $TEST_PACKAGE in
         # Check rostest
         sudo /etc/init.d/omniorb4-nameserver stop || echo "stop omniserver just in case..."
         export EXIT_STATUS=0;
-        pkg_path=`rospack find \`echo $pkg | sed s/-/_/g\``
-        if [ "`find $pkg_path/test -iname '*.test'`" == "" ]; then
-            echo "[$pkg] No tests ware found!!!"
-        else
-            for test_file in `find $pkg_path/test -iname "*.test" -print`; do
-                travis_time_start $(echo $test_file | sed 's@.*/\([a-zA-Z0-9-]*\).test$@\1@' | sed 's@-@_@g')
-                export TMP_EXIT_STATUS=0
-                rostest $test_file && travis_time_end || export TMP_EXIT_STATUS=$?
-                if [ "$TMP_EXIT_STATUS" != 0 ]; then
-                    export EXIT_STATUS=$TMP_EXIT_STATUS
-                    # Print results of rostest-*.xml files
-                    find ~/.ros/test_results -type f -iname "*`basename $test_file .test`.xml" -print -exec echo "=== {} ===" \; -exec cat {} \;
-                    # Print results of each rosunit-*.xml file
-                    #   Get rosunit*.xml file path from rostest-*.xml file by usig awk and cut.
-                    #   Files are assumed to include "xxx results are in [/home/xxx/rosunit-yy.xml]"
-                    rosunit_xml_result_files=$(find ~/.ros/test_results -type f -iname "*`basename $test_file .test`.xml" -print -exec echo "=== {} ===" \; -exec cat {} \; | grep "results are in" | awk -F'results are in ' '{print $2}' | cut -d\[ -f2 | cut -d\] -f1)
-                    if [ "${rosunit_xml_result_files}" != "" ]; then cat ${rosunit_xml_result_files}; fi
-                    travis_time_end 31
-                fi
-            done
-        fi
+        for pkg in $test_pkgs;
+        do
+            echo "test $pkg"
+            pkg_path=`rospack find $pkg`
+            if [ "`find $pkg_path/test -iname '*.test'`" == "" ]; then
+                echo "[$pkg] No tests ware found!!!"
+            else
+                for test_file in `find $pkg_path/test -iname "*.test" -print`; do
+                    travis_time_start $(echo $test_file | sed 's@.*/\([a-zA-Z0-9-]*\).test$@\1@' | sed 's@-@_@g')
+                    export TMP_EXIT_STATUS=0
+                    rostest $test_file && travis_time_end || export TMP_EXIT_STATUS=$?
+                    if [ "$TMP_EXIT_STATUS" != 0 ]; then
+                        export EXIT_STATUS=$TMP_EXIT_STATUS
+                        # Print results of rostest-*.xml files
+                        find ~/.ros/test_results -type f -iname "*`basename $test_file .test`.xml" -print -exec echo "=== {} ===" \; -exec cat {} \;
+                        # Print results of each rosunit-*.xml file
+                        #   Get rosunit*.xml file path from rostest-*.xml file by usig awk and cut.
+                        #   Files are assumed to include "xxx results are in [/home/xxx/rosunit-yy.xml]"
+                        rosunit_xml_result_files=$(find ~/.ros/test_results -type f -iname "*`basename $test_file .test`.xml" -print -exec echo "=== {} ===" \; -exec cat {} \; | grep "results are in" | awk -F'results are in ' '{print $2}' | cut -d\[ -f2 | cut -d\] -f1)
+                        if [ "${rosunit_xml_result_files}" != "" ]; then cat ${rosunit_xml_result_files}; fi
+                        travis_time_end 31
+                    fi
+                done
+            fi
+        done
 
         travis_time_start  end_tests
 
         # for debugging
-        [ $TEST_PACKAGE == "hrpsys-ros-bridge" ] && rostest -t hrpsys_ros_bridge test-samplerobot.test
+        rostest -t hrpsys_ros_bridge test-samplerobot.test
         [ $EXIT_STATUS == 0 ] || exit 1
 
         travis_time_end
