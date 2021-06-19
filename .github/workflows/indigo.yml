@@ -1,0 +1,120 @@
+on: [push, pull_request]
+
+jobs:
+  indigo:
+    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+
+    container: ubuntu:14.04
+
+    strategy:
+      matrix:
+        include:
+          # test for normal hrpsys users, this will not depends on any ROS-related tools
+          - name: indigo-hrpsys
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: ''
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-openhrp3_src
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: ''
+            USE_SRC_OPENHRP3: true
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-iob_version_0
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: ''
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: '-DROBOT_IOB_VERSION=0'
+          - name: indigo-hrpsys-python
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: python
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-iob
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: iob
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-stable_rtc
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: stable_rtc
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-openhrp3_src
+            TEST_PACKAGE: hrpsys
+            TEST_TYPE: ''
+            USE_SRC_OPENHRP3: true
+            COMPILE_OPTION: ''
+          # compile source code with ros-related tools, they are compiled with catkin and test with rostest
+          #    Exec USE_SRC_OPENHRP3=true tests in faster orders to make debug of these tests easy.
+          - name: indigo-hironx-ros-bridge-work_with_downstream
+            TEST_PACKAGE: hironx-ros-bridge
+            TEST_TYPE: work_with_downstream
+            USE_SRC_OPENHRP3: true
+            COMPILE_OPTION: ''
+          - name: indigo-hironx-ros-bridge-work_with_315_1_10
+            TEST_PACKAGE: hironx-ros-bridge
+            TEST_TYPE: work_with_315_1_10
+            USE_SRC_OPENHRP3: true
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-work_with_downstream
+            TEST_PACKAGE: hrpsys-base
+            TEST_TYPE: work_with_downstream
+            USE_SRC_OPENHRP3: true
+            COMPILE_OPTION: ''
+          #    USE_SRC_OPENHRP3=false tests
+          - name: indigo-hrpsys-base-work_with_downstream
+            TEST_PACKAGE: hrpsys-base
+            TEST_TYPE: work_with_downstream
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-base-work_with_315_1_10
+            TEST_PACKAGE: hrpsys-base
+            TEST_TYPE: work_with_315_1_10
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-tools-work_with_downstream
+            TEST_PACKAGE: hrpsys-tools
+            TEST_TYPE: work_with_downstream
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-tools-work_with_315_1_10
+            TEST_PACKAGE: hrpsys-tools
+            TEST_TYPE: work_with_315_1_10
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-ros-bridge-work_with_downstream
+            TEST_PACKAGE: hrpsys-ros-bridge
+            TEST_TYPE: work_with_downstream
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hrpsys-ros-bridge-work_with_315_1_10
+            TEST_PACKAGE: hrpsys-ros-bridge
+            TEST_TYPE: work_with_315_1_10
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hironx-ros-bridge-work_with_downstream
+            TEST_PACKAGE: hironx-ros-bridge
+            TEST_TYPE: work_with_downstream
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+          - name: indigo-hironx-ros-bridge-work_with_315_1_10
+            TEST_PACKAGE: hironx-ros-bridge
+            TEST_TYPE: work_with_315_1_10
+            USE_SRC_OPENHRP3: false
+            COMPILE_OPTION: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Run travis
+        run: source ./.travis.sh
+        shell: bash
+        env:
+          ROS_DISTRO : indigo
+          DISTRO : trusty
+          TEST_PACKAGE : ${{ matrix.TEST_PACKAGE }}
+          TEST_TYPE : ${{ matrix.TEST_TYPE }}
+          USE_SRC_OPENHRP3: ${{ matrix.COMPILE_OPTION }}
+          COMPILE_OPTION: ${{ matrix.COMPILE_OPTION }}
