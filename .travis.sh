@@ -35,6 +35,10 @@ function travis_time_end {
 travis_time_start setup_apt
 
 export DEBIAN_FRONTEND=noninteractive
+if [[ "$DISTRO" ==  "precise" ]]; then
+    # archive.ubuntu.com is not available in this distribution
+    sed -i 's/archive.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
+fi
 apt-get update -q=5
 apt-get install -q=5 -y wget sudo git sed
 apt-get install -q=5 -y software-properties-common # apt-add-repository
@@ -275,7 +279,7 @@ case $TEST_PACKAGE in
             sed -i "s@install(@dummy_install(@g" src/hrpsys/CMakeLists.txt
             sed -i "\$iinstall(DIRECTORY test launch sample DESTINATION share/hrpsys USE_SOURCE_PERMISSIONS)" src/hrpsys/CMakeLists.txt
             sed -i "\$iinstall(FILES package.xml DESTINATION share/hrpsys/)" src/hrpsys/CMakeLists.txt
-            sed -i "\$iinstall(FILES ${CMAKE_CURRENT_BINARY_DIR}/hrpsys-base.pc DESTINATION lib/pkgconfig)" src/hrpsys/CMakeLists.txt
+            sed -i "\$iinstall(FILES \${CMAKE_CURRENT_BINARY_DIR}/hrpsys-base.pc DESTINATION lib/pkgconfig)" src/hrpsys/CMakeLists.txt
             sed -i "\$iinstall(CODE \"execute_process(COMMAND cmake -E make_directory share/hrpsys WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/share/hrpsys)\")" src/hrpsys/CMakeLists.txt
             sed -i "\$iinstall(CODE \"execute_process(COMMAND cmake -E create_symlink ../../../hrpsys/idl     share/hrpsys/idl WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/share/hrpsys)\")" src/hrpsys/CMakeLists.txt
             sed -i "\$iinstall(CODE \"execute_process(COMMAND cmake -E create_symlink ../../../hrpsys/samples share/hrpsys/samples WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/share/hrpsys)\")" src/hrpsys/CMakeLists.txt
