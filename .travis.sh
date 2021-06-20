@@ -149,7 +149,7 @@ case $TEST_TYPE in
 
         travis_time_end
         ;;
-    compile_only)
+    build)
         travis_time_start  install_libs
 
         sudo apt-get install -qq -y freeglut3-dev python-tk jython doxygen graphviz libboost-all-dev libsdl1.2-dev libglew1.6-dev libqhull-dev libirrlicht-dev libxmu-dev libopencv-contrib-dev
@@ -183,7 +183,7 @@ case $TEST_TYPE in
 
         travis_time_end
         ;;
-    *) # work_with_downstream, work_with_315_1_10
+    work_with_downstream | work_with_315_1_10)
         travis_time_start  install_libs
 
         test_pkgs="hrpsys hrpsys_ros_bridge hrpsys_tools hironx_ros_bridge"

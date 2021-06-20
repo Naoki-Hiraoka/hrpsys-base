@@ -13,15 +13,15 @@ jobs:
         include:
           # test for normal hrpsys users, this will not depends on any ROS-related tools
           - name: indigo-hrpsys
-            TEST_TYPE: compile_only
+            TEST_TYPE: build
             USE_SRC_OPENHRP3: false
             COMPILE_OPTION: ''
           - name: indigo-hrpsys-openhrp3_src
-            TEST_TYPE: compile_only
+            TEST_TYPE: build_test
             USE_SRC_OPENHRP3: true
             COMPILE_OPTION: ''
           - name: indigo-hrpsys-iob_version_0
-            TEST_TYPE: compile_only
+            TEST_TYPE: build_test
             USE_SRC_OPENHRP3: false
             COMPILE_OPTION: '-DROBOT_IOB_VERSION=0'
           - name: indigo-hrpsys-python
@@ -38,11 +38,11 @@ jobs:
             COMPILE_OPTION: ''
           # compile source code with ros-related tools, they are compiled with catkin and test with rostest
           #    Exec USE_SRC_OPENHRP3=true tests in faster orders to make debug of these tests easy.
-          - name: indigo-work_with_downstream
+          - name: indigo-work_with_downstream-openhrp3_src
             TEST_TYPE: work_with_downstream
             USE_SRC_OPENHRP3: true
             COMPILE_OPTION: ''
-          - name: indigo-work_with_315_1_10
+          - name: indigo-work_with_315_1_10-openhrp3_src
             TEST_TYPE: work_with_315_1_10
             USE_SRC_OPENHRP3: true
             COMPILE_OPTION: ''

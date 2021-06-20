@@ -13,7 +13,7 @@ jobs:
         include:
           # test for normal hrpsys users, this will not depends on any ROS-related tools
           - name: melodic-hrpsys
-            TEST_TYPE: compile_only
+            TEST_TYPE: build
           - name: melodic-hrpsys-iob
             TEST_TYPE: iob
           - name: melodic-hrpsys-stable_rtc

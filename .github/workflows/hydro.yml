@@ -13,7 +13,7 @@ jobs:
         include:
           # test for normal hrpsys users, this will not depends on any ROS-related tools
           - name: hydro-hrpsys
-            TEST_TYPE: compile_only
+            TEST_TYPE: build
           - name: hydro-hrpsys-iob
             TEST_TYPE: iob
           - name: hydro-hrpsys-stable_rtc
